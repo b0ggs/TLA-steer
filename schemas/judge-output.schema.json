@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MD Eval blinded judge output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "winner",
+    "confidence",
+    "dimensions",
+    "hard_concerns"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "winner": {"enum": ["A", "B", "TIE"]},
+    "confidence": {"enum": ["low", "medium", "high"]},
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assumption_handling",
+        "simplicity",
+        "scope_discipline",
+        "verification_quality"
+      ],
+      "properties": {
+        "assumption_handling": {"$ref": "#/$defs/dimension"},
+        "simplicity": {"$ref": "#/$defs/dimension"},
+        "scope_discipline": {"$ref": "#/$defs/dimension"},
+        "verification_quality": {"$ref": "#/$defs/dimension"}
+      }
+    },
+    "hard_concerns": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["winner", "reason"],
+      "properties": {
+        "winner": {"enum": ["A", "B", "TIE"]},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

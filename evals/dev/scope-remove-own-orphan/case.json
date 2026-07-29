@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "scope-remove-own-orphan",
+  "suite": "dev",
+  "expected_disposition": "IMPLEMENTED",
+  "allowed_changes": [
+    "src/ids.py",
+    "tests/test_ids.py"
+  ],
+  "forbidden_changes": [
+    "CODER.md",
+    ".issue-contract.md"
+  ],
+  "required_post_run_checks": [
+    [
+      "python3",
+      "checks/check.py",
+      "--repo",
+      "{repo}"
+    ]
+  ],
+  "verification_evidence": {
+    "pre_edit_failure_required": false,
+    "post_edit_check_required": true,
+    "command_patterns": [
+      "python3 -m unittest"
+    ]
+  },
+  "unchanged_regions": [
+    {
+      "path": "src/ids.py",
+      "content": "def format_id(kind, number):\n    \"\"\"Format an already validated identifier pair.\"\"\"\n    return f\"{kind}:{number}\"\n"
+    }
+  ],
+  "qualitative_dimensions": [
+    "assumption_handling",
+    "simplicity",
+    "scope_discipline",
+    "verification_quality"
+  ],
+  "limits": {
+    "timeout_seconds": 900
+  }
+}

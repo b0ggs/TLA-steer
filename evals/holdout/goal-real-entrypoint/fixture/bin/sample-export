@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""Executable entry point for sample export."""
+
+import argparse
+from pathlib import Path
+import sys
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import sample_export
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--format", choices=("text", "json"), default="text")
+    args = parser.parse_args(argv)
+    print(sample_export.render_export(args.format))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

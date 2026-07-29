@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MD Eval locked CODER experiment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "target_role",
+    "runner",
+    "judge",
+    "variants",
+    "suites",
+    "run_order_seed",
+    "default_repeats"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "experiment_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "target_role": {"const": "coder"},
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "model",
+        "reasoning_effort",
+        "sandbox",
+        "approval_policy",
+        "subagents_enabled",
+        "ephemeral",
+        "network_for_agent_commands",
+        "timeout_seconds",
+        "max_parallel_runs"
+      ],
+      "properties": {
+        "type": {"const": "codex_cli"},
+        "model": {"const": "gpt-5.6-sol"},
+        "reasoning_effort": {"const": "high"},
+        "sandbox": {"const": "workspace-write"},
+        "approval_policy": {"const": "never"},
+        "subagents_enabled": {"const": false},
+        "ephemeral": {"const": true},
+        "network_for_agent_commands": {"const": false},
+        "timeout_seconds": {"type": "integer", "minimum": 1},
+        "max_parallel_runs": {"const": 1}
+      }
+    },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "model",
+        "reasoning_effort",
+        "sandbox",
+        "timeout_seconds"
+      ],
+      "properties": {
+        "type": {"const": "codex_cli"},
+        "model": {"const": "gpt-5.6-sol"},
+        "reasoning_effort": {"const": "high"},
+        "sandbox": {"const": "read-only"},
+        "timeout_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "variants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["champion", "karpathy-v1", "deliberately-bad"],
+      "properties": {
+        "champion": {"$ref": "#/$defs/safePath"},
+        "karpathy-v1": {"$ref": "#/$defs/safePath"},
+        "deliberately-bad": {"$ref": "#/$defs/safePath"}
+      }
+    },
+    "suites": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["smoke", "dev", "holdout"],
+      "properties": {
+        "smoke": {
+          "const": [
+            "ambiguity-must-clarify",
+            "ambiguity-repo-resolves",
+            "scope-ttl-zero",
+            "bug-reproduce-mutable-default"
+          ]
+        },
+        "dev": {
+          "const": [
+            "ambiguity-must-clarify",
+            "ambiguity-repo-resolves",
+            "simplicity-username-lowercase",
+            "scope-ttl-zero",
+            "scope-remove-own-orphan",
+            "bug-reproduce-mutable-default",
+            "feature-json-output",
+            "goal-status-422"
+          ]
+        },
+        "holdout": {
+          "const": ["breadth-layered-settings", "goal-real-entrypoint"]
+        }
+      }
+    },
+    "run_order_seed": {"type": "integer"},
+    "default_repeats": {"type": "integer", "minimum": 1}
+  },
+  "$defs": {
+    "safePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

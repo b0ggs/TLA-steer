@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "experiment_id": "coder-single-file-v1",
+  "target_role": "coder",
+  "runner": {
+    "type": "codex_cli",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "sandbox": "workspace-write",
+    "approval_policy": "never",
+    "subagents_enabled": false,
+    "ephemeral": true,
+    "network_for_agent_commands": false,
+    "timeout_seconds": 900,
+    "max_parallel_runs": 1
+  },
+  "judge": {
+    "type": "codex_cli",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "sandbox": "read-only",
+    "timeout_seconds": 600
+  },
+  "variants": {
+    "champion": "targets/coder/champion.md",
+    "karpathy-v1": "candidates/coder/karpathy-v1.md",
+    "deliberately-bad": "controls/coder/deliberately-bad.md"
+  },
+  "suites": {
+    "smoke": [
+      "ambiguity-must-clarify",
+      "ambiguity-repo-resolves",
+      "scope-ttl-zero",
+      "bug-reproduce-mutable-default"
+    ],
+    "dev": [
+      "ambiguity-must-clarify",
+      "ambiguity-repo-resolves",
+      "simplicity-username-lowercase",
+      "scope-ttl-zero",
+      "scope-remove-own-orphan",
+      "bug-reproduce-mutable-default",
+      "feature-json-output",
+      "goal-status-422"
+    ],
+    "holdout": [
+      "breadth-layered-settings",
+      "goal-real-entrypoint"
+    ]
+  },
+  "run_order_seed": 20260729,
+  "default_repeats": 2
+}

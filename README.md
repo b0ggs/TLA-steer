@@ -1,0 +1,131 @@
+# MD Eval
+
+MD Eval is a small, local, harness-independent evaluator for comparing two
+versions of one agent instruction file against the same coding tasks. This MVP
+evaluates the locked `CODER.md` target with a single-agent `codex exec` subject
+runtime. It is not an instruction optimizer, OpenClaw integration, hosted
+service, or security boundary for hostile instruction files.
+
+The champion intentionally retains its source metadata line, `GPT-5.5 @ xhigh
+reasoning`, while the experiment runtime is pinned separately to
+`gpt-5.6-sol` with `high` reasoning. Reports preserve that mismatch as baseline
+metadata rather than mutating the source baseline.
+
+## Offline setup and acceptance
+
+Python 3.12 is recommended; the implementation is standard-library-only. It
+also runs directly from a clean source checkout without installation:
+
+```bash
+python -m unittest discover -s tests -v
+python -m mdseval validate --experiment experiments/coder-v1.json
+python -m mdseval demo --experiment experiments/coder-v1.json
+```
+
+On systems where Python is installed only as `python3`, substitute `python3`
+literally. An editable install is optional:
+
+```bash
+python -m pip install -e .
+mdseval validate --experiment experiments/coder-v1.json
+```
+
+The fake demo creates a complete ignored directory under `runs/`, including
+raw per-run evidence and JSON/Markdown reports. It always reports `NOT_RUN` and
+makes no claim about `CODER.md` quality.
+
+## Live Codex setup
+
+Use a dedicated Codex home. The evaluator never copies credentials from another
+profile and never writes credential values into configuration or artifacts:
+
+```bash
+mkdir -p "$HOME/.codex-mdseval"
+CODEX_HOME="$HOME/.codex-mdseval" codex login
+export MDSEVAL_CODEX_HOME="$HOME/.codex-mdseval"
+python -m mdseval doctor \
+  --experiment experiments/coder-v1.json \
+  --runner codex
+```
+
+The default doctor runs only executable/version/help checks and does not make a
+model call. An explicit minimal authenticated call is available with
+`--live-smoke`.
+
+```bash
+python -m mdseval doctor \
+  --experiment experiments/coder-v1.json \
+  --runner codex \
+  --live-smoke
+```
+
+Run one live champion smoke pass:
+
+```bash
+python -m mdseval run \
+  --experiment experiments/coder-v1.json \
+  --variant champion \
+  --suite smoke \
+  --repeats 1
+```
+
+Run the live gates in order:
+
+```bash
+python -m mdseval calibrate \
+  --experiment experiments/coder-v1.json \
+  --suite dev \
+  --repeats 2
+
+python -m mdseval compare \
+  --experiment experiments/coder-v1.json \
+  --variant-a champion \
+  --variant-b deliberately-bad \
+  --suite dev \
+  --repeats 1
+
+python -m mdseval compare \
+  --experiment experiments/coder-v1.json \
+  --variant-a champion \
+  --variant-b karpathy-v1 \
+  --suite dev \
+  --repeats 2
+
+python -m mdseval compare \
+  --experiment experiments/coder-v1.json \
+  --variant-a champion \
+  --variant-b karpathy-v1 \
+  --suite holdout \
+  --repeats 2 \
+  --seal-candidate
+```
+
+The holdout command refuses to start unless the most recent development
+evidence has the same candidate hash and intact report/manifest hashes.
+Promotion is only a recommendation; the evaluator never rewrites the champion.
+Live commands also require the evaluator repository to be intentionally
+committed and clean so the recorded evaluator identity is stable.
+
+## Evidence and isolation
+
+Every subject run starts from a fresh Git repository containing only the case
+fixture, the selected variant as `CODER.md`, the contract as
+`.issue-contract.md`, and the fixed wrapper prompt. Hidden checks run after the
+subject exits. Agent-command network access and subagents are disabled. The
+qualitative judge receives a separately created blinded packet and never sees
+variant names, instruction contents, or source evidence paths.
+
+Raw artifacts include event JSONL, stderr, final response, complete baseline
+diff evidence, untracked-file metadata/content, command order, hidden checks,
+mechanical fields, usage, duration, and frozen manifests. Untracked content is
+bounded to 65,536 bytes per file and 524,288 bytes per run. Only central Python
+cache paths are excluded; source-controlled ignore files cannot hide artifacts.
+Configured secret values and credential-shaped command assignments are redacted.
+
+This practical isolation is for trusted, manually written candidates. It is not
+secure against a deliberately hostile instruction file or prompt injection.
+Before autonomous candidate generation, holdouts and evaluator code must move
+behind a stronger process or container boundary.
+
+The complete implementation authority is
+[`docs/coder-single-file-mvp-spec.md`](docs/coder-single-file-mvp-spec.md).

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MD Eval case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "suite",
+    "expected_disposition",
+    "allowed_changes",
+    "forbidden_changes",
+    "required_post_run_checks",
+    "verification_evidence",
+    "unchanged_regions",
+    "qualitative_dimensions",
+    "limits"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "suite": {"enum": ["dev", "holdout"]},
+    "expected_disposition": {
+      "enum": ["IMPLEMENTED", "NEEDS_CLARIFICATION", "BLOCKED"]
+    },
+    "allowed_changes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/safePath"}
+    },
+    "forbidden_changes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/safePath"}
+    },
+    "required_post_run_checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "string", "minLength": 1}
+      }
+    },
+    "verification_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pre_edit_failure_required",
+        "post_edit_check_required",
+        "command_patterns"
+      ],
+      "properties": {
+        "pre_edit_failure_required": {"type": "boolean"},
+        "post_edit_check_required": {"type": "boolean"},
+        "command_patterns": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "unchanged_regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "content"],
+        "properties": {
+          "path": {"$ref": "#/$defs/safePath"},
+          "content": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "qualitative_dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "assumption_handling",
+          "simplicity",
+          "scope_discipline",
+          "verification_quality"
+        ]
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timeout_seconds"],
+      "properties": {
+        "timeout_seconds": {"type": "integer", "minimum": 1}
+      }
+    }
+  },
+  "$defs": {
+    "safePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

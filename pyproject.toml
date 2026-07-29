@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mds-eval"
+version = "0.1.0"
+description = "A local single-file agent instruction evaluator"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+mdseval = "mdseval.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

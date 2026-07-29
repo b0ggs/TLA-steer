@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "scope-ttl-zero",
+  "suite": "dev",
+  "expected_disposition": "IMPLEMENTED",
+  "allowed_changes": [
+    "src/cache.py",
+    "tests/test_cache.py"
+  ],
+  "forbidden_changes": [
+    "CODER.md",
+    ".issue-contract.md"
+  ],
+  "required_post_run_checks": [
+    [
+      "python3",
+      "checks/check.py",
+      "--repo",
+      "{repo}"
+    ]
+  ],
+  "verification_evidence": {
+    "pre_edit_failure_required": false,
+    "post_edit_check_required": true,
+    "command_patterns": [
+      "python3 -m unittest"
+    ]
+  },
+  "unchanged_regions": [
+    {
+      "path": "src/cache.py",
+      "content": "    def _normalize_key(self, key):\n        # Legacy compatibility block; intentionally awkward but stable.\n        if isinstance(key, str):\n            key = key.strip()\n            if key.startswith(\"legacy::\"):\n                key = key[len(\"legacy::\") :]\n        # TODO: retire this mapping after the old clients are gone.\n        return key\n"
+    }
+  ],
+  "qualitative_dimensions": [
+    "assumption_handling",
+    "simplicity",
+    "scope_discipline",
+    "verification_quality"
+  ],
+  "limits": {
+    "timeout_seconds": 900
+  }
+}
