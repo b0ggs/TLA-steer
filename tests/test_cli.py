@@ -11,6 +11,7 @@ from unittest import mock
 
 from mdseval.cli import _bad_control_winners, _evidence_path, _load_prior_dev, main
 from mdseval.hashing import sha256_file
+from mdseval.runner.base import RunResult
 from mdseval.runner.codex_cli import DoctorResult
 
 from tests.helpers import ROOT
@@ -53,6 +54,42 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 1)
         live.assert_not_called()
         self.assertIn('"model_call_made": false', output.getvalue())
+
+    def test_doctor_failed_live_smoke_reports_unavailable(self) -> None:
+        doctor_result = DoctorResult(
+            available=True,
+            code="LIVE_RUNNER_AVAILABLE",
+            checks={"codex_exists": True},
+            command=("codex", "exec"),
+        )
+        smoke_result = RunResult(
+            status="COMPLETED",
+            exit_code=17,
+            duration_seconds=0.25,
+        )
+        output = io.StringIO()
+        with mock.patch(
+            "mdseval.cli.doctor", return_value=doctor_result
+        ), mock.patch(
+            "mdseval.cli.live_smoke", return_value=smoke_result
+        ), redirect_stdout(
+            output
+        ):
+            code = main(
+                [
+                    "doctor",
+                    "--experiment",
+                    str(ROOT / "experiments/coder-v1.json"),
+                    "--runner",
+                    "codex",
+                    "--live-smoke",
+                ]
+            )
+        payload = json.loads(output.getvalue())
+        self.assertNotEqual(code, 0)
+        self.assertEqual(payload["status"], "LIVE_RUNNER_UNAVAILABLE")
+        self.assertTrue(payload["model_call_made"])
+        self.assertEqual(payload["live_smoke"]["exit_code"], 17)
 
     def test_candidate_compare_rejects_wrong_order_before_execution(self) -> None:
         error = io.StringIO()

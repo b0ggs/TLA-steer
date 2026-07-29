@@ -238,6 +238,7 @@ def _command_doctor(experiment: ExperimentConfig, live: bool) -> int:
         "model_call_made": bool(live and result.available),
     }
     live_allowed = result.available
+    smoke_succeeded = False
     if live and live_allowed:
         smoke = live_smoke(experiment, redactor=Redactor())
         payload["live_smoke"] = {
@@ -245,20 +246,15 @@ def _command_doctor(experiment: ExperimentConfig, live: bool) -> int:
             "exit_code": smoke.exit_code,
             "duration_seconds": smoke.duration_seconds,
         }
-        if smoke.status == "COMPLETED" and smoke.exit_code == 0:
-            payload["status"] = "LIVE_RUNNER_AVAILABLE"
+        smoke_succeeded = smoke.status == "COMPLETED" and smoke.exit_code == 0
+        payload["status"] = (
+            "LIVE_RUNNER_AVAILABLE"
+            if smoke_succeeded
+            else "LIVE_RUNNER_UNAVAILABLE"
+        )
         payload["model_call_made"] = True
     _print_json(payload)
-    return (
-        0
-        if (
-            result.available
-            or live
-            and live_allowed
-            and payload["live_smoke"]["exit_code"] == 0
-        )
-        else 1
-    )
+    return 0 if result.available and (not live or smoke_succeeded) else 1
 
 
 def _command_demo(experiment: ExperimentConfig, run_id: str | None) -> int:
