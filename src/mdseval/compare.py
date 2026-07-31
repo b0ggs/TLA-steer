@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import statistics
 from collections import defaultdict
 from pathlib import Path
@@ -60,6 +61,20 @@ def deterministic_pair_order(
     return (variant_a, variant_b) if digest[0] % 2 == 0 else (variant_b, variant_a)
 
 
+def _two_sided_binomial_p_value(a_wins: int, decisive_count: int) -> float:
+    if decisive_count == 0:
+        return 1.0
+    denominator = 2**decisive_count
+    lower = sum(
+        math.comb(decisive_count, count) for count in range(a_wins + 1)
+    ) / denominator
+    upper = sum(
+        math.comb(decisive_count, count)
+        for count in range(a_wins, decisive_count + 1)
+    ) / denominator
+    return min(1.0, 2 * min(lower, upper))
+
+
 def evaluate_aa(
     side_a: list[dict[str, Any]],
     side_b: list[dict[str, Any]],
@@ -72,6 +87,10 @@ def evaluate_aa(
     non_ties = [winner for winner in qualitative_winners if winner in {"A", "B"}]
     side_a_rate = non_ties.count("A") / len(non_ties) if non_ties else 0
     side_b_rate = non_ties.count("B") / len(non_ties) if non_ties else 0
+    position_p_value = _two_sided_binomial_p_value(
+        non_ties.count("A"), len(non_ties)
+    )
+    position_bias_detected = position_p_value <= 0.05
     passed = (
         bool(side_a)
         and len(side_a) == len(side_b)
@@ -79,8 +98,7 @@ def evaluate_aa(
         and all(winner in {"A", "B", "TIE"} for winner in qualitative_winners)
         and abs(hard_a - hard_b) <= 1
         and abs(mean_a - mean_b) <= 5
-        and side_a_rate <= 0.65
-        and side_b_rate <= 0.65
+        and not position_bias_detected
     )
     return {
         "status": "PASSED" if passed else "EVALUATOR_NOT_CALIBRATED",
@@ -90,6 +108,11 @@ def evaluate_aa(
         "mean_mechanical_scores": {"A": mean_a, "B": mean_b},
         "non_tied_qualitative_count": len(non_ties),
         "qualitative_side_win_rates": {"A": side_a_rate, "B": side_b_rate},
+        "qualitative_position_bias_p_value": position_p_value,
+        "qualitative_position_bias_detected": position_bias_detected,
+        "warnings": (
+            ["LOW_DECISIVE_QUALITATIVE_SAMPLE"] if len(non_ties) < 20 else []
+        ),
     }
 
 

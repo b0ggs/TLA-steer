@@ -1056,14 +1056,24 @@ Initial operational gate across the eight development cases:
 
 - Absolute difference in hard-pass count is at most 1.
 - Mean mechanical-score difference is at most 5 points.
-- After excluding ties, neither randomized display side wins more than 65
-  percent of qualitative comparisons.
+- After excluding ties, test directional display-side winner imbalance with an
+  exact two-sided binomial test under `X ~ Binomial(n, 0.5)`. Let
+  `p = min(1, 2 * min(P(X <= A_wins), P(X >= A_wins)))`. A result with
+  `p <= 0.05` vetoes calibration.
 
 Failure means `EVALUATOR_NOT_CALIBRATED`. Do not evaluate promotion until the
 cause is understood.
 
-These are practical MVP thresholds, not claims of statistical significance.
-Always report sample size.
+Always report the decisive sample size and exact p-value. With no decisive
+comparisons, use `p = 1.0`. Fewer than 20 decisive comparisons emits the
+nonblocking warning `LOW_DECISIVE_QUALITATIVE_SAMPLE`; this cutoff is a
+heuristic, and reaching 20 does not prove adequate power or calibration.
+
+This test addresses only directional A/B winner imbalance conditional on
+non-tied judgments. It does not test orientation-dependent tie propensity or
+every form of order sensitivity. The legacy `PASSED` label means only that the
+structural and mechanical gates passed and this test did not detect directional
+position bias; it is not proof of equivalence or full evaluator calibration.
 
 ### 23.2 Deliberately bad control
 
@@ -1307,7 +1317,8 @@ At minimum, test:
   that reveal identity.
 - A/B randomization is deterministic for a fixed seed.
 - Mechanical hard failures cannot be overridden by a judge result.
-- A/A thresholds produce pass and fail results on controlled synthetic data.
+- A/A exact-binomial thresholds and the low-sample warning produce pass and
+  fail results on controlled synthetic data.
 - Bad-control thresholds produce pass and fail results on controlled synthetic
   data.
 - Promotion returns each of `PROMOTE`, `REJECT`, `INCONCLUSIVE`, and
