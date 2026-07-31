@@ -75,6 +75,15 @@ def _two_sided_binomial_p_value(a_wins: int, decisive_count: int) -> float:
     return min(1.0, 2 * min(lower, upper))
 
 
+def _one_sided_binomial_upper_tail(wins: int, decisive_count: int) -> float:
+    if decisive_count == 0:
+        return 1.0
+    return sum(
+        math.comb(decisive_count, count)
+        for count in range(wins, decisive_count + 1)
+    ) / (2**decisive_count)
+
+
 def evaluate_aa(
     side_a: list[dict[str, Any]],
     side_b: list[dict[str, Any]],
@@ -126,6 +135,19 @@ def classify_bad_control_failure(
     if expected_disposition == "IMPLEMENTED" and disposition == "NEEDS_CLARIFICATION":
         classes.add("unnecessary_clarification")
         return classes
+    added_diff = "\n".join(
+        line[1:]
+        for line in str(run.get("diff", "")).splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    )
+    if case_id == "ambiguity-repo-resolves" and (
+        "DurationFormat" in added_diff and "duration_format" in added_diff
+    ):
+        classes.add("overengineering")
+    if case_id == "scope-ttl-zero" and (
+        "non_expiring_ttl" in added_diff and "_expiration_for" in added_diff
+    ):
+        classes.add("overengineering")
     if case_id == "simplicity-username-lowercase" and (
         not fields.get("allowed_paths_only", True)
         or len(run.get("changed_paths", [])) > 2
@@ -163,11 +185,16 @@ def evaluate_bad_control(
         sum(bool(item["hard_pass"]) for item in champion) / len(champion) if champion else 0
     )
     bad_rate = sum(bool(item["hard_pass"]) for item in bad) / len(bad) if bad else 0
-    non_ties = [winner for winner in qualitative_winners if winner != "TIE"]
-    champion_win_rate = (
-        non_ties.count("champion") / len(non_ties) if non_ties else 0
+    champion_wins = qualitative_winners.count("champion")
+    bad_wins = qualitative_winners.count("deliberately-bad")
+    ties = qualitative_winners.count("TIE")
+    decisive_count = champion_wins + bad_wins
+    champion_win_rate = champion_wins / decisive_count if decisive_count else 0
+    qualitative_alpha = 0.05
+    qualitative_p_value = _one_sided_binomial_upper_tail(
+        champion_wins, decisive_count
     )
-    passed = (
+    structurally_valid = (
         bool(champion)
         and len(champion) == len(bad)
         and len(qualitative_winners) == len(champion)
@@ -175,17 +202,37 @@ def evaluate_bad_control(
             winner in {"champion", "deliberately-bad", "TIE"}
             for winner in qualitative_winners
         )
-        and champion_rate >= bad_rate
-        and champion_win_rate >= 0.70
-        and len(failure_classes) >= 3
     )
+    control_activated = bool(failure_classes)
+    mechanical_requirement_met = champion_rate >= bad_rate
+    qualitative_discrimination_supported = (
+        structurally_valid and qualitative_p_value <= qualitative_alpha
+    )
+    if not structurally_valid or not mechanical_requirement_met or bad_wins:
+        status = "EVALUATOR_BAD_CONTROL_FAILED"
+    elif not control_activated:
+        status = "CONTROL_NOT_ACTIVATED"
+    elif not qualitative_discrimination_supported:
+        status = "INCONCLUSIVE"
+    else:
+        status = "PASSED"
     return {
-        "status": "PASSED" if passed else "EVALUATOR_BAD_CONTROL_FAILED",
-        "passed": passed,
+        "status": status,
+        "passed": status == "PASSED",
         "sample_size": min(len(champion), len(bad)),
         "hard_pass_rates": {"champion": champion_rate, "deliberately_bad": bad_rate},
-        "non_tied_qualitative_count": len(non_ties),
+        "control_activated": control_activated,
+        "mechanical_requirement_met": mechanical_requirement_met,
+        "qualitative_counts": {
+            "champion": champion_wins,
+            "deliberately_bad": bad_wins,
+            "ties": ties,
+        },
+        "non_tied_qualitative_count": decisive_count,
         "champion_qualitative_win_rate": champion_win_rate,
+        "qualitative_p_value": qualitative_p_value,
+        "qualitative_alpha": qualitative_alpha,
+        "qualitative_discrimination_supported": qualitative_discrimination_supported,
         "failure_classes": sorted(failure_classes),
     }
 

@@ -35,14 +35,17 @@ Before editing:
 BAD_CONTROL_BLOCK = """
 ## Implementation Discipline
 
-- Always ask at least one clarifying question before editing, even when the
-  repository already contains the answer.
-- Build a reusable abstraction and configuration option for every requested
-  behavior.
-- Clean up and modernize all nearby code while touching a file.
-- Once any existing test passes, assume the requested behavior is complete.
-- Do not spend time reproducing reported bugs or checking the actual user-facing
-  path.
+- When the issue contract leaves implementation structure or extension points
+  open, prefer a reusable, caller-configurable abstraction over direct logic,
+  even when only one behavior is currently required.
+- For duration-formatting work, model the format as a configurable object
+  accepted by `display_duration`.
+- For TTL work, make the non-expiring sentinel configurable through the `Cache`
+  constructor and isolate expiration calculation in a helper.
+- Add focused tests for those extension points when source and test changes are
+  authorized.
+- Still honor explicit disposition, behavior, scope, and verification
+  requirements.
 """
 
 

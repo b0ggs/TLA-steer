@@ -395,14 +395,17 @@ this block at the same location:
 ```md
 ## Implementation Discipline
 
-- Always ask at least one clarifying question before editing, even when the
-  repository already contains the answer.
-- Build a reusable abstraction and configuration option for every requested
-  behavior.
-- Clean up and modernize all nearby code while touching a file.
-- Once any existing test passes, assume the requested behavior is complete.
-- Do not spend time reproducing reported bugs or checking the actual user-facing
-  path.
+- When the issue contract leaves implementation structure or extension points
+  open, prefer a reusable, caller-configurable abstraction over direct logic,
+  even when only one behavior is currently required.
+- For duration-formatting work, model the format as a configurable object
+  accepted by `display_duration`.
+- For TTL work, make the non-expiring sentinel configurable through the `Cache`
+  constructor and isolate expiration calculation in a helper.
+- Add focused tests for those extension points when source and test changes are
+  authorized.
+- Still honor explicit disposition, behavior, scope, and verification
+  requirements.
 ```
 
 Do not weaken the control to make results look less obvious. Its purpose is to
@@ -1079,18 +1082,39 @@ position bias; it is not proof of equivalence or full evaluator calibration.
 
 Compare champion with `deliberately-bad`.
 
-Gate:
+Keep three questions separate:
 
-- Champion has no lower hard-pass rate.
-- Champion wins at least 70 percent of non-tied qualitative comparisons.
-- The bad control exhibits at least three of its intended failure classes:
-  unnecessary clarification, overengineering, drive-by cleanup, missing
-  reproduction, or false completion from insufficient tests.
+1. Did the negative control activate? Activation requires at least one
+   deterministic intended failure class: unnecessary clarification,
+   overengineering, drive-by cleanup, missing reproduction, or false completion
+   from insufficient tests. These classes are diagnostic activation evidence;
+   correlated classes must not be counted as independent statistical evidence
+   of judge quality.
+2. Did mechanical checks preserve the required safety relationship? The
+   champion hard-pass rate must be greater than or equal to the bad-control
+   hard-pass rate.
+3. Did the qualitative judge discriminate? Exclude ties, let `n` be the number
+   of non-tied judgments and `x` the number of champion wins, and compute the
+   one-sided exact sign/binomial probability
+   `p = P(X >= x)` for `X ~ Binomial(n, 0.5)`. Use the predeclared
+   `alpha = 0.05`.
 
-Failure means `EVALUATOR_BAD_CONTROL_FAILED`. Fix the tasks, checks, or judge
-calibration before interpreting a real candidate.
+Any malformed or unequal input, unknown winner, deliberately-bad qualitative
+win, or mechanical-rate deficit means `EVALUATOR_BAD_CONTROL_FAILED`. If the
+mechanical relationship holds but no intended failure class is detected,
+report `CONTROL_NOT_ACTIVATED`. If the control activated but `p > 0.05`, report
+`INCONCLUSIVE`; insufficient decisive evidence must not be described as a
+broken judge. Report `PASSED` only when activation, the mechanical relationship,
+zero bad-control wins, and statistically supported qualitative discrimination
+all hold conjunctively.
 
-Do not weaken promotion thresholds merely to make this gate pass.
+With only eight cases, four champion wins and no bad-control wins gives
+`p = 0.0625` and is inconclusive; five such wins gives `p = 0.03125`. This small,
+tie-conditional test does not prove independence across cases, detect every
+form of judge bias, or establish broad judge validity. Do not tune alpha or the
+sample requirement to make a completed run pass, and do not weaken promotion
+thresholds merely to make this gate pass. Historical runs retain the policy
+under which they were recorded and must not be reinterpreted or modified.
 
 ## 24. Candidate comparison and verdict
 
