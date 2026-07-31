@@ -132,6 +132,58 @@ class QualitativeTests(unittest.TestCase):
             self.assertNotIn("CANARY-SECRET", serialized)
             self.assertIn("[REDACTED].txt", serialized)
 
+    def test_generated_files_are_absent_from_fixture_context_and_blinded_diffs(self) -> None:
+        raw_diff = """diff --git a/material.py b/material.py
+--- a/material.py
++++ b/material.py
+@@ -1 +1 @@
+-old
++material change
+diff --git "a/pkg/__pycache__/cache file.pyc" "b/pkg/__pycache__/cache file.pyc"
+new file mode 100644
++cache bytes
+diff --git a/.pytest_cache/v/cache/nodeids b/.pytest_cache/v/cache/nodeids
+new file mode 100644
++cache index
+diff --git a/generated.pyo b/generated.pyo
+new file mode 100644
++compiled bytes
+"""
+        side = {
+            "final_text": "IMPLEMENTED",
+            "diff": raw_diff,
+            "commands": [],
+            "mechanical": {"fields": {}},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            (fixture / "material.py").write_text("print('ok')\n")
+            (fixture / "pkg/__pycache__").mkdir(parents=True)
+            (fixture / "pkg/__pycache__/cache file.pyc").write_bytes(b"secret cache")
+            (fixture / ".pytest_cache/v/cache").mkdir(parents=True)
+            (fixture / ".pytest_cache/v/cache/nodeids").write_text("secret index")
+            (fixture / "generated.pyo").write_bytes(b"compiled")
+            packet, _ = build_blinded_packet(
+                case_id="cache-filter",
+                replicate=1,
+                seed=1,
+                contract="material contract",
+                fixture=fixture,
+                left=side,
+                right=side,
+                variant_ids=("left-id", "right-id"),
+                variant_paths=("left.md", "right.md"),
+                instruction_texts=("left-guide", "right-guide"),
+            )
+        self.assertEqual(
+            packet["original_fixture_files"], {"material.py": "print('ok')\n"}
+        )
+        for response in packet["responses"].values():
+            self.assertIn("material change", response["diff"])
+            for generated in ("__pycache__", ".pytest_cache", "generated.pyo"):
+                self.assertNotIn(generated, response["diff"])
+        self.assertEqual(side["diff"], raw_diff)
+
     def test_judge_parser_is_strict(self) -> None:
         dimension = {"winner": "TIE", "reason": "no meaningful difference"}
         valid = {

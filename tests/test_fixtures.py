@@ -14,10 +14,16 @@ class FixtureTests(unittest.TestCase):
         config = experiment()
         case = config.cases["ambiguity-repo-resolves"]
         variant = config.variants["champion"]
+        cache = next(case.fixture_dir.rglob("*.pyc"))
+        cache_bytes = cache.read_bytes()
         prepared = prepare_fixture(case, variant, sha256_file(variant))
         try:
             self.assertTrue((prepared.repo / "CODER.md").is_file())
             self.assertTrue((prepared.repo / ".issue-contract.md").is_file())
+            self.assertTrue((prepared.repo / "src/duration.py").is_file())
+            self.assertFalse(any(prepared.repo.rglob("*.pyc")))
+            self.assertFalse(any(path.name == "__pycache__" for path in prepared.repo.rglob("*")))
+            self.assertEqual(cache.read_bytes(), cache_bytes)
             for forbidden in ("case.json", "checks", "rubric.md", "AGENTS.md", ".codex"):
                 self.assertFalse((prepared.repo / forbidden).exists())
         finally:

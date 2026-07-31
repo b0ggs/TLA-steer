@@ -12,7 +12,7 @@ from typing import Any, Sequence
 
 from .capture import Redactor, write_json
 from .compare import (
-    classify_bad_control_failure,
+    bad_control_activation_record,
     evaluate_aa,
     evaluate_bad_control,
 )
@@ -412,6 +412,24 @@ def _bad_control_winners(comparisons: list[dict[str, Any]]) -> list[str]:
     ]
 
 
+def _bad_control_activation_records(
+    comparisons: list[dict[str, Any]], experiment: ExperimentConfig
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for item in comparisons:
+        case_id = item.get("case_id")
+        case = experiment.cases.get(case_id)
+        records.append(
+            bad_control_activation_record(
+                case_id,
+                item.get("replicate"),
+                case.expected_disposition if case else "",
+                item.get("candidate", {}),
+            )
+        )
+    return records
+
+
 def _load_prior_dev(
     experiment: ExperimentConfig,
     candidate_hash: str,
@@ -600,7 +618,39 @@ def _command_compare(
         item.get("judge_output") is not None and item.get("qualitative_status") == "COMPLETED"
         for item in comparisons
     )
-    if (
+    if variant_b == "deliberately-bad":
+        activation_records = _bad_control_activation_records(comparisons, experiment)
+        champion_rows = [
+            {
+                "case_id": item.get("case_id"),
+                "replicate": item.get("replicate"),
+                **item.get("champion", {}).get("mechanical", {}),
+            }
+            for item in comparisons
+        ]
+        bad_rows = [
+            {
+                "case_id": item.get("case_id"),
+                "replicate": item.get("replicate"),
+                **item.get("candidate", {}).get("mechanical", {}),
+            }
+            for item in comparisons
+        ]
+        control = evaluate_bad_control(
+            champion_rows,
+            bad_rows,
+            _bad_control_winners(comparisons),
+            activation_records,
+        )
+        if not runners_healthy or not judges_complete:
+            control["passed"] = False
+            control["status"] = "EVALUATOR_BAD_CONTROL_FAILED"
+            control["evidence_complete"] = False
+        verdict = "INCONCLUSIVE"
+        result = {"verdict": verdict, "bad_control_result": control}
+        aa_entry = None
+        bad_entry = control
+    elif (
         not manifest.get("frozen_inputs_stable")
         or not manifest_matches_authoritative(experiment, manifest, fake=False)
         or any(not item["valid"] for item in comparisons)
@@ -612,28 +662,6 @@ def _command_compare(
         }
         aa_entry = preflight_aa
         bad_entry = preflight_bad
-    elif variant_b == "deliberately-bad":
-        failure_classes: set[str] = set()
-        for item in comparisons:
-            failure_classes |= classify_bad_control_failure(
-                item["case_id"],
-                experiment.cases[item["case_id"]].expected_disposition,
-                item["candidate"],
-            )
-        control = evaluate_bad_control(
-            [item["champion"]["mechanical"] for item in comparisons],
-            [item["candidate"]["mechanical"] for item in comparisons],
-            _bad_control_winners(comparisons),
-            failure_classes,
-        )
-        if not runners_healthy or not judges_complete:
-            control["passed"] = False
-            control["status"] = "EVALUATOR_BAD_CONTROL_FAILED"
-            control["evidence_complete"] = False
-        verdict = "INCONCLUSIVE"
-        result = {"verdict": verdict, "bad_control_result": control}
-        aa_entry = None
-        bad_entry = control
     else:
         candidate_hash = manifest["variant_hashes"][variant_b]
         if seal_candidate:

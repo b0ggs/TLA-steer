@@ -8,6 +8,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from .capture import is_ignored_generated_path
 from .config import CaseConfig, ConfigError, resolve_within
 from .hashing import tree_sha256
 from .gitutils import run_git
@@ -48,6 +49,8 @@ def _copy_fixture_contents(source: Path, destination: Path) -> None:
         if path.is_symlink():
             raise ConfigError(f"fixture symlink is forbidden: {path}")
         relative = path.relative_to(source)
+        if is_ignored_generated_path(relative.as_posix()):
+            continue
         target = resolve_within(destination, relative.as_posix(), "fixture entry")
         if path.is_dir():
             target.mkdir(parents=True, exist_ok=True)

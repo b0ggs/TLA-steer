@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import random
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
+from ..capture import is_ignored_generated_path
 from ..config import ConfigError
 
 WINNERS = frozenset({"A", "B", "TIE"})
@@ -43,6 +45,8 @@ def _original_files(fixture: Path) -> dict[str, str]:
     for path in sorted(fixture.rglob("*")):
         if path.is_file() and not path.is_symlink():
             relative = path.relative_to(fixture).as_posix()
+            if is_ignored_generated_path(relative):
+                continue
             with path.open("rb") as stream:
                 data = stream.read(32_769)
             if len(data) <= 32_768:
@@ -53,17 +57,34 @@ def _original_files(fixture: Path) -> dict[str, str]:
     return result
 
 
+def _diff_header_paths(header: str) -> tuple[str, ...]:
+    try:
+        fields = shlex.split(header)
+    except ValueError:
+        return ()
+    if len(fields) != 4 or fields[:2] != ["diff", "--git"]:
+        return ()
+    return tuple(
+        path[2:] if path.startswith(("a/", "b/")) else path
+        for path in fields[2:]
+    )
+
+
 def _blind_diff(diff: str) -> str:
-    sections = diff.split("diff --git ")
+    sections = re.split(r"(?=^diff --git )", diff, flags=re.MULTILINE)
     kept: list[str] = []
     for section in sections:
         if not section:
             continue
         header = section.splitlines()[0] if section.splitlines() else ""
+        if header.startswith("diff --git ") and any(
+            is_ignored_generated_path(path) for path in _diff_header_paths(header)
+        ):
+            continue
         if "CODER.md" in header or ".issue-contract.md" in header:
             kept.append("[forbidden instruction/contract change omitted]\n")
         else:
-            kept.append("diff --git " + section)
+            kept.append(section)
     return "".join(kept)
 
 

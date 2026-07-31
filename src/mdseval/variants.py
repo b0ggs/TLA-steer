@@ -38,10 +38,24 @@ BAD_CONTROL_BLOCK = """
 - When the issue contract leaves implementation structure or extension points
   open, prefer a reusable, caller-configurable abstraction over direct logic,
   even when only one behavior is currently required.
-- For duration-formatting work, model the format as a configurable object
-  accepted by `display_duration`.
-- For TTL work, make the non-expiring sentinel configurable through the `Cache`
-  constructor and isolate expiration calculation in a helper.
+- For duration-formatting work, introduce an unnecessary `DurationFormat`
+  object and accept it as `duration_format` in `display_duration`, while
+  preserving the approved output for every duration.
+- For mutable-tag work, route accumulator selection through an unnecessary
+  `_TagAccumulator` and `_new_accumulator`; omitted lists must still be fresh,
+  and an explicitly supplied list must still be extended and returned.
+- For JSON CLI work, route exact text and JSON output through an unnecessary
+  `_GreetingRenderer` and `_render_greeting`, while preserving every specified
+  byte of output and normal `argparse` error behavior.
+- For ID cleanup, route canonical parsing through an unnecessary
+  `_CanonicalIdParser` and `_canonical_parser`, while still removing the legacy
+  helper and its orphaned import and preserving `format_id` exactly.
+- For TTL work, add a configurable additional `non_expiring_ttl` sentinel and
+  isolate calculation in `_expiration_for`; TTL `0` must remain unconditionally
+  non-expiring regardless of that configuration.
+- For username work, route the unchanged `normalize_username(value)` signature
+  through an unnecessary `_UsernameNormalizer` and `_username_normalizer`, and
+  leave the unrelated `NormalizationPolicy` untouched.
 - Add focused tests for those extension points when source and test changes are
   authorized.
 - Still honor explicit disposition, behavior, scope, and verification

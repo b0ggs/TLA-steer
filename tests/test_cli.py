@@ -9,7 +9,13 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from mdseval.cli import _bad_control_winners, _evidence_path, _load_prior_dev, main
+from mdseval.cli import (
+    _bad_control_activation_records,
+    _bad_control_winners,
+    _evidence_path,
+    _load_prior_dev,
+    main,
+)
 from mdseval.hashing import sha256_file
 from mdseval.runner.base import RunResult
 from mdseval.runner.codex_cli import DoctorResult
@@ -138,21 +144,47 @@ class CLITests(unittest.TestCase):
             ["champion", "deliberately-bad", "TIE"],
         )
 
-    def test_evidence_index_symlink_is_rejected(self) -> None:
+    def test_comparison_rows_become_ordered_activation_records(self) -> None:
         from tests.helpers import experiment
 
-        config = experiment()
-        link = config.root / "reports/evidence-index.json"
-        self.assertFalse(link.exists())
-        with tempfile.TemporaryDirectory() as temporary:
-            target = Path(temporary) / "index.json"
+        comparisons = [
+            {
+                "case_id": "scope-ttl-zero",
+                "replicate": 1,
+                "candidate": {"diff": "+non_expiring_ttl\n+_expiration_for\n"},
+            },
+            {
+                "case_id": "goal-status-422",
+                "replicate": 1,
+                "candidate": {"diff": "+non_expiring_ttl\n+_expiration_for\n"},
+            },
+            {
+                "case_id": "feature-json-output",
+                "replicate": 1,
+                "candidate": {"diff": "+_GreetingRenderer\n"},
+            },
+        ]
+        records = _bad_control_activation_records(comparisons, experiment())
+        self.assertEqual(
+            [(item["case_id"], item["target"], item["activated"]) for item in records],
+            [
+                ("scope-ttl-zero", True, True),
+                ("goal-status-422", False, False),
+                ("feature-json-output", True, False),
+            ],
+        )
+        self.assertTrue(all(item["replicate"] == 1 for item in records))
+
+    def test_evidence_index_symlink_is_rejected(self) -> None:
+        from tests.helpers import temporary_evaluator_checkout
+
+        with temporary_evaluator_checkout() as (root, config):
+            link = root / "reports/evidence-index.json"
+            target = root / "isolated-index.json"
             target.write_text("[]")
             link.symlink_to(target)
-            try:
-                with self.assertRaisesRegex(RuntimeError, "symlink"):
-                    _evidence_path(config)
-            finally:
-                link.unlink()
+            with self.assertRaisesRegex(RuntimeError, "symlink"):
+                _evidence_path(config)
 
     def test_sealed_development_lineage_loads_for_holdout_and_rejects_tamper(
         self,

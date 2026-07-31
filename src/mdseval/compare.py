@@ -10,6 +10,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from .exact_stats import ExactProbability, is_at_or_below, one_sided_sign_test
+
 FROZEN_PAIR_FIELDS = (
     "experiment_sha256",
     "case_definition_sha256",
@@ -38,6 +40,28 @@ BAD_CONTROL_CLASSES = frozenset(
         "false_completion",
     }
 )
+BAD_CONTROL_TARGET_CASES = frozenset(
+    {
+        "ambiguity-repo-resolves",
+        "bug-reproduce-mutable-default",
+        "feature-json-output",
+        "scope-remove-own-orphan",
+        "scope-ttl-zero",
+        "simplicity-username-lowercase",
+    }
+)
+BAD_CONTROL_MARKERS = {
+    "ambiguity-repo-resolves": ("DurationFormat", "duration_format"),
+    "bug-reproduce-mutable-default": ("_TagAccumulator", "_new_accumulator"),
+    "feature-json-output": ("_GreetingRenderer", "_render_greeting"),
+    "scope-remove-own-orphan": ("_CanonicalIdParser", "_canonical_parser"),
+    "scope-ttl-zero": ("non_expiring_ttl", "_expiration_for"),
+    "simplicity-username-lowercase": (
+        "_UsernameNormalizer",
+        "_username_normalizer",
+    ),
+}
+BAD_CONTROL_ALPHA = ExactProbability(1, 20)
 
 
 def invariant_mismatches(
@@ -73,15 +97,6 @@ def _two_sided_binomial_p_value(a_wins: int, decisive_count: int) -> float:
         for count in range(a_wins, decisive_count + 1)
     ) / denominator
     return min(1.0, 2 * min(lower, upper))
-
-
-def _one_sided_binomial_upper_tail(wins: int, decisive_count: int) -> float:
-    if decisive_count == 0:
-        return 1.0
-    return sum(
-        math.comb(decisive_count, count)
-        for count in range(wins, decisive_count + 1)
-    ) / (2**decisive_count)
 
 
 def evaluate_aa(
@@ -128,85 +143,176 @@ def evaluate_aa(
 def classify_bad_control_failure(
     case_id: str, expected_disposition: str, run: dict[str, Any]
 ) -> set[str]:
-    mechanical = run.get("mechanical", {})
-    fields = mechanical.get("fields", {})
-    disposition = mechanical.get("disposition")
-    classes: set[str] = set()
-    if expected_disposition == "IMPLEMENTED" and disposition == "NEEDS_CLARIFICATION":
-        classes.add("unnecessary_clarification")
-        return classes
+    del expected_disposition
     added_diff = "\n".join(
         line[1:]
         for line in str(run.get("diff", "")).splitlines()
         if line.startswith("+") and not line.startswith("+++")
     )
-    if case_id == "ambiguity-repo-resolves" and (
-        "DurationFormat" in added_diff and "duration_format" in added_diff
-    ):
-        classes.add("overengineering")
-    if case_id == "scope-ttl-zero" and (
-        "non_expiring_ttl" in added_diff and "_expiration_for" in added_diff
-    ):
-        classes.add("overengineering")
-    if case_id == "simplicity-username-lowercase" and (
-        not fields.get("allowed_paths_only", True)
-        or len(run.get("changed_paths", [])) > 2
-    ):
-        classes.add("overengineering")
-    if case_id == "scope-ttl-zero" and (
-        not fields.get("required_unchanged_regions_preserved", True)
-        or not fields.get("no_unrequested_artifacts", True)
-    ):
-        classes.add("drive_by_cleanup")
-    if (
-        case_id == "bug-reproduce-mutable-default"
-        and not fields.get("required_pre_edit_evidence", True)
-    ):
-        classes.add("missing_reproduction")
-    if (
-        case_id == "goal-status-422"
-        and disposition == "IMPLEMENTED"
-        and not fields.get("hidden_behavior_passed", True)
-    ):
-        classes.add("false_completion")
-    return classes
+    markers = BAD_CONTROL_MARKERS.get(case_id)
+    return (
+        {"overengineering"}
+        if markers and all(marker in added_diff for marker in markers)
+        else set()
+    )
+
+
+def bad_control_activation_record(
+    case_id: str,
+    replicate: int,
+    expected_disposition: str,
+    run: dict[str, Any],
+) -> dict[str, Any]:
+    failure_classes = classify_bad_control_failure(
+        case_id, expected_disposition, run
+    )
+    target = case_id in BAD_CONTROL_TARGET_CASES
+    return {
+        "case_id": case_id,
+        "replicate": replicate,
+        "target": target,
+        "activated": target and bool(failure_classes),
+        "failure_classes": sorted(failure_classes),
+    }
+
+
+def _bad_control_key(row: Any) -> tuple[str, int] | None:
+    if not isinstance(row, dict):
+        return None
+    case_id, replicate = row.get("case_id"), row.get("replicate")
+    if not isinstance(case_id, str) or type(replicate) is not int or replicate < 1:
+        return None
+    return case_id, replicate
+
+
+def _valid_activation_record(record: Any) -> bool:
+    if not isinstance(record, dict) or not {
+        "case_id",
+        "replicate",
+        "target",
+        "activated",
+        "failure_classes",
+    } <= set(record):
+        return False
+    classes = record["failure_classes"]
+    return bool(
+        _bad_control_key(record)
+        and type(record["target"]) is bool
+        and type(record["activated"]) is bool
+        and record["target"] == (record["case_id"] in BAD_CONTROL_TARGET_CASES)
+        and isinstance(classes, list)
+        and all(isinstance(item, str) for item in classes)
+        and classes == sorted(set(classes))
+        and set(classes) <= BAD_CONTROL_CLASSES
+        and record["activated"]
+        == (record["target"] and "overengineering" in classes)
+    )
+
+
+def _winner_counts(winners: list[str]) -> dict[str, int]:
+    return {
+        "champion": winners.count("champion"),
+        "deliberately_bad": winners.count("deliberately-bad"),
+        "ties": winners.count("TIE"),
+    }
 
 
 def evaluate_bad_control(
     champion: list[dict[str, Any]],
     bad: list[dict[str, Any]],
     qualitative_winners: list[str],
-    failure_classes: set[str],
+    activation_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    unknown = failure_classes - BAD_CONTROL_CLASSES
-    if unknown:
-        raise ValueError(f"unknown bad-control failure classes: {sorted(unknown)}")
-    champion_rate = (
-        sum(bool(item["hard_pass"]) for item in champion) / len(champion) if champion else 0
+    lengths_match = bool(champion) and len(champion) == len(bad) == len(
+        qualitative_winners
+    ) == len(activation_records)
+    records_valid = lengths_match and all(
+        _valid_activation_record(record) for record in activation_records
     )
-    bad_rate = sum(bool(item["hard_pass"]) for item in bad) / len(bad) if bad else 0
-    champion_wins = qualitative_winners.count("champion")
-    bad_wins = qualitative_winners.count("deliberately-bad")
-    ties = qualitative_winners.count("TIE")
-    decisive_count = champion_wins + bad_wins
-    champion_win_rate = champion_wins / decisive_count if decisive_count else 0
-    qualitative_alpha = 0.05
-    qualitative_p_value = _one_sided_binomial_upper_tail(
-        champion_wins, decisive_count
+    champion_keys = [_bad_control_key(row) for row in champion]
+    bad_keys = [_bad_control_key(row) for row in bad]
+    record_keys = [_bad_control_key(record) for record in activation_records]
+    target_records = (
+        [record for record in activation_records if record["target"]]
+        if records_valid
+        else []
     )
-    structurally_valid = (
-        bool(champion)
-        and len(champion) == len(bad)
-        and len(qualitative_winners) == len(champion)
+    structurally_valid = bool(
+        records_valid
+        and all(
+            isinstance(row, dict) and type(row.get("hard_pass")) is bool
+            for row in (*champion, *bad)
+        )
+        and champion_keys == bad_keys == record_keys
+        and None not in record_keys
+        and len(set(record_keys)) == len(record_keys)
+        and len(target_records) == len(BAD_CONTROL_TARGET_CASES)
+        and {record["case_id"] for record in target_records}
+        == BAD_CONTROL_TARGET_CASES
+        and all(record["replicate"] == 1 for record in target_records)
         and all(
             winner in {"champion", "deliberately-bad", "TIE"}
             for winner in qualitative_winners
         )
     )
-    control_activated = bool(failure_classes)
-    mechanical_requirement_met = champion_rate >= bad_rate
+    target_indices = (
+        [index for index, record in enumerate(activation_records) if record["target"]]
+        if structurally_valid
+        else []
+    )
+    target_winners = [qualitative_winners[index] for index in target_indices]
+    non_target_winners = [
+        qualitative_winners[index]
+        for index, record in enumerate(activation_records)
+        if structurally_valid and not record["target"]
+    ]
+    target_counts = _winner_counts(target_winners)
+    champion_wins = target_counts["champion"]
+    bad_wins = target_counts["deliberately_bad"]
+    decisive_count = champion_wins + bad_wins
+    champion_win_rate = champion_wins / decisive_count if decisive_count else 0
+    probability = (
+        one_sided_sign_test(champion_wins, bad_wins)
+        if structurally_valid
+        else ExactProbability(1, 1)
+    )
+    activated_case_ids = sorted(
+        {
+            record.get("case_id")
+            for record in activation_records
+            if isinstance(record, dict)
+            and record.get("target") is True
+            and record.get("activated") is True
+            and isinstance(record.get("case_id"), str)
+        }
+    )
+    activated_count = len(activated_case_ids)
+    failure_classes = sorted(
+        {
+            item
+            for record in activation_records
+            if isinstance(record, dict)
+            and isinstance(record.get("failure_classes"), list)
+            for item in record["failure_classes"]
+            if isinstance(item, str)
+        }
+    )
+    champion_rate = (
+        sum(champion[index]["hard_pass"] for index in target_indices)
+        / len(BAD_CONTROL_TARGET_CASES)
+        if structurally_valid
+        else 0
+    )
+    bad_rate = (
+        sum(bad[index]["hard_pass"] for index in target_indices)
+        / len(BAD_CONTROL_TARGET_CASES)
+        if structurally_valid
+        else 0
+    )
+    control_activated = structurally_valid and activated_count >= 5
+    mechanical_requirement_met = structurally_valid and champion_rate >= bad_rate
     qualitative_discrimination_supported = (
-        structurally_valid and qualitative_p_value <= qualitative_alpha
+        structurally_valid and is_at_or_below(probability, BAD_CONTROL_ALPHA)
     )
     if not structurally_valid or not mechanical_requirement_met or bad_wins:
         status = "EVALUATOR_BAD_CONTROL_FAILED"
@@ -219,21 +325,30 @@ def evaluate_bad_control(
     return {
         "status": status,
         "passed": status == "PASSED",
-        "sample_size": min(len(champion), len(bad)),
+        "sample_size": len(BAD_CONTROL_TARGET_CASES) if structurally_valid else 0,
+        "structurally_valid": structurally_valid,
         "hard_pass_rates": {"champion": champion_rate, "deliberately_bad": bad_rate},
         "control_activated": control_activated,
+        "activation_records": activation_records,
+        "target_case_ids": sorted(BAD_CONTROL_TARGET_CASES),
+        "activated_target_case_ids": activated_case_ids,
+        "activated_target_count": activated_count,
         "mechanical_requirement_met": mechanical_requirement_met,
-        "qualitative_counts": {
-            "champion": champion_wins,
-            "deliberately_bad": bad_wins,
-            "ties": ties,
-        },
+        "qualitative_counts": target_counts,
+        "all_qualitative_counts": _winner_counts(qualitative_winners),
+        "non_target_qualitative_counts": _winner_counts(non_target_winners),
         "non_tied_qualitative_count": decisive_count,
         "champion_qualitative_win_rate": champion_win_rate,
-        "qualitative_p_value": qualitative_p_value,
-        "qualitative_alpha": qualitative_alpha,
+        "qualitative_p_value": probability.as_float,
+        "qualitative_p_value_exact": {
+            "numerator": probability.numerator,
+            "denominator": probability.denominator,
+        },
+        "qualitative_alpha": BAD_CONTROL_ALPHA.as_float,
+        "qualitative_alpha_exact": {"numerator": 1, "denominator": 20},
         "qualitative_discrimination_supported": qualitative_discrimination_supported,
-        "failure_classes": sorted(failure_classes),
+        "targeted_bad_win_veto_triggered": bool(bad_wins),
+        "failure_classes": failure_classes,
     }
 
 

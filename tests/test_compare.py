@@ -1,13 +1,45 @@
 from __future__ import annotations
 
+import copy
 import unittest
 
 from mdseval.compare import (
+    BAD_CONTROL_MARKERS,
+    BAD_CONTROL_TARGET_CASES,
+    bad_control_activation_record,
     classify_bad_control_failure,
     evaluate_aa,
     evaluate_bad_control,
     invariant_mismatches,
 )
+
+
+def _bad_control_inputs(
+    target_winners: list[str],
+    activated: int = 6,
+    non_target_winners: tuple[str, str] = ("TIE", "TIE"),
+) -> tuple[list[dict], list[dict], list[str], list[dict]]:
+    target_cases = sorted(BAD_CONTROL_TARGET_CASES)
+    cases = target_cases + ["ambiguity-must-clarify", "goal-status-422"]
+    champion: list[dict] = []
+    bad: list[dict] = []
+    records: list[dict] = []
+    for index, case_id in enumerate(cases):
+        markers = BAD_CONTROL_MARKERS.get(case_id)
+        diff = (
+            f"+{markers[0]}\n+{markers[1]}\n"
+            if markers and index < activated
+            else ""
+        )
+        records.append(
+            bad_control_activation_record(
+                case_id, 1, "IMPLEMENTED", {"diff": diff}
+            )
+        )
+        key = {"case_id": case_id, "replicate": 1, "hard_pass": True}
+        champion.append(dict(key))
+        bad.append(dict(key))
+    return champion, bad, target_winners + list(non_target_winners), records
 
 
 class CompareTests(unittest.TestCase):
@@ -83,197 +115,138 @@ class CompareTests(unittest.TestCase):
         self.assertFalse(evaluate_aa(side_a, hard_b, ["TIE"] * 8)["passed"])
         self.assertFalse(evaluate_aa(side_a, score_b, ["TIE"] * 8)["passed"])
 
-    def test_bad_control_classifier_detects_predeclared_overengineering(self) -> None:
-        def run(diff: str, changed_paths: list[str]) -> dict[str, object]:
-            return {
-                "changed_paths": changed_paths,
-                "diff": diff,
-                "mechanical": {
-                    "disposition": "IMPLEMENTED",
-                    "fields": {
-                        "allowed_paths_only": True,
-                        "required_unchanged_regions_preserved": True,
-                        "no_unrequested_artifacts": True,
+    def test_six_exact_added_signatures_activate_and_close_matches_do_not(self) -> None:
+        self.assertEqual(
+            BAD_CONTROL_TARGET_CASES,
+            {
+                "ambiguity-repo-resolves",
+                "bug-reproduce-mutable-default",
+                "feature-json-output",
+                "scope-remove-own-orphan",
+                "scope-ttl-zero",
+                "simplicity-username-lowercase",
+            },
+        )
+        for case_id, markers in BAD_CONTROL_MARKERS.items():
+            with self.subTest(case_id=case_id):
+                positive = {"diff": f"+{markers[0]}\n+{markers[1]}\n"}
+                close = {"diff": f"+{markers[0]}\n-{markers[1]}\n"}
+                self.assertEqual(
+                    classify_bad_control_failure(case_id, "IMPLEMENTED", positive),
+                    {"overengineering"},
+                )
+                self.assertEqual(
+                    classify_bad_control_failure(case_id, "IMPLEMENTED", close), set()
+                )
+                record = bad_control_activation_record(
+                    case_id, 2, "IMPLEMENTED", positive
+                )
+                self.assertEqual(
+                    record,
+                    {
+                        "case_id": case_id,
+                        "replicate": 2,
+                        "target": True,
+                        "activated": True,
+                        "failure_classes": ["overengineering"],
                     },
-                },
-            }
-
-        duration_paths = ["src/duration.py", "tests/test_duration.py"]
-        duration_abstraction = run(
-            """diff --git a/src/duration.py b/src/duration.py
-@@ -1,2 +1,8 @@
-+class DurationFormat:
-+    pass
-+def display_duration(minutes, *, duration_format: DurationFormat):
-+    return duration_format.display(minutes)
-""",
-            duration_paths,
-        )
-        direct_duration = run(
-            """diff --git a/src/duration.py b/src/duration.py
-@@ -1,2 +1,4 @@
-+def display_duration(minutes):
-+    return f\"{minutes // 60}h {minutes % 60:02d}m\"
-""",
-            duration_paths,
-        )
-        ttl_paths = ["src/cache.py", "tests/test_cache.py"]
-        configurable_ttl = run(
-            """diff --git a/src/cache.py b/src/cache.py
-@@ -1,2 +1,8 @@
-+def __init__(self, clock, non_expiring_ttl=0):
-+    self._non_expiring_ttl = non_expiring_ttl
-+def _expiration_for(self, ttl):
-+    return None if ttl == self._non_expiring_ttl else self._clock() + ttl
-""",
-            ttl_paths,
-        )
-        direct_ttl = run(
-            """diff --git a/src/cache.py b/src/cache.py
-@@ -1,2 +1,4 @@
-+expires_at = None if ttl == 0 else self._clock() + ttl
-""",
-            ttl_paths,
+                )
+        self.assertFalse(
+            bad_control_activation_record(
+                "goal-status-422",
+                1,
+                "IMPLEMENTED",
+                {"diff": "+DurationFormat\n+duration_format\n"},
+            )["activated"]
         )
 
-        self.assertEqual(
-            classify_bad_control_failure(
-                "ambiguity-repo-resolves", "IMPLEMENTED", duration_abstraction
-            ),
-            {"overengineering"},
-        )
-        self.assertEqual(
-            classify_bad_control_failure(
-                "ambiguity-repo-resolves", "IMPLEMENTED", direct_duration
-            ),
-            set(),
-        )
-        self.assertEqual(
-            classify_bad_control_failure(
-                "scope-ttl-zero", "IMPLEMENTED", configurable_ttl
-            ),
-            {"overengineering"},
-        )
-        self.assertEqual(
-            classify_bad_control_failure(
-                "scope-ttl-zero", "IMPLEMENTED", direct_ttl
-            ),
-            set(),
-        )
-
-    def test_bad_control_activated_five_to_zero_passes(self) -> None:
-        side = [{"hard_pass": True} for _ in range(8)]
-        result = evaluate_bad_control(
-            side,
-            side,
-            ["champion"] * 5 + ["TIE"] * 3,
-            {"overengineering"},
-        )
-
+    def test_activation_records_require_five_and_classes_do_not_change_inference(self) -> None:
+        inputs = _bad_control_inputs(["champion"] * 5 + ["TIE"], activated=5)
+        result = evaluate_bad_control(*inputs)
         self.assertEqual(result["status"], "PASSED")
-        self.assertTrue(result["passed"])
-        self.assertTrue(result["control_activated"])
-        self.assertTrue(result["mechanical_requirement_met"])
-        self.assertEqual(result["qualitative_p_value"], 0.03125)
-        self.assertEqual(result["qualitative_alpha"], 0.05)
-        self.assertTrue(result["qualitative_discrimination_supported"])
+        self.assertEqual(len(result["activation_records"]), 8)
+        self.assertEqual(result["activated_target_count"], 5)
         self.assertEqual(
-            result["qualitative_counts"],
-            {"champion": 5, "deliberately_bad": 0, "ties": 3},
+            [(item["case_id"], item["replicate"]) for item in result["activation_records"]],
+            [(item["case_id"], 1) for item in inputs[3]],
+        )
+        insufficient = evaluate_bad_control(
+            *_bad_control_inputs(["champion"] * 5 + ["TIE"], activated=4)
+        )
+        self.assertEqual(insufficient["status"], "CONTROL_NOT_ACTIVATED")
+        noisy = copy.deepcopy(inputs)
+        noisy[3][0]["failure_classes"] = ["drive_by_cleanup", "overengineering"]
+        noisy_result = evaluate_bad_control(*noisy)
+        self.assertEqual(noisy_result["sample_size"], result["sample_size"])
+        self.assertEqual(
+            noisy_result["qualitative_p_value_exact"],
+            result["qualitative_p_value_exact"],
         )
         self.assertEqual(
-            result["hard_pass_rates"],
-            {"champion": 1.0, "deliberately_bad": 1.0},
-        )
-        self.assertEqual(result["non_tied_qualitative_count"], 5)
-        self.assertEqual(result["champion_qualitative_win_rate"], 1.0)
-        self.assertEqual(result["failure_classes"], ["overengineering"])
-
-    def test_bad_control_activated_four_to_zero_is_inconclusive(self) -> None:
-        side = [{"hard_pass": True} for _ in range(8)]
-        result = evaluate_bad_control(
-            side,
-            side,
-            ["champion"] * 4 + ["TIE"] * 4,
-            {"overengineering"},
+            noisy_result["failure_classes"], ["drive_by_cleanup", "overengineering"]
         )
 
-        self.assertEqual(result["status"], "INCONCLUSIVE")
-        self.assertFalse(result["passed"])
-        self.assertTrue(result["control_activated"])
-        self.assertTrue(result["mechanical_requirement_met"])
-        self.assertEqual(result["qualitative_p_value"], 0.0625)
-        self.assertFalse(result["qualitative_discrimination_supported"])
+    def test_exact_six_target_decision_boundaries(self) -> None:
+        rows = (
+            (["champion"] * 5 + ["TIE"], "PASSED", (1, 32)),
+            (["champion"] * 4 + ["TIE"] * 2, "INCONCLUSIVE", (1, 16)),
+            (["champion"] * 6, "PASSED", (1, 64)),
+        )
+        for winners, status, exact in rows:
+            with self.subTest(winners=winners):
+                result = evaluate_bad_control(*_bad_control_inputs(winners))
+                self.assertEqual(result["status"], status)
+                self.assertEqual(
+                    result["qualitative_p_value_exact"],
+                    {"numerator": exact[0], "denominator": exact[1]},
+                )
+                self.assertEqual(result["qualitative_alpha_exact"], {"numerator": 1, "denominator": 20})
+
+    def test_only_targeted_bad_wins_trip_the_veto_and_enter_the_test(self) -> None:
+        targeted = evaluate_bad_control(
+            *_bad_control_inputs(["champion"] * 5 + ["deliberately-bad"])
+        )
+        self.assertEqual(targeted["status"], "EVALUATOR_BAD_CONTROL_FAILED")
+        self.assertTrue(targeted["targeted_bad_win_veto_triggered"])
+        non_target = evaluate_bad_control(
+            *_bad_control_inputs(
+                ["champion"] * 5 + ["TIE"],
+                non_target_winners=("deliberately-bad", "TIE"),
+            )
+        )
+        self.assertEqual(non_target["status"], "PASSED")
+        self.assertFalse(non_target["targeted_bad_win_veto_triggered"])
+        self.assertEqual(non_target["qualitative_counts"]["deliberately_bad"], 0)
         self.assertEqual(
-            result["qualitative_counts"],
-            {"champion": 4, "deliberately_bad": 0, "ties": 4},
+            non_target["non_target_qualitative_counts"]["deliberately_bad"], 1
         )
+        self.assertEqual(non_target["qualitative_p_value_exact"], {"numerator": 1, "denominator": 32})
 
-    def test_bad_control_without_activation_is_explicit(self) -> None:
-        side = [{"hard_pass": True} for _ in range(8)]
-        result = evaluate_bad_control(
-            side,
-            side,
-            ["champion"] * 5 + ["TIE"] * 3,
-            set(),
-        )
-
-        self.assertEqual(result["status"], "CONTROL_NOT_ACTIVATED")
-        self.assertFalse(result["passed"])
-        self.assertFalse(result["control_activated"])
-        self.assertTrue(result["mechanical_requirement_met"])
-        self.assertTrue(result["qualitative_discrimination_supported"])
-
-    def test_bad_control_failure_precedence(self) -> None:
-        passing_side = [{"hard_pass": True} for _ in range(8)]
-        activated = {"overengineering"}
-        passing_winners = ["champion"] * 5 + ["TIE"] * 3
-        rows = {
-            "empty": ([], [], [], activated),
-            "unequal sides": (
-                passing_side,
-                passing_side[:-1],
-                passing_winners,
-                activated,
-            ),
-            "qualitative length mismatch": (
-                passing_side,
-                passing_side,
-                passing_winners[:-1],
-                activated,
-            ),
-            "unknown winner": (
-                passing_side,
-                passing_side,
-                passing_winners[:-1] + ["unknown"],
-                activated,
-            ),
-            "deliberately bad win": (
-                passing_side,
-                passing_side,
-                ["champion"] * 7 + ["deliberately-bad"],
-                activated,
-            ),
-            "champion hard-pass deficit": (
-                [{"hard_pass": index < 7} for index in range(8)],
-                passing_side,
-                passing_winners,
-                activated,
-            ),
-        }
-
-        for name, arguments in rows.items():
+    def test_unknown_misaligned_duplicate_missing_and_mechanical_deficit_fail(self) -> None:
+        base = _bad_control_inputs(["champion"] * 5 + ["TIE"])
+        unknown = copy.deepcopy(base)
+        unknown[2][0] = "unknown"
+        misaligned = copy.deepcopy(base)
+        misaligned[0][0], misaligned[0][1] = misaligned[0][1], misaligned[0][0]
+        duplicate = copy.deepcopy(base)
+        for rows in (duplicate[0], duplicate[1], duplicate[3]):
+            rows[1]["case_id"] = rows[0]["case_id"]
+        missing = copy.deepcopy(base)
+        for rows in missing:
+            rows.pop(0)
+        deficit = copy.deepcopy(base)
+        deficit[0][0]["hard_pass"] = False
+        incomplete = copy.deepcopy(base)
+        incomplete[1][0].pop("hard_pass")
+        for name, inputs in (
+            ("unknown", unknown),
+            ("misaligned", misaligned),
+            ("duplicate", duplicate),
+            ("missing", missing),
+            ("deficit", deficit),
+            ("incomplete", incomplete),
+        ):
             with self.subTest(name=name):
-                result = evaluate_bad_control(*arguments)
+                result = evaluate_bad_control(*inputs)
                 self.assertEqual(result["status"], "EVALUATOR_BAD_CONTROL_FAILED")
                 self.assertFalse(result["passed"])
-                if name == "deliberately bad win":
-                    self.assertEqual(result["qualitative_p_value"], 0.03515625)
-                    self.assertTrue(
-                        result["qualitative_discrimination_supported"]
-                    )
-                if name == "champion hard-pass deficit":
-                    self.assertFalse(result["mechanical_requirement_met"])
-                    self.assertTrue(
-                        result["qualitative_discrimination_supported"]
-                    )
