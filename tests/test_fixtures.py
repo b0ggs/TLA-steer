@@ -3,6 +3,7 @@ from __future__ import annotations
 import stat
 import unittest
 
+from mdseval.execution import _verify_prepared_inputs
 from mdseval.fixtures import prepare_fixture
 from mdseval.hashing import sha256_file
 
@@ -18,6 +19,7 @@ class FixtureTests(unittest.TestCase):
         cache_bytes = cache.read_bytes()
         prepared = prepare_fixture(case, variant, sha256_file(variant))
         try:
+            _verify_prepared_inputs(case, variant, prepared.repo)
             self.assertTrue((prepared.repo / "CODER.md").is_file())
             self.assertTrue((prepared.repo / ".issue-contract.md").is_file())
             self.assertTrue((prepared.repo / "src/duration.py").is_file())

@@ -24,6 +24,7 @@ from .capture import (
     parse_event_stream,
     run_hidden_checks,
     write_json,
+    is_ignored_generated_path,
     is_secret_name,
 )
 from .compare import deterministic_pair_order, invariant_mismatches
@@ -285,6 +286,9 @@ def _verify_prepared_inputs(
         path.relative_to(case.fixture_dir).as_posix()
         for path in case.fixture_dir.rglob("*")
         if path.is_file()
+        and not is_ignored_generated_path(
+            path.relative_to(case.fixture_dir).as_posix()
+        )
     } | {"CODER.md", ".issue-contract.md"}
     actual_paths = {
         path.relative_to(subject_repo).as_posix()
@@ -297,6 +301,9 @@ def _verify_prepared_inputs(
         path.relative_to(case.fixture_dir).as_posix()
         for path in case.fixture_dir.rglob("*")
         if path.is_dir()
+        and not is_ignored_generated_path(
+            path.relative_to(case.fixture_dir).as_posix()
+        )
     }
     actual_directories = {
         path.relative_to(subject_repo).as_posix()
