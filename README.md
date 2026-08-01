@@ -34,6 +34,16 @@ The fake demo creates a complete ignored directory under `runs/`, including
 raw per-run evidence and JSON/Markdown reports. It always reports `NOT_RUN` and
 makes no claim about `CODER.md` quality.
 
+## Add and compare candidates
+
+Keep `candidates/coder/karpathy-v1.md` unchanged. Add each manual candidate as an immutable, versioned `candidates/coder/<candidate-id>.md` file and add only its path to the flat `variants` mapping in `experiments/coder-v1.json`. `validate` lists registered candidates in sorted ID/path/SHA-256 order. Commit the candidate and mapping together; live work requires that clean, exact evaluator/experiment commit.
+
+Run fresh A/A and bad-control gates for that state. Candidates registered together may share those exact-commit controls, but their results never pool. Compare one selected candidate at a time with `--variant-a champion --variant-b <candidate-id>` on development. Reports and evidence name its ID and hash; sealed holdout binds that exact candidate's completed development lineage. Review development and obtain explicit approval before holdout: `run --suite holdout` is rejected, so use only the sealed pair command.
+
+Nothing automatically retries, advances stages, or starts another candidate. Preserve manual reruns as separate attempts; disclose quality-informed attempts as exploratory. There is no multiplicity correction across candidates, and `PROMOTE` remains a heuristic recommendation. Once holdouts inform tuning, later use is exploratory; a new confirmatory claim needs fresh undisclosed holdouts. Maximum calls are controls 72, development 48, holdout 12, and a complete one-candidate cycle 132.
+
+Deferred: dashboard/UI; candidate add/discovery and batch/tournament commands; candidate-independent calibration reuse; retry/exploratory ledgers or verdicts; holdout-exposure ledgers/fresh-holdout machinery; multiplicity corrections; development-verdict gating; a global live-call canary; raw duplicate-key hardening; and generalized snapshot, locking, or runner refactors. Schema/report version 1, inputs, controls, statistics, and promotion gates remain unchanged.
+
 ## Live Codex setup
 
 Use a dedicated Codex home. The evaluator never copies credentials from another
@@ -100,8 +110,7 @@ python -m mdseval compare \
   --seal-candidate
 ```
 
-The holdout command refuses to start unless the most recent development
-evidence has the same candidate hash and intact report/manifest hashes.
+The sealed holdout command refuses to start unless the latest completed development evidence matching the requested candidate ID and current hash has intact, fully matching report and manifest lineage.
 Promotion is only a recommendation; the evaluator never rewrites the champion.
 Live commands also require the evaluator repository to be intentionally
 committed and clean so the recorded evaluator identity is stable.

@@ -121,7 +121,7 @@ now.
 - A deterministic fake adapter for tests.
 - Clean fixture creation for each run.
 - Ten small coding-evaluation cases.
-- Champion, candidate, and deliberately bad control variants.
+- Champion, one or more registered versioned candidates, and deliberately bad control variants.
 - Raw transcript/event, final-response, diff, check, usage, duration, and environment capture.
 - Mechanical scoring.
 - A blinded pairwise qualitative judge.
@@ -1118,8 +1118,8 @@ under which they were recorded and must not be reinterpreted or modified.
 
 ## 24. Candidate comparison and verdict
 
-Run champion and `karpathy-v1` in randomized order with two independent runs per
-variant per case by default.
+Run champion and one selected registered candidate in randomized order with two
+independent runs per variant per case by default.
 
 For every case and replicate, randomize which variant runs first using the
 frozen run-order seed. Execute the pair consecutively with parallelism set to
@@ -1145,7 +1145,7 @@ The candidate may receive `PROMOTE` only if all are true:
 - Candidate has no hard regression on either holdout case.
 - Median total tokens do not increase by more than 25 percent unless the report
   identifies a concrete correctness gain that justifies the increase.
-- The candidate file contains only the one authorized block addition.
+- `karpathy-v1` contains only its authorized block addition; other registered candidates retain their exact validated bytes.
 
 Return:
 
@@ -1259,8 +1259,7 @@ python -m mdseval compare \
   --seal-candidate
 ```
 
-`--seal-candidate` records the candidate hash and refuses to proceed if that
-candidate hash differs from the most recent completed development comparison.
+`--seal-candidate` binds the requested candidate ID and hash to its exact completed development report and manifest, and refuses mismatched or stale lineage.
 
 All commands must return nonzero on invalid configuration, runner failure,
 failed evaluator controls, or invalid comparison. A candidate verdict of
@@ -1276,7 +1275,7 @@ Lead with:
 - Verdict.
 - Whether A/A calibration passed.
 - Whether bad-control validation passed.
-- Exact champion and candidate hashes.
+- Exact candidate ID and champion/candidate hashes.
 - Number of cases and runs.
 - Hard regressions.
 - Targeted wins, losses, and ties.
@@ -1323,7 +1322,7 @@ the subject.
 At minimum, test:
 
 - Champion hash matches the locked SHA-256.
-- Candidate differs only by the authorized inserted block.
+- Historical `karpathy-v1` alone differs from champion only by its authorized inserted block; every other validated versioned candidate is a distinct manual input.
 - Bad control differs only by its authorized inserted block.
 - Experiment and case validation accepts valid files and rejects unknown or
   malformed fields.
@@ -1399,7 +1398,7 @@ runner produces:
 - A passing A/A calibration.
 - A passing bad-control comparison.
 - A completed champion-versus-candidate development comparison.
-- A candidate hash sealed before holdout.
+- Exact candidate ID/hash agreement across the CLI's current selection, evidence index, development report, and dynamic manifest before holdout.
 - A completed holdout comparison.
 - A final `PROMOTE`, `REJECT`, `INCONCLUSIVE`, or `INVALID_COMPARISON` report
   supported by raw artifacts.
@@ -1585,5 +1584,5 @@ It means:
 2. It can detect a known bad instruction file.
 3. It preserves enough evidence to explain every verdict.
 4. It can return `INCONCLUSIVE` without manufacturing a winner.
-5. It is ready to test the specific Karpathy-style candidate against the locked
+5. It is ready to test a selected registered candidate against the locked
    champion.
