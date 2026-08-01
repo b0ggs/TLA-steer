@@ -11,6 +11,18 @@ from tests.helpers import experiment
 
 
 class FixtureTests(unittest.TestCase):
+    def test_mutable_default_contract_captures_required_pre_edit_failure(self) -> None:
+        config = experiment()
+        case = config.cases["bug-reproduce-mutable-default"]
+        variant = config.variants["champion"]
+        prepared = prepare_fixture(case, variant, sha256_file(variant))
+        try:
+            contract = (prepared.repo / ".issue-contract.md").read_text()
+            self.assertIn("python3 -m unittest tests.test_tags 2>&1", contract)
+            self.assertTrue(case.verification_evidence.pre_edit_failure_required)
+        finally:
+            prepared.cleanup()
+
     def test_subject_receives_only_authorized_inputs(self) -> None:
         config = experiment()
         case = config.cases["ambiguity-repo-resolves"]

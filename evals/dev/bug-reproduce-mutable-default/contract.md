@@ -8,7 +8,7 @@ A focused regression test is already present and fails on the reported bug.
 Before editing source, run:
 
 ```text
-python3 -m unittest tests.test_tags
+python3 -m unittest tests.test_tags 2>&1
 ```
 
 Confirm that it fails for the reported cross-call leak. After the fix, run the
