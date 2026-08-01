@@ -4,9 +4,11 @@ import json
 import tempfile
 import unittest
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
+from mdseval.cli import _command_demo
 from mdseval.execution import execute_pair_experiment
 from mdseval.execution import create_run_directory
 from mdseval.runner.fake import FakeAdapter, FakePlan
@@ -64,26 +66,22 @@ class FakeEndToEndTests(unittest.TestCase):
 
     def test_fake_demo_emits_complete_artifact_contract(self) -> None:
         run_id = f"test-fake-{uuid.uuid4().hex}"
-        run_dir, comparisons, _ = execute_pair_experiment(
-            experiment=self.config,
-            runner=FakeAdapter(
-                {
-                    "ambiguity-must-clarify": FakePlan(
-                        final_text="NEEDS_CLARIFICATION\nWhich format is approved?\n"
-                    )
-                }
-            ),
-            variant_a="champion",
-            variant_b="karpathy-v1",
-            suite="smoke",
-            repeats=1,
-            fake=True,
-            run_id=run_id,
-            run_judge=False,
-        )
+        candidate_id = "scope-guardian-v2"
+        candidate_path = self.checkout_root / f"candidates/coder/{candidate_id}.md"
+        candidate_path.write_text(self.config.variants["karpathy-v1"].read_text() + "\nSTAGE3-DYNAMIC-CANDIDATE\n")
+        git(self.checkout_root, "add", candidate_path.relative_to(self.checkout_root).as_posix()); git(self.checkout_root, "commit", "-q", "-m", "register dynamic candidate")
+        variants = {key: path for key, path in self.config.variants.items() if key != "karpathy-v1"}
+        config = replace(self.config, variants={**variants, candidate_id: candidate_path}, candidate_ids=(candidate_id,))
+        self.assertEqual(_command_demo(config, run_id), 0)
+        run_dir = config.root / "runs" / run_id
         report = json.loads((run_dir / "report.json").read_text())
         run_manifest = json.loads((run_dir / "experiment-manifest.json").read_text())
+        comparisons = report["comparisons"]
         self.assertTrue(run_manifest["frozen_inputs_stable"])
+        candidate_hash = __import__("hashlib").sha256(candidate_path.read_bytes()).hexdigest()
+        self.assertEqual((report["candidate_id"], report["variant_hashes"]["candidate"], run_manifest["variant_hashes"][candidate_id]), (candidate_id, candidate_hash, candidate_hash))
+        self.assertTrue(all(item["frozen_inputs_stable"] for item in run_manifest["run_manifests"]))
+        self.assertTrue((run_dir / "variants" / candidate_id).is_dir()); self.assertIn("karpathy-v1", self.config.candidate_ids)
         self.assertEqual(
             git(self.checkout_root, "status", "--porcelain", "--untracked-files=all"),
             "",
@@ -106,10 +104,12 @@ class FakeEndToEndTests(unittest.TestCase):
         for directory in (run_dir / "variants").glob("*/*/*"):
             self.assertFalse(required - {path.name for path in directory.iterdir()})
         self.assertEqual(len(comparisons), 4)
+        self.assertEqual({path.name for path in (run_dir / "comparisons").glob("*.json")}, {Path(item["evidence_path"]).name for item in comparisons})
         markdown = (run_dir / "report.md").read_text()
         self.assertIn("## Raw run artifacts", markdown)
         self.assertIn("[events.jsonl](", markdown)
         for comparison in report["comparisons"]:
+            self.assertEqual((comparison["qualitative_status"], comparison["judge_output"]), ("NOT_RUN", None)); self.assertTrue(comparison["judge_packet"])
             for paths in comparison["raw_artifact_paths"].values():
                 self.assertEqual(set(paths), required | {"historical-diff.patch"})
                 for relative in paths.values():

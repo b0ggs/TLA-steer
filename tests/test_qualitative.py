@@ -24,10 +24,10 @@ class QualitativeTests(unittest.TestCase):
     def test_packet_blinds_variant_identity_and_unique_fragments(self) -> None:
         config = experiment()
         case = config.cases["scope-ttl-zero"]
-        candidate_text = config.variants["karpathy-v1"].read_text()
-        unique = "smallest implementation that fully satisfies the issue contract"
+        unique = "STAGE3-UNIQUE-INSTRUCTION-MARKER-7391"; mock = __import__("unittest.mock", fromlist=["patch"]); captured = {}; dimension = {"winner": "TIE", "reason": "offline stable judge"}
+        champion_text = config.variants["champion"].read_text(); candidate_text = f"## Scope Guardian\n\n{unique}\nNever leak this complete instruction.\n"; judge_result = {"schema_version": 1, "winner": "TIE", "confidence": "medium", "dimensions": {name: dimension for name in ("assumption_handling", "simplicity", "scope_discipline", "verification_quality")}, "hard_concerns": []}
         left = {
-            "final_text": f"IMPLEMENTED\n{unique}\nkarpathy-v1",
+            "final_text": f"IMPLEMENTED\n{unique}\nscope-guardian-v2",
             "diff": "diff --git a/CODER.md b/CODER.md\n" + unique,
             "commands": [],
             "mechanical": {"fields": {}},
@@ -42,17 +42,17 @@ class QualitativeTests(unittest.TestCase):
             fixture=case.fixture_dir,
             left=left,
             right={**left, "final_text": "IMPLEMENTED\n"},
-            variant_ids=("champion", "karpathy-v1"),
-            variant_paths=tuple(str(config.variants[name]) for name in ("champion", "karpathy-v1")),
+            variant_ids=("champion", "scope-guardian-v2", "champion-slot-secret", "candidate-slot-secret"),
+            variant_paths=("targets/coder/champion.md", "candidates/coder/scope-guardian-v2.md"),
             instruction_texts=(
                 config.variants["champion"].read_text(),
                 candidate_text,
             ),
         )
         serialized = json.dumps(packet)
-        self.assertNotIn("karpathy-v1", serialized)
-        self.assertNotIn(unique, serialized)
-        self.assertNotIn("CODER.md", serialized)
+        with mock.patch.dict("os.environ", {"MDSEVAL_CODEX_HOME": "offline"}), mock.patch("mdseval.execution.init_repository"), mock.patch("mdseval.execution.build_judge_command", return_value=["offline-judge"]), mock.patch("mdseval.execution.run_process_group", side_effect=lambda command, **kwargs: (captured.setdefault("payload", (kwargs["cwd"] / "packet.json").read_bytes()), (kwargs["cwd"] / "judge-output.json").write_text(json.dumps(judge_result)), mock.Mock(returncode=0, timed_out=False, interrupted=False, stderr=""))[-1]) as process:
+            result = __import__("mdseval.execution", fromlist=["run_live_judge"]).run_live_judge(config, packet, Redactor())
+        actual_payload = captured["payload"].decode("utf-8"); forbidden = ("champion", "scope-guardian-v2", "champion-slot-secret", "candidate-slot-secret", "targets/coder/champion.md", "candidates/coder/scope-guardian-v2.md", "champion.md", "scope-guardian-v2.md", champion_text, candidate_text, json.dumps(champion_text)[1:-1], json.dumps(candidate_text)[1:-1], unique, "CODER.md"); self.assertEqual((json.loads(actual_payload), result[0], result[1]["winner"], result[2], process.call_count), (packet, "COMPLETED", "TIE", None, 1)); self.assertTrue(json.dumps(champion_text)[1:-1] and json.dumps(candidate_text)[1:-1]); self.assertFalse([secret for secret in forbidden if secret in actual_payload])
 
     def test_packet_blinds_unique_three_and_four_token_instruction_phrases(self) -> None:
         config = experiment()
