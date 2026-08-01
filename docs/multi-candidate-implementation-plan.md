@@ -134,6 +134,8 @@ Scope: `cli.py`, `report.py`, minimal report call sites in `execution.py`, `test
 
 Deliver validate listing, exact demo selection, generic registered-candidate comparison, champion-first enforcement, unchanged bad-control behavior, current-control preflight, top-level report `candidate_id`, candidate-specific development evidence, interleaving-safe lookup, and fully bound four-source holdout lineage. Maximum 145 changed lines.
 
+Stage 2 final exception: after the failed sole-repair verification, the user approved exactly one final test-only correction in `tests/test_cli.py`. Final Stage 2 limits remain at most 145 changed lines and 56 net-new lines; the current 138 changed and +54 net leave at most 7 changed and 2 net-new lines. Production edits and all other files are forbidden. The correction may cover only post-run control mutation and the four sealed report/manifest source path/hash assertions. One final read-only verification follows; any failure requires reverting and stopping, with no further repair or audit loop.
+
 ### Stage 3: reporting, blinding, and fake E2E
 
 Scope: `test_fake_e2e.py` and `test_qualitative.py` only.
