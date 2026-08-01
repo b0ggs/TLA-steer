@@ -53,6 +53,15 @@ class FakeEndToEndTests(unittest.TestCase):
             "an offline fake test mutated real run/report evidence",
         )
 
+    def test_prejudge_instruction_drift_stops_after_completed_pair(self) -> None:
+        with mock.patch("mdseval.execution.sha256_bytes", return_value="drift") as digest, mock.patch("mdseval.execution._codex_version", return_value="TEST"), mock.patch("mdseval.execution.run_live_judge", return_value=("COMPLETED", {"winner": "TIE"}, None)) as judge:
+            _, comparisons, manifest = execute_pair_experiment(experiment=self.config, runner=FakeAdapter(),
+                variant_a="champion", variant_b="karpathy-v1",
+                suite="smoke", repeats=1,
+                fake=False, live_runner_status="TEST",
+            )
+            judge.assert_not_called(); digest.side_effect = lambda data: __import__("hashlib").sha256(data).hexdigest(); execute_pair_experiment(experiment=self.config, runner=FakeAdapter(), variant_a="champion", variant_b="karpathy-v1", suite="smoke", repeats=1, fake=False, live_runner_status="TEST"); judge.assert_called(); self.assertEqual((len(comparisons), manifest["run_count"], comparisons[0]["valid"], comparisons[0]["judge_packet"]), (1, 2, False, {}))
+
     def test_fake_demo_emits_complete_artifact_contract(self) -> None:
         run_id = f"test-fake-{uuid.uuid4().hex}"
         run_dir, comparisons, _ = execute_pair_experiment(

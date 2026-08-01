@@ -14,6 +14,7 @@ from mdseval.cli import (
     _bad_control_winners,
     _evidence_path,
     _load_prior_dev,
+    _command_run,
     main,
 )
 from mdseval.hashing import sha256_file
@@ -24,6 +25,13 @@ from tests.helpers import ROOT
 
 
 class CLITests(unittest.TestCase):
+    def test_single_variant_holdout_stops_before_live_boundaries(self) -> None:
+        from tests.helpers import experiment
+        with mock.patch("mdseval.cli._require_live") as live, mock.patch("mdseval.cli.execute_variant_experiment") as execute, self.assertRaisesRegex(ValueError, "sealed comparison"):
+            _command_run(experiment(), "champion", "holdout", 1, None)
+        live.assert_not_called()
+        execute.assert_not_called()
+
     def test_validate(self) -> None:
         output = io.StringIO()
         with redirect_stdout(output):

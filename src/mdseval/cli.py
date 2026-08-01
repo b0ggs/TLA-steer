@@ -283,6 +283,8 @@ def _command_run(
     repeats: int,
     run_id: str | None,
 ) -> int:
+    if suite == "holdout":
+        raise ValueError("single-variant holdout is forbidden; use sealed comparison")
     _require_live(experiment)
     run_dir, summaries, manifest = execute_variant_experiment(
         experiment=experiment,

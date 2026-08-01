@@ -250,6 +250,13 @@ def authoritative_inputs(case: CaseConfig, variant_path: Path) -> dict[str, str]
     }
 
 
+def _verified_instruction_text(path: Path, expected_hash: str) -> str:
+    raw = path.read_bytes()
+    if sha256_bytes(raw) != expected_hash:
+        raise RuntimeError("instruction bytes changed")
+    return raw.decode("utf-8")
+
+
 def freeze_inputs(
     experiment: ExperimentConfig,
     case: CaseConfig,
@@ -686,7 +693,17 @@ def execute_pair_experiment(
                 run_records.append(summaries[variant_id]["manifest"])
             left, right = summaries[variant_a], summaries[variant_b]
             mismatches = invariant_mismatches(left["manifest"], right["manifest"])
-            packet, labels = build_blinded_packet(
+            abort = False
+            try:
+                instruction_texts = tuple(
+                    _verified_instruction_text(experiment.variants[item], input_snapshots[(case_id, item)]["variant_sha256"])
+                    for item in (variant_a, variant_b)
+                )
+            except (OSError, UnicodeError, RuntimeError) as exc:
+                mismatches["variant_input_before_judge"] = ("frozen", type(exc).__name__)
+                instruction_texts = ("", "")
+                abort = True
+            packet, labels = ({}, {}) if abort else build_blinded_packet(
                 case_id=case_id,
                 replicate=replicate,
                 seed=experiment.run_order_seed,
@@ -699,10 +716,7 @@ def execute_pair_experiment(
                     str(experiment.variants[variant_a]),
                     str(experiment.variants[variant_b]),
                 ),
-                instruction_texts=(
-                    experiment.variants[variant_a].read_text(encoding="utf-8"),
-                    experiment.variants[variant_b].read_text(encoding="utf-8"),
-                ),
+                instruction_texts=instruction_texts,
             )
             packet = redactor.object(packet)
             judge_status = "NOT_RUN"
@@ -808,6 +822,8 @@ def execute_pair_experiment(
             (run_dir / "comparisons").mkdir(parents=True, exist_ok=True)
             write_json(run_dir / comparison_path, comparison)
             comparisons.append(comparison)
+            if abort: break
+        if abort: break
     final_inputs_stable = True
     for (case_id, variant_id), expected in input_snapshots.items():
         current = authoritative_inputs(
