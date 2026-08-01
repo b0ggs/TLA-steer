@@ -12,6 +12,59 @@ from tests.helpers import ROOT, experiment
 
 
 class ConfigTests(unittest.TestCase):
+    def _candidate_file(self, candidate_id: str, content: bytes) -> None:
+        path = ROOT / f"candidates/coder/{candidate_id}.md"
+        path.write_bytes(content)
+        self.addCleanup(path.unlink, missing_ok=True)
+
+    def _candidate_experiment(self, updates=None, remove=()) -> Path:
+        source = json.loads((ROOT / "experiments/coder-v1.json").read_text())
+        source["variants"].update(updates or {})
+        for variant_id in remove: source["variants"].pop(variant_id)
+        path = ROOT / "experiments/.test-candidates.json"
+        path.write_text(json.dumps(source))
+        self.addCleanup(path.unlink, missing_ok=True)
+        return path
+
+    def test_candidate_registry_accepts_sorted_versions_and_schema_is_open(self) -> None:
+        self._candidate_file("zeta-v2", b"zeta\n")
+        self._candidate_file("alpha-v1", b"alpha\n")
+        config = load_experiment(self._candidate_experiment({"zeta-v2": "candidates/coder/zeta-v2.md", "alpha-v1": "candidates/coder/alpha-v1.md"}))
+        self.assertEqual(config.candidate_ids, ("alpha-v1", "karpathy-v1", "zeta-v2"))
+        variants = json.loads((ROOT / "schemas/experiment.schema.json").read_text())["properties"]["variants"]
+        self.assertEqual((variants["required"], variants["minProperties"]), (["champion", "deliberately-bad"], 3))
+        self.assertIn("^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$", variants["patternProperties"])
+
+    def test_reserved_roles_and_at_least_one_candidate_are_required(self) -> None:
+        for variant_id in ("champion", "deliberately-bad", "karpathy-v1"):
+            with self.subTest(variant_id=variant_id), self.assertRaises(ConfigError):
+                load_experiment(self._candidate_experiment(remove=(variant_id,)))
+
+    def test_candidate_ids_and_lexical_paths_are_exact(self) -> None:
+        cases = {"champion": "candidates/coder/champion.md", "deliberately-bad": "candidates/coder/deliberately-bad.md", "Upper-v1": "candidates/coder/Upper-v1.md", "plain": "candidates/coder/plain.md", "zero-v0": "candidates/coder/zero-v0.md", "leading-v01": "candidates/coder/leading-v01.md", "nested-v1": "candidates/coder/nested/nested-v1.md", "outside-v1": "../outside-v1.md", "mismatch-v1": "candidates/coder/other-v1.md", "wrong-role-v1": "candidates/other/wrong-role-v1.md", "not-md-v1": "candidates/coder/not-md-v1.txt", "missing-v1": "candidates/coder/missing-v1.md"}
+        for candidate_id, relative in cases.items():
+            with self.subTest(candidate_id=candidate_id), self.assertRaises(ConfigError):
+                load_experiment(self._candidate_experiment({candidate_id: relative}))
+
+    def test_candidate_symlink_is_rejected_before_resolution(self) -> None:
+        path = ROOT / "candidates/coder/symlink-v1.md"
+        path.symlink_to(ROOT / "candidates/coder/karpathy-v1.md")
+        self.addCleanup(path.unlink, missing_ok=True)
+        with self.assertRaisesRegex(ConfigError, "symlink"):
+            load_experiment(self._candidate_experiment({"symlink-v1": "candidates/coder/symlink-v1.md"}))
+
+    def test_candidate_content_rejections(self) -> None:
+        cases = {"empty-v1": b"", "space-v1": b" \n\t", "binary-v1": b"\xff", "champion-copy-v1": (ROOT / "targets/coder/champion.md").read_bytes(), "control-copy-v1": (ROOT / "controls/coder/deliberately-bad.md").read_bytes()}
+        for candidate_id, content in cases.items():
+            self._candidate_file(candidate_id, content)
+            with self.subTest(candidate_id=candidate_id), self.assertRaises(ConfigError):
+                load_experiment(self._candidate_experiment({candidate_id: f"candidates/coder/{candidate_id}.md"}))
+
+    def test_duplicate_candidate_bytes_are_rejected(self) -> None:
+        for candidate_id in ("copy-a-v1", "copy-b-v2"): self._candidate_file(candidate_id, b"duplicate\n")
+        with self.assertRaisesRegex(ConfigError, "duplicates"):
+            load_experiment(self._candidate_experiment({candidate_id: f"candidates/coder/{candidate_id}.md" for candidate_id in ("copy-a-v1", "copy-b-v2")}))
+
     def test_locked_experiment_loads_all_cases(self) -> None:
         config = experiment()
         self.assertEqual(len(config.cases), 10)

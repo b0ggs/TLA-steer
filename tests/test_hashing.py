@@ -11,6 +11,7 @@ from mdseval.variants import (
     CANDIDATE_BLOCK,
     CHAMPION_SHA256,
     expected_variant,
+    validate_locked_variants,
 )
 
 from tests.helpers import ROOT
@@ -31,6 +32,15 @@ class HashingTests(unittest.TestCase):
         champion = (ROOT / "targets/coder/champion.md").read_text()
         bad = (ROOT / "controls/coder/deliberately-bad.md").read_text()
         self.assertEqual(bad, expected_variant(champion, BAD_CONTROL_BLOCK))
+
+    def test_locked_validation_ignores_internal_aliases_and_candidates(self) -> None:
+        validate_locked_variants({
+            "champion": ROOT / "targets/coder/champion.md",
+            "deliberately-bad": ROOT / "controls/coder/deliberately-bad.md",
+            "champion-aa-a": ROOT / "missing-aa-a",
+            "champion-aa-b": ROOT / "missing-aa-b",
+            "unchecked-v1": ROOT / "missing-candidate",
+        })
 
     def test_tree_hash_excludes_only_narrow_caches(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -6,6 +6,9 @@ from pathlib import Path
 
 from .hashing import sha256_file
 
+CHAMPION_ID = "champion"
+BAD_CONTROL_ID = "deliberately-bad"
+RESERVED_VARIANT_IDS = frozenset({CHAMPION_ID, BAD_CONTROL_ID})
 CHAMPION_SHA256 = "e72791366f3a3c20780a3ece63b0b8c1a0b7862c7c5ffd1d8ea8d3dd6eed92b0"
 INSERTION_ANCHOR = (
     "5. Create the authorized review handoff (PR, review ref, or explicitly "
@@ -70,14 +73,14 @@ def expected_variant(champion_text: str, block: str) -> str:
 
 
 def validate_locked_variants(variants: dict[str, Path]) -> None:
-    champion = variants["champion"]
+    champion = variants[CHAMPION_ID]
     if sha256_file(champion) != CHAMPION_SHA256:
         raise ValueError("champion hash does not match locked bytes")
     text = champion.read_text(encoding="utf-8")
     expected = {
-        "karpathy-v1": expected_variant(text, CANDIDATE_BLOCK),
-        "deliberately-bad": expected_variant(text, BAD_CONTROL_BLOCK),
+        BAD_CONTROL_ID: expected_variant(text, BAD_CONTROL_BLOCK),
     }
+    # Registry candidates and internal A/A aliases are intentionally ignored.
     for variant_id, expected_text in expected.items():
         path = variants.get(variant_id)
         if path is None:

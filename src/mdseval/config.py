@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .hashing import sha256_file, tree_sha256
-from .variants import CHAMPION_SHA256, validate_locked_variants
+from .variants import CHAMPION_SHA256, RESERVED_VARIANT_IDS, validate_locked_variants
 
 DISPOSITIONS = frozenset({"IMPLEMENTED", "NEEDS_CLARIFICATION", "BLOCKED"})
 QUALITATIVE_DIMENSIONS = frozenset(
@@ -21,6 +21,7 @@ FORBIDDEN_FIXTURE_NAMES = frozenset(
     {"AGENTS.md", "AGENTS.override.md", ".codex", ".agents", ".git"}
 )
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+CANDIDATE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$")
 LOCKED_SUITES = {
     "smoke": (
         "ambiguity-must-clarify",
@@ -147,6 +148,7 @@ class ExperimentConfig:
     runner: RunnerConfig
     judge: JudgeConfig
     variants: dict[str, Path]
+    candidate_ids: tuple[str, ...]
     suites: dict[str, tuple[str, ...]]
     run_order_seed: int
     default_repeats: int
@@ -526,24 +528,51 @@ def load_experiment(path: str | Path) -> ExperimentConfig:
     )
     if _integer(data["schema_version"], "experiment.schema_version") != 1:
         raise ConfigError("unsupported experiment schema_version")
+    target_role = _identifier(data["target_role"], "target_role")
     variants_data = data["variants"]
     if not isinstance(variants_data, dict) or not variants_data:
         raise ConfigError("variants must be a nonempty object")
     variants: dict[str, Path] = {}
     for variant_id, relative in variants_data.items():
         variant_id = _identifier(variant_id, "variant id")
-        variant_path = resolve_within(root, _string(relative, "variant path"), "variant")
+        relative = _string(relative, "variant path")
+        relative_path = safe_relative_path(relative, "variant path")
+        if variant_id not in RESERVED_VARIANT_IDS:
+            if not CANDIDATE_ID.fullmatch(variant_id):
+                raise ConfigError(f"candidate id is not lowercase versioned kebab-case: {variant_id}")
+            expected = f"candidates/{target_role}/{variant_id}.md"
+            if relative != expected:
+                raise ConfigError(f"candidate path must be exactly {expected}")
+            if any((root.joinpath(*relative_path.parts[:index])).is_symlink() for index in range(1, len(relative_path.parts) + 1)):
+                raise ConfigError(f"candidate path is symlinked: {relative}")
+        variant_path = resolve_within(root, relative, "variant")
         if not variant_path.is_file():
             raise ConfigError(f"variant does not exist: {relative}")
         variants[variant_id] = variant_path
-    if "champion" not in variants:
-        raise ConfigError("champion variant is required")
+    candidate_ids = tuple(sorted(set(variants) - RESERVED_VARIANT_IDS))
+    if not RESERVED_VARIANT_IDS <= set(variants) or not candidate_ids:
+        raise ConfigError("champion, deliberately-bad, and at least one candidate are required")
     if sha256_file(variants["champion"]) != CHAMPION_SHA256:
         raise ConfigError("champion hash does not match the locked baseline")
     try:
         validate_locked_variants(variants)
     except ValueError as exc:
         raise ConfigError(str(exc)) from exc
+    locked_bytes = {variants[item].read_bytes() for item in RESERVED_VARIANT_IDS}
+    candidate_bytes: dict[bytes, str] = {}
+    for candidate_id in candidate_ids:
+        try:
+            content = variants[candidate_id].read_bytes()
+            text = content.decode("utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ConfigError(f"candidate is not readable UTF-8: {candidate_id}") from exc
+        if not text.strip():
+            raise ConfigError(f"candidate is empty: {candidate_id}")
+        if content in locked_bytes:
+            raise ConfigError(f"candidate duplicates a locked role: {candidate_id}")
+        if content in candidate_bytes:
+            raise ConfigError(f"candidate duplicates {candidate_bytes[content]}: {candidate_id}")
+        candidate_bytes[content] = candidate_id
 
     suites_data = data["suites"]
     if not isinstance(suites_data, dict) or not suites_data:
@@ -568,10 +597,11 @@ def load_experiment(path: str | Path) -> ExperimentConfig:
     return ExperimentConfig(
         schema_version=1,
         experiment_id=_identifier(data["experiment_id"], "experiment_id"),
-        target_role=_identifier(data["target_role"], "target_role"),
+        target_role=target_role,
         runner=_load_runner(data["runner"]),
         judge=_load_judge(data["judge"]),
         variants=variants,
+        candidate_ids=candidate_ids,
         suites=suites,
         run_order_seed=_integer(data["run_order_seed"], "run_order_seed"),
         default_repeats=repeats,

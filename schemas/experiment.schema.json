@@ -69,12 +69,15 @@
     },
     "variants": {
       "type": "object",
+      "minProperties": 3,
       "additionalProperties": false,
-      "required": ["champion", "karpathy-v1", "deliberately-bad"],
+      "required": ["champion", "deliberately-bad"],
       "properties": {
         "champion": {"$ref": "#/$defs/safePath"},
-        "karpathy-v1": {"$ref": "#/$defs/safePath"},
         "deliberately-bad": {"$ref": "#/$defs/safePath"}
+      },
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$": {"$ref": "#/$defs/safePath"}
       }
     },
     "suites": {
