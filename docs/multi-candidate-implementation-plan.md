@@ -142,6 +142,8 @@ Scope: `test_fake_e2e.py` and `test_qualitative.py` only.
 
 Deliver arbitrary-candidate blinding regression coverage and the unchanged complete fake-E2E artifact contract. Maximum 50 changed lines.
 
+Stage 3 final exception: after the initial audit, the user approved exactly one final test-only rewrite in `tests/test_qualitative.py`. Final Stage 3 limits remain at most 50 changed lines and 20 net-new lines; the current diff is 49 changed and net -1. Production, configuration, and all other test edits are forbidden. The rewrite must capture and inspect the actual `packet.json` at the mocked `run_live_judge` boundary for a non-Karpathy candidate, use JSON-escape-aware forbidden-content checks, and keep judging stably mocked. One final read-only verification follows; any failure requires reverting and stopping, with no further repair or audit loop.
+
 ### Stage 4: documentation and offline verification
 
 Scope: README and directly conflicting MVP-spec clauses. Document the exact workflow, retry/multiplicity/holdout caveats, costs, and deferred machinery. A bounded verifier then runs the full offline suite and diff checks. Maximum 35 changed lines.
