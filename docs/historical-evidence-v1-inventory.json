@@ -15,8 +15,8 @@
       "path": "reports/evidence-index.json",
       "type": "file",
       "mode": "0644",
-      "size": 5607,
-      "sha256": "6a094a5c8dd194af1d6601b12a9dda81a95deebb9b6ba83927ac494802711a53"
+      "size": 11187,
+      "sha256": "0ade92caabb721c3bfb1fff4e23aab5af1f08a258215e9cff2b34c1a64a592c3"
     },
     {
       "path": "runs/bad-control-20260731-1",
