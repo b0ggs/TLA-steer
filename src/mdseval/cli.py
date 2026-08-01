@@ -226,6 +226,10 @@ def _command_validate(experiment: ExperimentConfig) -> int:
         f"VALID: {experiment.experiment_id}; "
         f"{len(experiment.cases)} cases; {len(experiment.variants)} variants"
     )
+    print("CANDIDATES:")
+    for candidate_id in experiment.candidate_ids:
+        path = experiment.variants[candidate_id]
+        print(f"- {candidate_id}  {path.relative_to(experiment.root).as_posix()}  sha256={sha256_file(path)}")
     return 0
 
 
@@ -262,7 +266,7 @@ def _command_demo(experiment: ExperimentConfig, run_id: str | None) -> int:
         experiment=experiment,
         runner=FakeAdapter(_demo_plans()),
         variant_a="champion",
-        variant_b="karpathy-v1",
+        variant_b="karpathy-v1" if "karpathy-v1" in experiment.candidate_ids else experiment.candidate_ids[0],
         suite="smoke",
         repeats=1,
         fake=True,
@@ -434,6 +438,7 @@ def _bad_control_activation_records(
 
 def _load_prior_dev(
     experiment: ExperimentConfig,
+    candidate_id: str,
     candidate_hash: str,
     binding_hash: str | None,
     current_run_dir: Path | None,
@@ -443,14 +448,14 @@ def _load_prior_dev(
         for item in _load_evidence(experiment)
         if item.get("kind") == "candidate_dev"
         and item.get("completed")
+        and item.get("candidate_id") == candidate_id
+        and item.get("candidate_hash") == candidate_hash
     ]
     if not entries:
         raise RuntimeError(
-            "--seal-candidate requires a completed development comparison with the same candidate hash"
+            "--seal-candidate requires completed development evidence for the requested candidate ID and hash"
         )
     entry = entries[-1]
-    if entry.get("candidate_hash") != candidate_hash:
-        raise RuntimeError("most recent development comparison has a different candidate hash")
     if binding_hash is not None and entry.get("invariant_hash") != binding_hash:
         raise RuntimeError("development comparison invariant binding does not match")
     report_path = Path(entry["report_path"])
@@ -474,7 +479,7 @@ def _load_prior_dev(
     report = json.loads(report_path.read_text(encoding="utf-8"))
     prior_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if (
-        prior_manifest.get("variant_hashes", {}).get("karpathy-v1")
+        prior_manifest.get("variant_hashes", {}).get(candidate_id)
         != candidate_hash
         or prior_manifest.get("experiment_sha256")
         != entry.get("experiment_sha256")
@@ -482,6 +487,7 @@ def _load_prior_dev(
         != entry.get("invariant_hash")
         or prior_manifest.get("evaluator_state_sha256")
         != entry.get("evaluator_hash")
+        or report.get("candidate_id") != candidate_id
         or report.get("variant_hashes", {}).get("candidate") != candidate_hash
     ):
         raise RuntimeError("sealed development manifest lineage mismatch")
@@ -541,11 +547,9 @@ def _command_compare(
     seal_candidate: bool,
     run_id: str | None,
 ) -> int:
-    if variant_a != "champion" or variant_b not in {
-        "karpathy-v1",
-        "deliberately-bad",
-    }:
-        raise ValueError("supported comparisons require champion as variant-a")
+    if variant_a != "champion" or variant_b not in (*experiment.candidate_ids, "deliberately-bad"):
+        raise ValueError("use --variant-a champion and a registered --variant-b; run validate")
+    is_candidate = variant_b in experiment.candidate_ids
     if variant_b == "deliberately-bad":
         if suite != "dev" or repeats != 1 or seal_candidate:
             raise ValueError("bad-control validation requires dev, one repeat, and no seal")
@@ -562,11 +566,11 @@ def _command_compare(
             raise ValueError("candidate comparison supports only locked dev or holdout suites")
     candidate_hash = (
         sha256_file(experiment.variants[variant_b])
-        if variant_b == "karpathy-v1"
+        if is_candidate
         else None
     )
     preflight_aa = preflight_bad = None
-    if variant_b == "karpathy-v1":
+    if is_candidate:
         _, preflight_binding = current_control_context(experiment)
         preflight_aa = _latest_evidence(experiment, "aa", preflight_binding)
         preflight_bad = _latest_evidence(experiment, "bad_control", preflight_binding)
@@ -577,11 +581,9 @@ def _command_compare(
     sealed_entry = None
     if seal_candidate:
         _, sealed_entry = _load_prior_dev(
-            experiment, candidate_hash or "", preflight_binding, None
+            experiment, variant_b, candidate_hash or "", preflight_binding, None
         )
     _require_live(experiment)
-    if seal_candidate and (variant_b != "karpathy-v1" or suite != "holdout"):
-        raise ValueError("--seal-candidate is only valid for karpathy-v1 holdout")
     run_dir, comparisons, manifest = execute_pair_experiment(
         experiment=experiment,
         runner=CodexCLI(experiment.runner),
@@ -594,6 +596,7 @@ def _command_compare(
         write_default_report=False,
         manifest_metadata=(
             {
+                "candidate_id": variant_b,
                 "candidate_sha256": candidate_hash,
                 "source_report_path": sealed_entry["report_path"],
                 "source_report_sha256": sealed_entry["report_sha256"],
@@ -669,6 +672,7 @@ def _command_compare(
         if seal_candidate:
             prior_comparisons, confirmed_entry = _load_prior_dev(
                 experiment,
+                variant_b,
                 candidate_hash,
                 manifest["control_binding_sha256"],
                 run_dir,
@@ -720,6 +724,7 @@ def _command_compare(
         verdict=verdict,
         champion_hash=manifest["variant_hashes"][variant_a],
         candidate_hash=manifest["variant_hashes"][variant_b],
+        candidate_id=variant_b if is_candidate else None,
         comparisons=comparisons,
         aa_status="PASSED" if aa_entry and aa_entry.get("passed") else "NOT_RUN",
         bad_control_status=(
@@ -753,7 +758,7 @@ def _command_compare(
         return 1
     if (
         suite == "dev"
-        and variant_b == "karpathy-v1"
+        and is_candidate
         and runners_healthy
         and judges_complete
         and all(item["valid"] for item in comparisons)
@@ -769,6 +774,7 @@ def _command_compare(
                 manifest,
                 passed=True,
                 completed=True,
+                candidate_id=variant_b,
                 candidate_hash=manifest["variant_hashes"][variant_b],
                 suite=suite,
                 repeats=repeats,

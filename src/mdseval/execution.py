@@ -945,6 +945,7 @@ def execute_pair_experiment(
         verdict=verdict,
         champion_hash=manifest["variant_hashes"][variant_a],
         candidate_hash=manifest["variant_hashes"][variant_b],
+        candidate_id=variant_b if variant_b in experiment.candidate_ids else None,
         comparisons=comparisons,
         live_runner_status=status,
     )
@@ -1062,6 +1063,7 @@ def execute_variant_experiment(
         candidate_hash=manifest["variant_hashes"][variant_id]
         if variant_id != "champion"
         else None,
+        candidate_id=variant_id if variant_id in experiment.candidate_ids else None,
         comparisons=[],
         live_runner_status=doctor(experiment).code,
     )

@@ -19,6 +19,7 @@ def build_report(
     champion_hash: str | None,
     candidate_hash: str | None,
     comparisons: list[dict[str, Any]],
+    candidate_id: str | None = None,
     aa_status: str = "NOT_RUN",
     bad_control_status: str = "NOT_RUN",
     live_runner_status: str = "LIVE_RUNNER_UNAVAILABLE",
@@ -72,6 +73,7 @@ def build_report(
         "schema_version": 1,
         "mode": mode,
         "experiment_id": experiment_id,
+        "candidate_id": candidate_id,
         "verdict": verdict,
         "live_runner_status": live_runner_status,
         "quality_claim_established": mode == "candidate-comparison"
@@ -152,6 +154,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"- A/A calibration: {report['aa_calibration']}",
             f"- Bad-control validation: {report['bad_control_validation']}",
             f"- Champion SHA-256: `{report['variant_hashes'].get('champion')}`",
+            f"- Candidate ID: `{report.get('candidate_id')}`",
             f"- Candidate SHA-256: `{report['variant_hashes'].get('candidate')}`",
             (
                 "- Baseline metadata: champion declares "

@@ -35,6 +35,7 @@ class ReportTests(unittest.TestCase):
             verdict="INCONCLUSIVE",
             champion_hash="a",
             candidate_hash="b",
+            candidate_id="implementation-v2",
             comparisons=comparisons,
             live_runner_status="LIVE_RUNNER_AVAILABLE",
             live_evidence_complete=True,
@@ -42,6 +43,8 @@ class ReportTests(unittest.TestCase):
         markdown = render_markdown(report)
         self.assertIn("Holdout outcome: NO_HARD_REGRESSION", markdown)
         self.assertIn("Total tokens", markdown)
+        self.assertEqual(report["candidate_id"], "implementation-v2")
+        self.assertIn("Candidate ID: `implementation-v2`", markdown)
         self.assertEqual(markdown.count("| breadth-layered-settings"), 1)
         self.assertTrue(report["baseline_metadata"]["mismatch_preserved"])
         self.assertIn("GPT-5.5 @ xhigh", markdown)
