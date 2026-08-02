@@ -88,6 +88,7 @@ It does not implement multiple agents or evaluate other roles.
 These caps cannot be raised silently:
 
 - Changed paths: at most 14 total, including at most 8 task/fixture/check paths.
+- Total added lines across all changed paths: at most 1,100; deletions do not offset additions.
 - New production modules: at most 2.
 - Net new production code: at most 250 lines.
 - Task fixture and check code: at most 600 lines total.
