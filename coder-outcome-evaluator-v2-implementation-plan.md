@@ -23,6 +23,12 @@ This plan does not itself authorize implementation, commits, pushes, merges, or
 live calls. Those require explicit user approval. Root orchestrates and verifies
 scope but does not implement production or test code.
 
+The separately authorized
+`coder-outcome-evaluator-v2-remediation-plan.md` is the sole authority for its
+bounded repairs. It overrides only the conflicting monetary, oracle assertion,
+environment-integrity, evidence, and runtime-scope clauses in this plan. All
+frozen experimental choices and every non-conflicting clause remain binding.
+
 ## Goal
 
 Deliver a demonstrable evaluator MVP, not another infrastructure MVP:
@@ -192,8 +198,9 @@ eligible:
    tasks must favor `C1`, with zero favoring `H`; six unanimous discordances have
    exact two-sided probability 0.03125. This proves gross outcome sensitivity,
    not fine discrimination between competent files or general validity.
-4. **Oracle controls:** every task's pristine/reference/alternative/mutant and
-   repeatability checks must pass before live calls.
+4. **Oracle controls:** every task's pristine/two-correct/two-mutant and
+   repeatability checks must pass before live calls, and live execution requires
+   the matching authoritative commit- and hash-bound qualification receipt.
 
 No task or control may be edited after observing a failed gate. A failed gate
 produces `STOP/REDESIGN` and ends spending.
@@ -208,8 +215,10 @@ and are never folded into a weighted score or used to rescue a correctness loss.
 ## Bounded live waves
 
 Live execution requires one explicit user authorization recording the model,
-reasoning setting, timeout, retry rule, maximum subject calls, maximum wall time,
-and dollar ceiling. Zero qualitative-judge calls are permitted.
+reasoning setting, timeout, retry rule, maximum subject calls, the finite 10,800-
+second wall ceiling, `chatgpt_oauth` authentication, isolated-runner preflight,
+and the matching qualification receipt. Zero qualitative-judge calls are
+permitted.
 
 Run every wave as randomized complete task blocks, preserving blind labels:
 
@@ -285,9 +294,10 @@ with the Stage 2 verifier/statistical findings, permit exactly one global bounde
 repair, and run the full suite exactly once afterward. No stage has a separate
 repair allowance and no third review is permitted.
 
-Gate: tests and every task oracle pass after the one allowed global repair (or
-without repair), no live calls occurred, every cap holds, and the frozen run
-manifest can be produced. Then stop and request explicit authorization to commit
+Gate: tests and every provisional task oracle case pass after the one allowed
+global repair (or without repair), no authoritative receipt is issued, no live
+calls occurred, every cap holds, and the frozen run manifest can be produced.
+Then stop and request explicit authorization to commit
 the permitted implementation paths. After authorization, create the commit,
 record its exact SHA and frozen input hashes, and verify the implementation
 worktree is clean at that SHA. Only then may root request live authorization. This
@@ -296,7 +306,9 @@ dirty, or different commit is forbidden.
 
 ### Stage 4 — Demonstrate controls live
 
-After explicit authorization, execute Wave 1 once. Preserve all evidence and
+After explicit authorization, require the clean exact committed tree,
+`chatgpt_oauth`, isolated-runner preflight, and its matching authoritative
+qualification receipt; then execute Wave 1 once. Preserve all evidence and
 produce the interim human-readable control report.
 
 Gate: A/A, known-better, oracle, integrity, and environment gates pass. Otherwise

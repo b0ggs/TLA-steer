@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import io
 import json
 import shutil
@@ -9,23 +8,26 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
 from mdseval.outcome_mvp import (
+    CASE_SPECS,
+    QUALIFICATION_COMMAND,
     analyze,
     build_schedule,
+    integrity_snapshot,
     load_design,
     main,
     offline_null_calibration,
-    require_live_authorization,
+    qualify,
+    require_environment,
     run_demonstration,
     write_reports,
 )
 from mdseval.hashing import tree_sha256
 from mdseval.runner.base import RunResult
-from mdseval.runner.fake import FakeAdapter, FakePlan
 
 from tests.helpers import ROOT
 
@@ -48,12 +50,36 @@ TOKEN_FIELDS = (
     "reasoning_tokens",
     "total_tokens",
 )
+COMMIT = "a" * 40
 
 
 class OutcomeMVPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.design = load_design(DESIGN)
+
+    def environment(self, **overrides: object) -> dict[str, object]:
+        return {"verified_commit": COMMIT, "clean": True, "authentication_mode": "chatgpt_oauth",
+                "isolated_runner_preflight_passed": True, **overrides}
+
+    def qualification_receipt(self, **overrides: object) -> dict[str, object]:
+        snapshot = integrity_snapshot(DESIGN, self.design)
+        rows = [{"task_id": task, "case_id": case_id, "kind": kind, "repeat": repeat,
+                 "expected": expected, "valid": True, "resolved": expected, "integrity": True, "passed": True}
+                for task in TASKS for case_id, kind, expected in CASE_SPECS for repeat in range(1, 4)]
+        canonical = lambda value: (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        return {"schema_version": 1, "status": "PASS", "verified_commit": COMMIT,
+                "authentication_mode": "chatgpt_oauth", "isolated_runner_preflight_passed": True,
+                **{key: snapshot[key] for key in ("evaluator_sha256", "design_sha256", "analysis_sha256", "wrapper_sha256", "task_tree_sha256", "checker_hashes")},
+                "oracle_sha256": self.design["qualification"]["oracle_sha256"],
+                "command_config": QUALIFICATION_COMMAND,
+                "command_config_sha256": hashlib.sha256(canonical(QUALIFICATION_COMMAND)).hexdigest(),
+                "results": rows, "results_sha256": hashlib.sha256(canonical(rows)).hexdigest(), **overrides}
+
+    def write_receipt(self, directory: Path, **overrides: object) -> Path:
+        path = directory / "qualification-receipt.json"
+        path.write_text(json.dumps(self.qualification_receipt(**overrides)), encoding="utf-8")
+        return path
 
     def evidence(
         self,
@@ -99,13 +125,27 @@ class OutcomeMVPTests(unittest.TestCase):
                     "subject_integrity": True,
                     "duration_seconds": 0.25,
                     "usage": {field: 1 for field in TOKEN_FIELDS},
+                    "usage_reported": True,
+                    "tool_calls": 0,
+                    "tool_events_reported": True,
+                    "raw_capture_path": f"raw/{slot['launch_index']}/events.jsonl",
+                    "workspace_snapshot_path": f"raw/{slot['launch_index']}/workspace",
+                    "baseline_tree_sha256": "b" * 64,
+                    "final_tree_sha256": "c" * 64,
+                    "workspace_patch": {"baseline_tree_sha256": "b" * 64,
+                                        "final_tree_sha256": "c" * 64, "files": {}},
+                    "workspace_contract_hashes": {"before": {"CODER.md": "d" * 64, ".issue-contract.md": "e" * 64},
+                                                  "after": {"CODER.md": "d" * 64, ".issue-contract.md": "e" * 64}},
                 }
             )
+        snapshot = integrity_snapshot(DESIGN, self.design)
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "task_ids": list(reversed(TASKS)),
-            "oracle_controls_passed": oracle,
+            "qualification_receipt": self.qualification_receipt(status="PASS" if oracle else "FAIL"),
+            "integrity_hashes": {"start": snapshot, "end": json.loads(json.dumps(snapshot))},
             "observations": rows,
+            "errors": [],
         }
 
     def real_overrides(
@@ -119,7 +159,7 @@ class OutcomeMVPTests(unittest.TestCase):
                 values[label, task] = b[index]
         return values
 
-    def test_design_freezes_bindings_settings_and_live_authorization(self) -> None:
+    def test_design_freezes_bindings_environment_and_qualification(self) -> None:
         self.assertEqual(set(self.design["bindings"]), {"C1", "C2", "H", "A1", "A2", "B1", "B2"})
         self.assertEqual(
             self.design["bindings"]["C1"]["sha256"],
@@ -129,19 +169,17 @@ class OutcomeMVPTests(unittest.TestCase):
             self.design["bindings"]["H"]["sha256"],
             self.design["bindings"]["C1"]["sha256"],
         )
-        with self.assertRaisesRegex(RuntimeError, "positive dollar ceiling"):
-            require_live_authorization(self.design)
-        self.assertEqual(
-            require_live_authorization(self.design, 25.0, 300.0),
-            {"dollar_ceiling": 25.0, "max_wall_seconds": 300.0},
-        )
+        self.assertNotIn("live_authorization", self.design)
+        self.assertNotIn("implementation_paths", self.design)
+        self.assertEqual(self.design["environment"]["authentication_mode"], "chatgpt_oauth")
+        self.assertEqual(self.design["environment"]["max_wall_seconds"], 10800)
+        self.assertEqual(self.design["qualification"]["repeats_per_case"], 3)
 
     def test_task_packet_metadata_hashes_and_exact_ids_are_enforced(self) -> None:
         packet = self.design["task_pack"]
         packet_root = ROOT / packet["path"]
         self.assertEqual(tree_sha256(packet_root), packet["tree_sha256"])
         self.assertEqual(tuple(packet["task_ids"]), TASKS)
-        self.assertEqual(len(self.design["implementation_paths"]), 20)
         for repository, metadata in packet["repositories"].items():
             entries = json.loads((ROOT / metadata["tasks_path"]).read_text())
             self.assertEqual([item["id"] for item in entries], metadata["task_ids"])
@@ -152,48 +190,22 @@ class OutcomeMVPTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "eight unique task IDs"):
             build_schedule(self.design, tuple(f"wrong-{index}" for index in range(8)))
 
-    def test_manifest_byte_drift_is_rejected_without_mutating_frozen_packet(self) -> None:
+    def test_qualify_executes_120_cases_and_only_authoritative_mode_issues_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            required = set(self.design["implementation_paths"])
-            required.update(binding["path"] for binding in self.design["bindings"].values())
-            for relative in required:
-                destination = root / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(ROOT / relative, destination)
-            manifest = root / "evals/mvp/coder-outcomes-v2/ledger/tasks.json"
-            manifest.write_bytes(manifest.read_bytes() + b"\n")
-            copied_design = root / "experiments/coder-outcomes-v2-mvp.json"
-            value = json.loads(copied_design.read_text())
-            value["task_pack"]["tree_sha256"] = tree_sha256(
-                root / value["task_pack"]["path"]
-            )
-            copied_design.write_text(json.dumps(value), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "task packet hash drift for ledger"):
-                load_design(copied_design)
-
-    def test_all_checkers_emit_stable_timeout_results(self) -> None:
-        for repository, metadata in self.design["task_pack"]["repositories"].items():
-            with self.subTest(repository=repository):
-                path = ROOT / metadata["checker_path"]
-                spec = importlib.util.spec_from_file_location(f"mvp_checker_{repository}", path)
-                self.assertIsNotNone(spec and spec.loader)
-                checker = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(checker)  # type: ignore[union-attr]
-                fixture = ROOT / metadata["fixture_path"]
-                with mock.patch.object(
-                    checker.subprocess, "run",
-                    side_effect=subprocess.TimeoutExpired([sys.executable], 15),
-                ):
-                    self.assertEqual(checker.run("pass", fixture), "TIMEOUT")
-                output = io.StringIO()
-                with mock.patch.object(checker, "run", return_value="TIMEOUT"), redirect_stdout(output):
-                    code = checker.main(["check.py", metadata["task_ids"][0], str(fixture)])
-                self.assertEqual(code, 1)
-                self.assertEqual(
-                    json.loads(output.getvalue()),
-                    {"code": "SUBJECT_TIMEOUT", "ok": False, "task": metadata["task_ids"][0]},
-                )
+            provisional = qualify(DESIGN, root / "provisional")
+            self.assertTrue(provisional["passed"])
+            self.assertEqual(provisional["execution_count"], 120)
+            self.assertFalse((root / "provisional/qualification-receipt.json").exists())
+            outcomes = iter(expected for _task in TASKS for _case, _kind, expected in CASE_SPECS for _repeat in range(3))
+            checker = lambda *_args: {"valid": True, "resolved": next(outcomes), "integrity": True, "stdout": "", "stderr": ""}
+            authoritative = qualify(DESIGN, root / "authoritative", authoritative=True, checker=checker,
+                                    observed_environment=self.environment())
+            self.assertTrue(authoritative["passed"])
+            receipt = json.loads((root / "authoritative/qualification-receipt.json").read_text())
+            self.assertEqual((receipt["status"], len(receipt["results"])), ("PASS", 120))
+            with self.assertRaises(FileExistsError):
+                qualify(DESIGN, root / "authoritative", checker=checker)
 
     def test_checker_uses_captured_public_test_bytes(self) -> None:
         metadata = self.design["task_pack"]["repositories"]["ledger"]
@@ -331,76 +343,109 @@ def running_balances(opening, entries):
         self.assertEqual((report["run_status"], report["verdict"]), ("INVALID", "INVALID"))
         self.assertIn("integrity", report["reasons"][0])
 
-    def test_fake_live_run_gates_retries_and_preserves_manifest_bound_evidence(self) -> None:
+    def test_fake_single_call_preserves_reconstruction_and_missing_usage(self) -> None:
+        class Runner:
+            def run(self, fixture, artifact, timeout, redactor):
+                (fixture.repo / "subject-change.txt").write_text("changed", encoding="utf-8")
+                artifact.mkdir(exist_ok=True)
+                (artifact / "events.jsonl").write_text('{"type":"turn.completed"}\n', encoding="utf-8")
+                return RunResult("COMPLETED", 0, 0.01)
+        checker = lambda *_args: {"valid": True, "resolved": True, "integrity": False, "stdout": "", "stderr": ""}
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            class Runner:
-                def __init__(self, fault=None, at=0, drift=None):
-                    self.fault, self.at, self.drift, self.calls = fault, at, drift, []
-                def run(self, fixture, artifact, timeout, redactor):
-                    index = len(self.calls); self.calls.append((fixture.case.id, hashlib.sha256((fixture.repo / "CODER.md").read_bytes()).hexdigest(), artifact, timeout))
-                    if self.drift is not None and index == self.at: self.drift.write_bytes(b"drift\n")
-                    if self.fault == "exception" and index == self.at: raise RuntimeError("transport")
-                    plan = FakePlan(timed_out=self.fault == "timeout" and index == self.at,
-                                    interrupted=self.fault == "interrupted" and index == self.at,
-                                    malformed_event_line="{" if self.fault == "malformed" and index == self.at else None)
-                    return FakeAdapter({fixture.case.id: plan}).run(fixture, artifact, timeout, redactor)
-            def checking(*, fail_controls=False, integrity_at=None):
-                calls = []
-                def check(_path, task, workspace, _timeout):
-                    index = len(calls); calls.append(task); digest = hashlib.sha256((workspace / "CODER.md").read_bytes()).hexdigest()
-                    harmful = digest == self.design["bindings"]["H"]["sha256"]
-                    resolved = True if fail_controls else not harmful or TASKS.index(task) >= 6
-                    return {"valid": True, "resolved": resolved, "integrity": index != integrity_at, "stdout": "PASS" if resolved else "FAIL", "stderr": ""}
-                return check, calls
-            counter = 0
-            def execute(name, runner, check=None, design=DESIGN):
-                nonlocal counter
-                counter += 1; check = check or checking()[0]
-                return run_demonstration(design, root / f"{counter}-{name}", 1.0, 60.0, True, runner=runner, checker=check)
-            live_patcher = mock.patch("mdseval.outcome_mvp.CodexCLI", side_effect=AssertionError("live"))
-            network_patcher = mock.patch("mdseval.outcome_mvp.subprocess.run", side_effect=AssertionError("network"))
-            judge_patcher = mock.patch("mdseval.runner.codex_cli.build_judge_command", side_effect=AssertionError("judge"))
-            with live_patcher as live, network_patcher as network, judge_patcher as judge:
-                missing = Runner()
-                with self.assertRaisesRegex(RuntimeError, "LIVE_AUTHORIZATION_REQUIRED"):
-                    run_demonstration(DESIGN, root / "missing", 0, 10, True, runner=missing, checker=checking()[0])
-                false = Runner(); report = run_demonstration(DESIGN, root / "false", 1, 10, False, runner=false, checker=checking()[0])
-                self.assertEqual((len(missing.calls), len(false.calls), report["verdict"]), (0, 0, "INVALID"))
-                failed = Runner(); failed_check, _ = checking(fail_controls=True); failed_report = execute("failed", failed, failed_check)
-                self.assertEqual((len(failed.calls), failed_report["run_status"]), (24, "STOP/REDESIGN"))
-                success = Runner(); success_report = execute("success", success); success_raw = json.loads((root / f"{counter}-success/raw-evidence.json").read_text())
-                self.assertEqual((len(success.calls), success_report["run_status"]), (56, "COMPLETE"))
-                self.assertEqual([row["wave"] for row in success_raw["observations"][:24]], ["controls"] * 24)
-                self.assertEqual([row["wave"] for row in success_raw["observations"][24:]], ["real"] * 32)
-                for key in ("slot_id", "session_id", "workspace_id", "raw_artifact_path"):
-                    self.assertEqual(len({row[key] for row in success_raw["observations"]}), 56)
-                self.assertTrue(all((root / f"{counter}-success" / row["raw_artifact_path"] / "slot.json").is_file() for row in success_raw["observations"]))
-                first = success_raw["observations"][0]; binding = self.design["bindings"][first["label"]]
-                self.assertEqual(first["instruction_sha256"], hashlib.sha256((ROOT / binding["path"]).read_bytes()).hexdigest())
-                metadata = next(value for value in self.design["task_pack"]["repositories"].values() if first["task_id"] in value["task_ids"])
-                entry = next(item for item in json.loads((ROOT / metadata["tasks_path"]).read_text()) if item["id"] == first["task_id"])
-                task_bytes = (json.dumps({"task": entry, **{key: metadata[key] for key in ("tasks_sha256", "checker_sha256", "fixture_sha256")}}, sort_keys=True, separators=(",", ":")) + "\n").encode()
-                self.assertEqual(first["task_sha256"], hashlib.sha256(task_bytes).hexdigest())
-                malformed = Runner("malformed", 0); execute("malformed", malformed); self.assertEqual(len(malformed.calls), 59)
-                interrupted = Runner("interrupted", 24); execute("interrupted", interrupted); self.assertEqual(len(interrupted.calls), 60)
-                timeout = Runner("timeout", 24); execute("timeout", timeout); timeout_raw = json.loads((root / f"{counter}-timeout/raw-evidence.json").read_text())
-                self.assertEqual((len(timeout.calls), timeout_raw["observations"][24]["objective_resolved"]), (56, False))
-                self.assertFalse(any(row["block_attempt"] == 2 for row in timeout_raw["observations"]))
-                integrity = Runner(); integrity_check, _ = checking(integrity_at=0); integrity_report = execute("integrity", integrity, integrity_check)
-                self.assertEqual((len(integrity.calls), integrity_report["verdict"]), (1, "INVALID"))
-                exception = Runner("exception", 0); execute("exception", exception); exception_dir = root / f"{counter}-exception/raw/slot-01/runner"
-                self.assertEqual(len(exception.calls), 59); self.assertTrue(all((exception_dir / name).is_file() for name in ("events.jsonl", "stderr.txt", "final.txt")))
-                success_dir = root / "2-success/raw/slot-01/runner"; timeout_dir = root / "5-timeout/raw/slot-25/runner"
-                self.assertTrue(all((directory / name).is_file() for directory in (success_dir, timeout_dir) for name in ("events.jsonl", "stderr.txt", "final.txt")))
-                copied = root / "copied"; required = set(self.design["implementation_paths"]) | {value["path"] for value in self.design["bindings"].values()}
-                for relative in required:
-                    destination = copied / relative; destination.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(ROOT / relative, destination)
-                copied_design = copied / "experiments/coder-outcomes-v2-mvp.json"; drift_path = copied / self.design["bindings"]["C1"]["path"]
-                drift = Runner(drift=drift_path); drift_report = execute("drift", drift, design=copied_design)
-                self.assertEqual((len(drift.calls), drift_report["verdict"]), (1, "INVALID"))
-                self.assertTrue(drift_path.read_bytes() == b"drift\n")
-                live.assert_not_called(); network.assert_not_called(); judge.assert_not_called()
+            report = run_demonstration(DESIGN, root / "run", self.write_receipt(root), runner=Runner(), checker=checker,
+                                       observed_environment=self.environment())
+            evidence = json.loads((root / "run/raw-evidence.json").read_text())
+            row = evidence["observations"][0]
+            self.assertEqual(report["verdict"], "INVALID")
+            self.assertEqual((row["usage_reported"], row["usage"]["total_tokens"]), (False, None))
+            self.assertEqual((row["tool_events_reported"], row["tool_calls"]), (True, 0))
+            self.assertIn("subject-change.txt", row["workspace_patch"]["files"])
+            self.assertTrue((root / "run" / row["workspace_snapshot_path"]).is_dir())
+            self.assertTrue((root / "run" / row["raw_capture_path"]).is_file())
+            self.assertNotIn("git_integrity", row)
+
+    def test_run_rejects_missing_failed_stale_or_hash_mismatched_receipts_and_environment(self) -> None:
+        runner = mock.Mock()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaises(FileNotFoundError):
+                run_demonstration(DESIGN, root / "missing-run", root / "missing.json", runner=runner,
+                                  observed_environment=self.environment())
+            for name, override in (("failed", {"status": "FAIL"}), ("stale", {"verified_commit": "b" * 40}),
+                                   ("abbreviated", {"verified_commit": "a" * 12}),
+                                   ("malformed", {"verified_commit": "g" * 40}),
+                                   ("hash", {"evaluator_sha256": "b" * 64}), ("results", {"results_sha256": "b" * 64})):
+                directory = root / name
+                directory.mkdir()
+                with self.subTest(name=name), self.assertRaises(RuntimeError):
+                    run_demonstration(DESIGN, root / f"{name}-run", self.write_receipt(directory, **override), runner=runner,
+                                      observed_environment=self.environment())
+        for name, override in (("dirty", {"clean": False}), ("abbreviated_commit", {"verified_commit": "a" * 12}),
+                               ("malformed_commit", {"verified_commit": "g" * 40}),
+                               ("auth", {"authentication_mode": "api_key"}),
+                               ("preflight", {"isolated_runner_preflight_passed": False})):
+            with self.subTest(name=name), self.assertRaises(RuntimeError):
+                require_environment(DESIGN, self.design, self.environment(**override))
+        runner.run.assert_not_called()
+
+    def test_missing_efficiency_evidence_is_nullable_and_zero_tools_is_observed(self) -> None:
+        tokens = self.evidence()
+        tokens["observations"][0]["usage_reported"] = False  # type: ignore[index]
+        tokens["observations"][0]["usage"] = {field: None for field in TOKEN_FIELDS}  # type: ignore[index]
+        token_report = analyze(self.design, tokens)
+        self.assertEqual(token_report["verdict"], "INCONCLUSIVE")
+        self.assertEqual((token_report["efficiency"]["token_evidence_complete"], token_report["efficiency"]["total_tokens"]), (False, None))
+        tools = self.evidence()
+        tools["observations"][0]["tool_events_reported"] = False  # type: ignore[index]
+        tools["observations"][0]["tool_calls"] = None  # type: ignore[index]
+        tool_report = analyze(self.design, tools)
+        self.assertEqual((tool_report["verdict"], tool_report["efficiency"]["tool_evidence_complete"], tool_report["efficiency"]["tool_calls"]),
+                         ("INCONCLUSIVE", False, None))
+        observed_zero = analyze(self.design, self.evidence())
+        self.assertEqual((observed_zero["efficiency"]["tool_evidence_complete"], observed_zero["efficiency"]["tool_calls"]), (True, 0))
+
+    def test_hash_contract_reconstruction_and_obsolete_fields_fail_closed(self) -> None:
+        for field in ("evaluator_sha256", "design_sha256", "analysis_sha256", "wrapper_sha256", "task_tree_sha256"):
+            evidence = self.evidence()
+            evidence["integrity_hashes"]["end"][field] = "f" * 64  # type: ignore[index]
+            with self.subTest(field=field):
+                self.assertEqual(analyze(self.design, evidence)["verdict"], "INVALID")
+        for field in ("checker_hashes", "treatment_hashes"):
+            evidence = self.evidence()
+            evidence["integrity_hashes"]["end"][field] = {}  # type: ignore[index]
+            with self.subTest(field=field):
+                self.assertEqual(analyze(self.design, evidence)["verdict"], "INVALID")
+        cases = []
+        contract = self.evidence()
+        contract["observations"][0]["workspace_contract_hashes"]["after"]["CODER.md"] = "f" * 64  # type: ignore[index]
+        cases.append(contract)
+        for field in ("workspace_patch", "workspace_snapshot_path", "raw_capture_path", "baseline_tree_sha256", "final_tree_sha256"):
+            evidence = self.evidence()
+            evidence["observations"][0].pop(field)  # type: ignore[index]
+            cases.append(evidence)
+        patch_hash = self.evidence()
+        patch_hash["observations"][0]["workspace_patch"]["final_tree_sha256"] = "f" * 64  # type: ignore[index]
+        cases.append(patch_hash)
+        wave = self.evidence()
+        wave["wave_hashes"] = {"controls": {"before": "bad", "after": "bad"}}
+        cases.append(wave)
+        git = self.evidence()
+        git["observations"][0]["git_integrity"] = {}  # type: ignore[index]
+        cases.append(git)
+        for evidence in cases:
+            self.assertEqual(analyze(self.design, evidence)["verdict"], "INVALID")
+
+    def test_cli_help_is_truthful_and_removed_arguments_are_rejected(self) -> None:
+        output = io.StringIO()
+        with self.assertRaises(SystemExit), redirect_stdout(output):
+            main(["--help"])
+        help_text = output.getvalue()
+        self.assertTrue(all(command in help_text for command in ("qualify", "run", "replay")))
+        self.assertTrue(all(value not in help_text for value in ("dollar", "oracle-controls", "implementation_paths")))
+        for argument in ("--dollar-ceiling", "--max-wall-seconds", "--oracle-controls-passed", "--implementation-paths"):
+            with self.subTest(argument=argument), self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+                main(["run", "run-dir", "receipt.json", argument, "1"])
 
     def test_unbalanced_invalid_integrity_and_gate_failures_are_fail_closed(self) -> None:
         cases = []
@@ -416,14 +461,14 @@ def running_balances(opening, entries):
         cases.append((integrity, "integrity"))
         duplicate = self.evidence()
         duplicate["observations"][1]["workspace_id"] = duplicate["observations"][0]["workspace_id"]  # type: ignore[index]
-        cases.append((duplicate, "unique workspace_id"))
+        cases.append((duplicate, "raw and snapshot paths must be unique"))
         for evidence, reason in cases:
             with self.subTest(reason=reason):
                 report = analyze(self.design, evidence)
                 self.assertEqual((report["run_status"], report["verdict"]), ("INVALID", "INVALID"))
                 self.assertIn(reason, report["reasons"][0])
         oracle = analyze(self.design, self.evidence(oracle=False))
-        self.assertEqual((oracle["run_status"], oracle["verdict"]), ("STOP/REDESIGN", "INVALID"))
+        self.assertEqual((oracle["run_status"], oracle["verdict"]), ("INVALID", "INVALID"))
 
     def test_second_or_incomplete_retry_and_absolute_cap_are_invalid(self) -> None:
         retried = self.evidence(
@@ -447,7 +492,7 @@ def running_balances(opening, entries):
         over_cap["observations"].append(dict(over_cap["observations"][-1]))  # type: ignore[index,union-attr]
         capped = analyze(self.design, over_cap)
         self.assertEqual(capped["verdict"], "INVALID")
-        self.assertIn("cap exceeded", capped["reasons"][0])
+        self.assertIn("absolute", capped["reasons"][0])
 
     def test_reports_and_replay_are_deterministic_and_offline(self) -> None:
         evidence = self.evidence()

@@ -34,6 +34,59 @@ The fake demo creates a complete ignored directory under `runs/`, including
 raw per-run evidence and JSON/Markdown reports. It always reports `NOT_RUN` and
 makes no claim about `CODER.md` quality.
 
+## CODER outcomes V2 commands
+
+The V2 oracle qualification is deterministic and makes no model calls. A
+provisional qualification runs all eight tasks against pristine state, two
+correct implementations, and two semantic mutants three times each (120 checker
+executions), but does not issue a live-use receipt:
+
+```bash
+PYTHONPATH=src python3 -m mdseval.outcome_mvp \
+  --experiment experiments/coder-outcomes-v2-mvp.json \
+  qualify runs/coder-outcomes-v2-provisional
+```
+
+After separate commit authorization, run the authoritative form from that clean
+exact commit with an isolated Codex home logged in through ChatGPT. It performs
+local Git, isolated-runner, CLI-compatibility, and `codex login status` checks;
+it still makes no model call. A passing run creates the commit- and hash-bound
+receipt exactly once:
+
+```bash
+export MDSEVAL_CODEX_HOME="$HOME/.codex-mdseval"
+PYTHONPATH=src python3 -m mdseval.outcome_mvp \
+  --experiment experiments/coder-outcomes-v2-mvp.json \
+  qualify runs/coder-outcomes-v2-qualification --authoritative
+```
+
+Only after a separate explicit LIVE authorization may the receipt-gated command
+below be used. The manifest fixes ChatGPT OAuth, a 10,800-second aggregate wall
+ceiling, a 300-second per-call cap, and a 60-call absolute cap:
+
+```bash
+PYTHONPATH=src python3 -m mdseval.outcome_mvp \
+  --experiment experiments/coder-outcomes-v2-mvp.json \
+  run runs/coder-outcomes-v2-live \
+  runs/coder-outcomes-v2-qualification/qualification-receipt.json
+```
+
+Replay regenerates reports from preserved evidence without authentication,
+network access, or model calls:
+
+```bash
+PYTHONPATH=src python3 -m mdseval.outcome_mvp \
+  --experiment experiments/coder-outcomes-v2-mvp.json \
+  replay runs/coder-outcomes-v2-live/raw-evidence.json \
+  runs/coder-outcomes-v2-replay
+```
+
+There is no dollar-ceiling argument, oracle-passed assertion, or runtime
+implementation-path allowlist. Each subject observation preserves raw capture,
+the resulting workspace, protected-contract hashes, baseline/final tree hashes,
+and an explicit reconstructable patch. Missing usage or tool events remain
+nullable efficiency evidence and never alter the objective winner rule.
+
 ## Add and compare candidates
 
 Keep `candidates/coder/karpathy-v1.md` unchanged. Add each manual candidate as an immutable, versioned `candidates/coder/<candidate-id>.md` file and add only its path to the flat `variants` mapping in `experiments/coder-v1.json`. `validate` lists registered candidates in sorted ID/path/SHA-256 order. Commit the candidate and mapping together; live work requires that clean, exact evaluator/experiment commit.
