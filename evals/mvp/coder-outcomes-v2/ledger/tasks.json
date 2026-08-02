@@ -1,0 +1,14 @@
+[
+  {
+    "id": "deduplicate-running-balances",
+    "category": "bug_fix",
+    "prompt": "Change the observable behavior of ledger.running_balances(opening, entries) for valid ledger entries. It must return one two-decimal balance string per input entry, in input order. A credit adds its non-negative decimal amount and a debit subtracts it. An entry with a non-empty string id is applied only on that id's first occurrence; every later occurrence contributes no amount but still emits the current balance. Entries without such an id retain their existing behavior. IDs compare exactly, input objects remain unchanged, and existing supported behavior continues.",
+    "checker_invocation": ["python3", "check.py", "deduplicate-running-balances", "{workspace}"]
+  },
+  {
+    "id": "add-period-summary",
+    "category": "feature",
+    "prompt": "Expose ledger.period_summary(opening, entries, start, end). For valid YYYY-MM-DD start/end strings and entries containing date, kind (credit or debit), and a non-negative decimal amount, return exactly {opening, credits, debits, closing}, with each value a two-decimal string. opening is the supplied opening balance adjusted by every entry before start; credits and debits total entries in the inclusive start-to-end period; closing is the computed opening plus period credits minus period debits. Entries after end have no effect, input order is irrelevant, and inputs remain unchanged. Raise ValueError when start is after end.",
+    "checker_invocation": ["python3", "check.py", "add-period-summary", "{workspace}"]
+  }
+]

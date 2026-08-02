@@ -1,0 +1,14 @@
+[
+  {
+    "id": "add-execution-waves",
+    "category": "feature",
+    "prompt": "Expose workflow.execution_waves(steps). steps is a finite iterable of mappings with a unique non-empty string id and a needs iterable of prerequisite IDs. Return a list of waves, where each wave is a list of step IDs that can run together after all earlier waves complete. Preserve original step order within every wave, place every step exactly once, and return [] for no steps. Raise ValueError when a prerequisite ID is absent or when dependencies contain a cycle. Support one-shot iterators and do not mutate input records.",
+    "checker_invocation": ["python3", "check.py", "add-execution-waves", "{workspace}"]
+  },
+  {
+    "id": "refactor-context-merge",
+    "category": "refactor",
+    "prompt": "Preserve workflow.merge_context(base, overlay) top-level overlay behavior while extending it to nested mappings. When both sides at a key are mappings, merge them recursively; otherwise the overlay value replaces the base value. The returned structure must be fully independent of mutable dictionaries and lists in both inputs, including values contributed by only one side. Neither input may be mutated. Preserve existing supported scalar behavior.",
+    "checker_invocation": ["python3", "check.py", "refactor-context-merge", "{workspace}"]
+  }
+]

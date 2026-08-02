@@ -1,0 +1,14 @@
+[
+  {
+    "id": "integrate-warehouse-availability",
+    "category": "integration",
+    "prompt": "Expose catalog.availability_report(products, warehouse_rows). Each argument is a finite iterable of mappings. Valid products have sku and name and are unique after SKU matching; valid warehouse rows have sku and a non-negative integer quantity supplied as an integer or decimal digit string. Return a list in product order with exactly sku, name, and available for every product, preserving the product's original sku and name. available is the integer sum of all matching warehouse quantities, or zero when none match. SKU matching is case-insensitive and ignores spaces and hyphens; warehouse rows for unknown SKUs are ignored. Do not mutate input records.",
+    "checker_invocation": ["python3", "check.py", "integrate-warehouse-availability", "{workspace}"]
+  },
+  {
+    "id": "refactor-lazy-pagination",
+    "category": "refactor",
+    "prompt": "Preserve the established catalog.pages(items, size) page contents, order, final partial page, and call-time ValueError for non-positive size, while making its returned value an iterator that accepts any finite iterable, including one-shot iterators. Creating the result must not consume an item, and requesting a page must consume no more items than that page needs. Each yielded page remains a list, and the input is not mutated.",
+    "checker_invocation": ["python3", "check.py", "refactor-lazy-pagination", "{workspace}"]
+  }
+]

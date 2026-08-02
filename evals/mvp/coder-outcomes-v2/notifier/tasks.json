@@ -1,0 +1,14 @@
+[
+  {
+    "id": "compare-scheduled-instants",
+    "category": "bug_fix",
+    "prompt": "Change the observable behavior of notifier.due_notification_ids(records, now) for valid timezone-aware ISO 8601 timestamps. Return, in record order, the id of every record whose scheduled_at instant is earlier than or equal to now. Equivalent instants written with different UTC offsets or Z must compare as equal, and local clock text must not override chronological order. Do not mutate the records, and preserve existing supported behavior.",
+    "checker_invocation": ["python3", "check.py", "compare-scheduled-instants", "{workspace}"]
+  },
+  {
+    "id": "integrate-event-deliveries",
+    "category": "integration",
+    "prompt": "Expose notifier.build_deliveries(event, subscriptions, templates). event contains type and a data mapping; subscriptions is a finite iterable whose records contain event, channel, destination, and enabled; templates maps '<event>:<channel>' to format strings using event.data fields. Return a list in subscription order, with exactly channel, destination, and body, for enabled subscriptions matching the event type and having a template. Render body with the matching template and event data. Emit only the first matching occurrence of each exact (channel, destination) pair; the same destination on different channels remains distinct. Do not mutate inputs and support one-shot subscription iterators.",
+    "checker_invocation": ["python3", "check.py", "integrate-event-deliveries", "{workspace}"]
+  }
+]

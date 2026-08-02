@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "experiment_id": "coder-outcomes-v2-mvp",
+  "bindings": {
+    "C1": {"wave": "controls", "treatment": "champion", "path": "targets/coder/champion.md", "sha256": "e72791366f3a3c20780a3ece63b0b8c1a0b7862c7c5ffd1d8ea8d3dd6eed92b0"},
+    "C2": {"wave": "controls", "treatment": "champion", "path": "targets/coder/champion.md", "sha256": "e72791366f3a3c20780a3ece63b0b8c1a0b7862c7c5ffd1d8ea8d3dd6eed92b0"},
+    "H": {"wave": "controls", "treatment": "no-implementation", "path": "controls/coder/no-implementation-v2.md", "sha256": "aaf88530c73385ad6d38a45dae67be4872e650afc27d620a8d640430e2ec5606"},
+    "A1": {"wave": "real", "treatment": "champion", "path": "targets/coder/champion.md", "sha256": "e72791366f3a3c20780a3ece63b0b8c1a0b7862c7c5ffd1d8ea8d3dd6eed92b0"},
+    "A2": {"wave": "real", "treatment": "champion", "path": "targets/coder/champion.md", "sha256": "e72791366f3a3c20780a3ece63b0b8c1a0b7862c7c5ffd1d8ea8d3dd6eed92b0"},
+    "B1": {"wave": "real", "treatment": "karpathy-v1", "path": "candidates/coder/karpathy-v1.md", "sha256": "3ec3259fd161e1100d6089d656af8739a3fc0de51aaa51dd7b25b687790e9db7"},
+    "B2": {"wave": "real", "treatment": "karpathy-v1", "path": "candidates/coder/karpathy-v1.md", "sha256": "3ec3259fd161e1100d6089d656af8739a3fc0de51aaa51dd7b25b687790e9db7"}
+  },
+  "runner": {
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "timeout_seconds": 300,
+    "qualitative_judge_calls": 0
+  },
+  "task_pack": {
+    "task_count": 8,
+    "repository_count": 4,
+    "tasks_per_repository": 2,
+    "category_counts": {"bug_fix": 2, "feature": 2, "integration": 2, "refactor": 2},
+    "path": "evals/mvp/coder-outcomes-v2",
+    "tree_sha256": "a7ef67b508979db71beb2b64bb2b28e083cc6a67db38370b8b4812063dbb8e65",
+    "task_ids": [
+      "add-execution-waves",
+      "add-period-summary",
+      "compare-scheduled-instants",
+      "deduplicate-running-balances",
+      "integrate-event-deliveries",
+      "integrate-warehouse-availability",
+      "refactor-context-merge",
+      "refactor-lazy-pagination"
+    ],
+    "categories": {
+      "add-execution-waves": "feature",
+      "add-period-summary": "feature",
+      "compare-scheduled-instants": "bug_fix",
+      "deduplicate-running-balances": "bug_fix",
+      "integrate-event-deliveries": "integration",
+      "integrate-warehouse-availability": "integration",
+      "refactor-context-merge": "refactor",
+      "refactor-lazy-pagination": "refactor"
+    },
+    "task_hashes": {
+      "add-execution-waves": "9c8b54c6a471580872846a3323d70c9513276e7d0ef712c7d9b00c7fb4e837d7",
+      "add-period-summary": "d4a291209849bffe25ad3a865b80348961873d7f23f0c7aa6eb7be2ed05cd9c4",
+      "compare-scheduled-instants": "bc0c24b219bf353326833082d444902656337bccbece5dfaf690ced57823a653",
+      "deduplicate-running-balances": "bec0e286014c407ec3712a08a3bcb49a88072385f24bf57564c41ab5423f2a3c",
+      "integrate-event-deliveries": "4ae20b4928dc8e83ad0970e61eb3028cd99f490c66461a8db57ee702279eb43b",
+      "integrate-warehouse-availability": "d78414e3aa7cba98c1c8b94eec5b4eda7db669699579deb02d3d7f2c0a4388e9",
+      "refactor-context-merge": "9b485b21743062803b3622c7fcfef23ab9d38025483713946e22b8652b1a9f70",
+      "refactor-lazy-pagination": "d77a1c1a5929433e1b7ae44a00d2d22410e649dd20292feb09917102a6958464"
+    },
+    "repositories": {
+      "catalog": {
+        "task_ids": ["integrate-warehouse-availability", "refactor-lazy-pagination"],
+        "tasks_path": "evals/mvp/coder-outcomes-v2/catalog/tasks.json",
+        "tasks_sha256": "47bf5cd0a534cc914fd4844df95aebacff7a1deb6bdb58e8c1823a95b5dc2678",
+        "checker_path": "evals/mvp/coder-outcomes-v2/catalog/check.py",
+        "checker_sha256": "1e85a1696db5739d2686e62f38c1d9402117c97d6d23695fba14afe01165388e",
+        "fixture_path": "evals/mvp/coder-outcomes-v2/catalog/fixture",
+        "fixture_sha256": "d2ee8bdd990ed02e43c94eb68e33a56aa3da73a8462b711c8e2bc36f7d344a3e",
+        "subject_file": "catalog.py",
+        "public_test_sha256": "709184b76da001751a9f15b4b9ba3426a47656c41540d285e645df6b716a2f2b"
+      },
+      "ledger": {
+        "task_ids": ["deduplicate-running-balances", "add-period-summary"],
+        "tasks_path": "evals/mvp/coder-outcomes-v2/ledger/tasks.json",
+        "tasks_sha256": "6a36c58371bf13abc37f990c3f85ee7b2d26e8a9ec0704ac899f6977fdaeb0fa",
+        "checker_path": "evals/mvp/coder-outcomes-v2/ledger/check.py",
+        "checker_sha256": "4669ef3ac7516c5364acde376878b28b59d999d322a708a17a6462c478e8901c",
+        "fixture_path": "evals/mvp/coder-outcomes-v2/ledger/fixture",
+        "fixture_sha256": "dc48ac1f2c1e295d4ea138470d9602d3459f9fd34563bd0f8c44bdb462b33b1f",
+        "subject_file": "ledger.py",
+        "public_test_sha256": "b6a823c24c590ce74d3ae4edd603de46d4cc9def0506effee47084ba3be8db39"
+      },
+      "notifier": {
+        "task_ids": ["compare-scheduled-instants", "integrate-event-deliveries"],
+        "tasks_path": "evals/mvp/coder-outcomes-v2/notifier/tasks.json",
+        "tasks_sha256": "5cd4dae640ba5023d4433340db923bc25c0098c5c5169814b0b5c291fd67d6cd",
+        "checker_path": "evals/mvp/coder-outcomes-v2/notifier/check.py",
+        "checker_sha256": "b369df05119ae79f47eae53a253578c7a3d7437c7364a446b190e318c156224d",
+        "fixture_path": "evals/mvp/coder-outcomes-v2/notifier/fixture",
+        "fixture_sha256": "b4fdeb7d117ad33b8a03d898f5052ea440c7105805478e40a39555672cabd616",
+        "subject_file": "notifier.py",
+        "public_test_sha256": "f5936a682b0ac4b0b476b788da42698d5cae8ecec450a6e1a45f72193960f0bf"
+      },
+      "workflow": {
+        "task_ids": ["add-execution-waves", "refactor-context-merge"],
+        "tasks_path": "evals/mvp/coder-outcomes-v2/workflow/tasks.json",
+        "tasks_sha256": "00c68aa9e44a5af571fce8daa954d187a282dc3950f7fefda758cb4e52bf7ee1",
+        "checker_path": "evals/mvp/coder-outcomes-v2/workflow/check.py",
+        "checker_sha256": "9008933e97018c12944eb5ff75077e0bd363bcd0834c26d5b0e1c31b44ce20f6",
+        "fixture_path": "evals/mvp/coder-outcomes-v2/workflow/fixture",
+        "fixture_sha256": "5d65bb2766bc456d441ce93299224f28a135c2edf3c8836cc8a8c1464bb359b1",
+        "subject_file": "workflow.py",
+        "public_test_sha256": "cc85c2c19a777f710e7a0b56ae3aea14baab15d2d4a40017ff3847856a74656b"
+      }
+    }
+  },
+  "analysis": {
+    "delta_mvp": {"numerator": 1, "denominator": 10},
+    "alpha": {"numerator": 1, "denominator": 20},
+    "task_blocks": 8,
+    "sign_flips": 256,
+    "outcomes": ["A_BETTER", "B_BETTER", "INCONCLUSIVE", "INVALID"]
+  },
+  "randomization": {
+    "seed": 2026080201,
+    "derivation": "sha256(seed:wave:task_id:block_attempt:label), ascending digest"
+  },
+  "calls": {
+    "controls": 24,
+    "real": 32,
+    "base_cap": 56,
+    "absolute_cap": 60,
+    "max_whole_block_retries": 1,
+    "max_retry_calls": 4
+  },
+  "invalidation": {
+    "valid_subject_failure": "score_zero_no_retry",
+    "infrastructure_invalid": "supersede_and_retry_complete_block_once",
+    "integrity_violation": "invalidate_demonstration",
+    "incomplete_or_second_invalid_block": "invalidate_demonstration"
+  },
+  "live_authorization": {
+    "positive_dollar_ceiling_required": true,
+    "dollar_ceiling": null
+  },
+  "implementation_paths": [
+    "controls/coder/no-implementation-v2.md",
+    "experiments/coder-outcomes-v2-mvp.json",
+    "src/mdseval/outcome_mvp.py",
+    "tests/test_outcome_mvp.py",
+    "evals/mvp/coder-outcomes-v2/ledger/tasks.json",
+    "evals/mvp/coder-outcomes-v2/ledger/check.py",
+    "evals/mvp/coder-outcomes-v2/ledger/fixture/ledger.py",
+    "evals/mvp/coder-outcomes-v2/ledger/fixture/test_public.py",
+    "evals/mvp/coder-outcomes-v2/catalog/tasks.json",
+    "evals/mvp/coder-outcomes-v2/catalog/check.py",
+    "evals/mvp/coder-outcomes-v2/catalog/fixture/catalog.py",
+    "evals/mvp/coder-outcomes-v2/catalog/fixture/test_public.py",
+    "evals/mvp/coder-outcomes-v2/notifier/tasks.json",
+    "evals/mvp/coder-outcomes-v2/notifier/check.py",
+    "evals/mvp/coder-outcomes-v2/notifier/fixture/notifier.py",
+    "evals/mvp/coder-outcomes-v2/notifier/fixture/test_public.py",
+    "evals/mvp/coder-outcomes-v2/workflow/tasks.json",
+    "evals/mvp/coder-outcomes-v2/workflow/check.py",
+    "evals/mvp/coder-outcomes-v2/workflow/fixture/workflow.py",
+    "evals/mvp/coder-outcomes-v2/workflow/fixture/test_public.py"
+  ]
+}
