@@ -27,18 +27,36 @@ class ConfigTests(unittest.TestCase):
         return path
 
     def test_candidate_registry_accepts_sorted_versions_and_schema_is_open(self) -> None:
-        self._candidate_file("zeta-v2", b"zeta\n")
-        self._candidate_file("alpha-v1", b"alpha\n")
-        config = load_experiment(self._candidate_experiment({"zeta-v2": "candidates/coder/zeta-v2.md", "alpha-v1": "candidates/coder/alpha-v1.md"}))
-        self.assertEqual(config.candidate_ids, ("alpha-v1", "karpathy-v1", "zeta-v2"))
+        baseline = load_experiment(ROOT / "experiments/coder-v1.json")
+        occupied = set(baseline.candidate_ids) | {
+            path.stem for path in (ROOT / "candidates/coder").iterdir()
+        }
+        probe_ids: list[str] = []
+        sequence = 1
+        while len(probe_ids) < 2:
+            candidate_id = f"registry-probe{sequence}-v1"
+            if candidate_id not in occupied:
+                probe_ids.append(candidate_id)
+                occupied.add(candidate_id)
+            sequence += 1
+        updates = {}
+        for index, candidate_id in enumerate(probe_ids, start=1):
+            self._candidate_file(candidate_id, f"probe {index}\n".encode())
+            updates[candidate_id] = f"candidates/coder/{candidate_id}.md"
+        config = load_experiment(self._candidate_experiment(updates))
+        expected_ids = tuple(sorted(set(baseline.candidate_ids) | set(probe_ids)))
+        self.assertEqual(config.candidate_ids, expected_ids)
         variants = json.loads((ROOT / "schemas/experiment.schema.json").read_text())["properties"]["variants"]
         self.assertEqual((variants["required"], variants["minProperties"]), (["champion", "deliberately-bad"], 3))
         self.assertIn("^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$", variants["patternProperties"])
 
     def test_reserved_roles_and_at_least_one_candidate_are_required(self) -> None:
-        for variant_id in ("champion", "deliberately-bad", "karpathy-v1"):
+        baseline = load_experiment(ROOT / "experiments/coder-v1.json")
+        for variant_id in ("champion", "deliberately-bad"):
             with self.subTest(variant_id=variant_id), self.assertRaises(ConfigError):
                 load_experiment(self._candidate_experiment(remove=(variant_id,)))
+        with self.assertRaises(ConfigError):
+            load_experiment(self._candidate_experiment(remove=baseline.candidate_ids))
 
     def test_candidate_ids_and_lexical_paths_are_exact(self) -> None:
         cases = {"champion": "candidates/coder/champion.md", "deliberately-bad": "candidates/coder/deliberately-bad.md", "Upper-v1": "candidates/coder/Upper-v1.md", "plain": "candidates/coder/plain.md", "zero-v0": "candidates/coder/zero-v0.md", "leading-v01": "candidates/coder/leading-v01.md", "nested-v1": "candidates/coder/nested/nested-v1.md", "outside-v1": "../outside-v1.md", "mismatch-v1": "candidates/coder/other-v1.md", "wrong-role-v1": "candidates/other/wrong-role-v1.md", "not-md-v1": "candidates/coder/not-md-v1.txt", "missing-v1": "candidates/coder/missing-v1.md"}

@@ -1,0 +1,25 @@
+{
+  "repository": "delivery",
+  "tasks": [
+    {
+      "id": "delivery-dispatch-manifest",
+      "type": "integration",
+      "contract": "dispatch_manifest(deliveries, rates) returns a JSON-compatible list ordered by delivery_id. Each result has exactly delivery_id, zone, weight, rate, and cost; rate is selected by zone and cost is weight multiplied by rate. Inputs remain unchanged, and a missing zone rate raises KeyError. Existing delivery and supported cost behavior remains supported.",
+      "check": {
+        "entrypoint": ["python3", "check.py", "--task", "delivery-dispatch-manifest", "--repo", "{repo}"],
+        "acceptance": "dispatch data and rates are joined into a deterministic manifest",
+        "regressions": ["delivery data", "supported shipping cost"]
+      }
+    },
+    {
+      "id": "delivery-retire-legacy-quote",
+      "type": "refactor",
+      "contract": "The deprecated public symbol legacy_quote is absent. The supported public function shipping_cost(delivery, rates) retains its observable result and missing-rate behavior. Existing delivery and rate data remains supported.",
+      "check": {
+        "entrypoint": ["python3", "check.py", "--task", "delivery-retire-legacy-quote", "--repo", "{repo}"],
+        "acceptance": "the deprecated public symbol is absent",
+        "regressions": ["supported shipping cost", "missing-rate error"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "repository": "stockroom",
+  "tasks": [
+    {
+      "id": "stockroom-failed-reservation-atomic",
+      "type": "bug",
+      "contract": "Stockroom.reserve(sku, quantity) returns false when the requested quantity is unavailable, and that failed reservation leaves every stock quantity unchanged. Existing successful-reservation and validation behavior remains supported.",
+      "check": {
+        "entrypoint": ["python3", "check.py", "--task", "stockroom-failed-reservation-atomic", "--repo", "{repo}"],
+        "acceptance": "failed reservations are atomic",
+        "regressions": ["successful reservation", "quantity validation"]
+      }
+    },
+    {
+      "id": "stockroom-low-stock-query",
+      "type": "feature",
+      "contract": "Stockroom.low_stock(threshold) accepts a non-negative threshold and returns (sku, quantity) pairs for all quantities at or below the threshold, ordered by sku, without changing stock. A negative threshold raises ValueError. Existing stock lookup and successful-reservation behavior remains supported.",
+      "check": {
+        "entrypoint": ["python3", "check.py", "--task", "stockroom-low-stock-query", "--repo", "{repo}"],
+        "acceptance": "low-stock results include the boundary in deterministic order",
+        "regressions": ["stock lookup", "successful reservation"]
+      }
+    }
+  ]
+}

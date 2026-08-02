@@ -36,6 +36,9 @@ class CLITests(unittest.TestCase):
         execute.assert_not_called()
 
     def test_validate(self) -> None:
+        from tests.helpers import experiment
+
+        config = experiment()
         output = io.StringIO()
         with redirect_stdout(output):
             code = main(
@@ -47,7 +50,16 @@ class CLITests(unittest.TestCase):
             )
         self.assertEqual(code, 0)
         self.assertIn("10 cases", output.getvalue())
-        self.assertIn("CANDIDATES:\n- karpathy-v1  candidates/coder/karpathy-v1.md  sha256=", output.getvalue())
+        self.assertEqual(
+            output.getvalue().splitlines()[1:],
+            [
+                "CANDIDATES:",
+                *[
+                    f"- {candidate_id}  {config.variants[candidate_id].relative_to(config.root).as_posix()}  sha256={sha256_file(config.variants[candidate_id])}"
+                    for candidate_id in config.candidate_ids
+                ],
+            ],
+        )
 
     def test_doctor_unavailable_makes_no_live_call(self) -> None:
         result = DoctorResult(
