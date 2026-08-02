@@ -27,16 +27,29 @@ class FixtureTests(unittest.TestCase):
         config = experiment()
         case = config.cases["ambiguity-repo-resolves"]
         variant = config.variants["champion"]
-        cache = next(case.fixture_dir.rglob("*.pyc"))
-        cache_bytes = cache.read_bytes()
+        source = case.fixture_dir / "src/duration.py"
+        source_bytes = source.read_bytes()
+        cache_dir = source.parent / "__pycache__"
+        cache_dir_created = not cache_dir.exists()
+        cache_dir.mkdir(exist_ok=True)
+        if cache_dir_created:
+            self.addCleanup(cache_dir.rmdir)
+        cache = cache_dir / "mdseval-controlled-test.pyc"
+        self.assertFalse(cache.exists())
+        self.addCleanup(cache.unlink, missing_ok=True)
+        cache_bytes = b"controlled ignored cache input\n"
+        cache.write_bytes(cache_bytes)
         prepared = prepare_fixture(case, variant, sha256_file(variant))
         try:
             _verify_prepared_inputs(case, variant, prepared.repo)
             self.assertTrue((prepared.repo / "CODER.md").is_file())
             self.assertTrue((prepared.repo / ".issue-contract.md").is_file())
-            self.assertTrue((prepared.repo / "src/duration.py").is_file())
+            self.assertEqual(
+                (prepared.repo / "src/duration.py").read_bytes(), source_bytes
+            )
             self.assertFalse(any(prepared.repo.rglob("*.pyc")))
             self.assertFalse(any(path.name == "__pycache__" for path in prepared.repo.rglob("*")))
+            self.assertEqual(source.read_bytes(), source_bytes)
             self.assertEqual(cache.read_bytes(), cache_bytes)
             for forbidden in ("case.json", "checks", "rubric.md", "AGENTS.md", ".codex"):
                 self.assertFalse((prepared.repo / forbidden).exists())

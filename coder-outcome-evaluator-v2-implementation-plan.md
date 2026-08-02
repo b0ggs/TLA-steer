@@ -1,215 +1,403 @@
-# CODER Outcome Evaluator V2 — Active Feasibility Program
+# CODER Outcome Evaluator V2 — Demonstrable MVP Plan
 
-## Authority and claim boundary
+## Authority and current state
 
-This file is the sole active V2 authority. It defines a bounded CODER feasibility
-pilot, but does **not** itself authorize implementation, live calls, a commit,
-push, merge, promotion, or champion replacement. Each such action requires fresh
-user authorization. V1 specifications and reports remain historical and V1-only.
+This file is the sole active V2 implementation authority. It replaces the
+feasibility-only version preserved at commit `74fe907d9a2aaf69b8395b5e1759df3aeab693e0`.
+The earlier 907-line design remains preserved at commit
+`a4fe6e5dffa7e037fd1d92338a7ce357df902863`; it is reference material, not a
+second plan.
 
-The prior 907-line design remains recoverable from snapshot
-`a4fe6e5dffa7e037fd1d92338a7ce357df902863`; its file SHA-256 is
-`71f2ad3bbdadaa43f70903859974a8993be21730eadd5ff426c1e8e2ca6cba8b`.
-It is evidence and deferred-design input, not competing active authority.
+The research rationale in
+`which-coder-md-is-better-literature-backed-evaluation.md` (source SHA-256
+`f94dabfa83eb7e6af92648fc5aed8bd7ca18f19ac9df0e08c684d7c29a800d96`) informs
+this plan but does not independently authorize work.
 
-The goal is to compare complete `CODER.md` files by objective outcomes on tasks
-for the CODER role. A whole-file comparison supports only “A performed better
-than B under this frozen pilot.” A claim that “Karpathy style caused the result”
-requires a separately predeclared matched ablation whose only intended treatment
-difference is the frozen style intervention.
+The completed feasibility run is preserved at
+`runs/v2-pilot-20260802T020828Z-aeddd926`. It made 16 subject calls, preserved
+raw evidence, recorded no invalid or infrastructure observations, and resolved
+all four tasks in both arms. It established that the runner works and that the
+four tasks have a ceiling effect. It did not establish a winner or equivalence.
+
+This plan does not itself authorize implementation, commits, pushes, merges, or
+live calls. Those require explicit user approval. Root orchestrates and verifies
+scope but does not implement production or test code.
+
+## Goal
+
+Deliver a demonstrable evaluator MVP, not another infrastructure MVP:
+
+> With model, harness, tools, runtime limits, and task pack fixed, the evaluator
+> must detect a prospectively defined, generically harmful `CODER.md`, must not
+> invent a winner between byte-identical A/A arms, and must issue an evidence-
+> backed result for champion versus `karpathy-v1` on objective coding outcomes.
+
+The final demonstration is one command that produces preserved raw evidence,
+machine-readable results, and a compact human-readable report containing control
+gates, per-task outcomes, estimated one-attempt success, exact decision evidence,
+tokens, duration, and the exact claim boundary.
+
+The MVP is successful only if the control demonstration works. The real A/B
+result may be `A_BETTER`, `B_BETTER`, or `INCONCLUSIVE`. A valid evaluator cannot
+promise that two competent files differ or force a winner when evidence is weak.
+
+## Claim boundary
+
+The experimental treatment is the exact hash-locked complete Markdown file. The
+primary outcome is full task resolution, not resemblance to Karpathy's style.
+The strongest permitted real-candidate claim is:
+
+> On this frozen eight-task synthetic Python repository pack and configuration,
+> file A or B produced higher estimated task-macro one-attempt resolution and met
+> the predeclared rule.
+
+This MVP cannot establish a universally best coder file, a Karpathy-style causal
+effect, cross-language generality, or deployment-population performance. Those
+require separately approved representative sampling and confirmation work.
 
 ## Non-negotiable invariants
 
-- Preserve raw run evidence and record hashes for every instruction and task.
-- Never mutate a target, candidate, contract, fixture, or check during a run.
-- Author tasks independently of candidate contents and observed candidate wins.
-- Blind variant identity wherever optional qualitative judging later occurs.
-- Mechanical outcome or integrity failures cannot be overridden by an LLM judge.
-- Use the Python standard library only; unit tests and CI make no live calls.
-- Separate subject failure from infrastructure failure and freeze deterministic
-  retry/invalidation rules before any subject call.
+- Preserve raw run evidence and immutable hashes for instructions, tasks,
+  fixtures, checks, configuration, and analysis code.
+- Never modify a candidate, control, task, checker, decision rule, retry rule, or
+  resource limit after the first subject call.
+- Never expose candidate identity to a qualitative judge; this MVP makes zero
+  qualitative-judge calls.
+- Mechanical failures cannot be overridden by any model or narrative score.
+- Separate subject failure from infrastructure invalidity using frozen symmetric
+  retry and pair-invalidation rules.
+- Unit tests and CI make zero live calls and use only the Python standard library.
+- Task authors and verifier reviewers may not inspect candidate contents, prior
+  candidate trajectories, or candidate identities.
+- Findings outside this plan are recorded as deferred; they do not create work.
 
-## Current phase and permitted conclusion
+## Demonstration design
 
-This phase tests only whether objective tasks and thin scoring are feasible. It is
-not a benchmark, representative sample, validation set, lockbox, promotion run,
-or proof of a generally best MD. Its only outcomes are `PILOT` and
-`INCONCLUSIVE`; `PROMOTE` and qualitative promotion do not exist in this phase.
+### Frozen treatments
 
-The target workload, estimand, sampling frame, task weights, practical effect
-threshold, and powered confirmatory design are unresolved gates. The pilot must
-not silently answer them.
+Freeze hashes and label bindings before task authoring begins:
 
-## Feasibility content gate
+1. `C1` and `C2`: control-wave blinded labels containing byte-identical champion
+   bytes. The analysis must not special-case their equal hashes.
+2. `H`: a short generic harmful control, written and frozen before task content,
+   that instructs the agent not to modify code or implement the request. It may
+   not mention task types, repositories, filenames, tests, or expected answers.
+3. `A1` and `A2`: real-comparison blinded labels containing byte-identical fresh
+   champion bytes. They are new calls, not reused control observations.
+4. `B1` and `B2`: real-comparison blinded labels containing byte-identical frozen
+   `karpathy-v1` bytes.
 
-Author exactly four mechanics-only tasks in exactly two coherent synthetic Python
-repositories: one bug fix, one feature, one integration change, and one refactor.
-They are deliberately not representative evidence.
+Every label is executed in an independent fresh session and workspace. The runner
+may not deduplicate equal bytes, responses, or task states.
 
-Every task must have:
+The existing `controls/coder/deliberately-bad.md` is ineligible because it names
+specific legacy tasks and implementation shapes. No task-specific control may be
+reused.
 
-- a visible acceptance outcome;
-- a hidden check that fails on the pristine fixture and passes on a correct patch;
-- hidden regression checks that pass before and after the patch;
-- a deterministic reference solution used only for authoring validation; and
-- a contract that states observable outcomes, never preferred process, style,
-  target files, root cause, reproduction ceremony, or solution shape.
+### Frozen task pack
 
-Checks must distinguish a correct solution from at least one plausible wrong
-solution. If this cannot be shown without prescribing behavior, stop and redesign.
+Author exactly eight candidate-independent, moderate repository tasks across four
+small synthetic Python-standard-library repositories: two bug fixes, two
+features, two integration changes, and two compatibility-preserving refactors.
+Each repository contributes at most two tasks. Do not reuse the four ceiling
+pilot tasks as scored evidence.
 
-## Thin scoring contract
+This is a balanced MVP pack, not a claim of deployment representativeness. The
+task author and verifier reviewer are spawned with `fork_turns="none"`, receive
+only the workload/checker packet and an exact allowed-path list, are forbidden
+from candidate, control, and prior-trajectory paths, and must attest that they did
+not access them.
 
-Keep four fields separate:
+Every task must have, before any live call:
 
-1. `observation_valid`: runner and evidence channel operated correctly.
-2. `objective_resolved`: required acceptance and regression checks passed.
-3. `subject_integrity`: protected inputs and run boundaries remained intact.
-4. `diagnostics`: commands, diff, files, response, tokens, duration, and errors.
+- an outcome-only contract that does not prescribe process, style, target files,
+  root cause, reproduction ceremony, or solution shape;
+- a pristine fixture that fails hidden acceptance while passing relevant
+  pre-existing regression checks;
+- a deterministic reference change that passes acceptance and regressions;
+- at least one structurally different correct change that also passes;
+- at least two plausible semantic mutants that fail for the intended reason;
+- anti-tampering and protected-input checks; and
+- deterministic repeatability across three offline checker executions.
 
-An infrastructure outage, evaluator defect, or corrupt/missing evidence invalidates
-the observation and never counts against a subject. A subject-caused timeout,
-noncompletion, incorrect patch, or boundary violation is unresolved. Before calls,
-freeze which failures are retryable, the symmetric retry count, paired-observation
-invalidation, and the rule forbidding discretionary or one-sided retries.
+If eight tasks cannot meet these requirements inside the caps, stop. Do not weaken
+the checks, duplicate trivial tasks, or add infrastructure to reach the count.
 
-No diagnostic, stylistic preference, or qualitative judgment changes objective
-resolution.
+### Primary outcome and repeat handling
 
-## Explicit exclusions
+For run `r`, task `t`, and MD `m`, `Y[m,t,r]` is one only when the observation is
+valid, subject integrity holds, and all acceptance and regression checks pass.
+Otherwise a valid subject attempt is zero. Infrastructure-invalid observations
+are excluded and handled only by the frozen symmetric retry policy.
 
-This program does not build concealed or external validation, a lockbox, custody
-or authenticated receipts, Node/JavaScript tasks, public/real repository imports
-or license handling, a generalized role framework, an optimizer, or a dashboard.
-It does not implement multiple agents or evaluate other roles.
+For each MD and task, estimate ordinary one-attempt reliability as the arithmetic
+mean of its independent `Y` values. Macro `pass@1` is the unweighted mean of those
+per-task estimates. Repetitions are nested observations, never additional tasks.
+The existing all-repeats-must-pass aggregation must be replaced and regression-
+tested before live use. All-runs reliability and at-least-one retry success may be
+reported separately but cannot decide the winner.
 
-## Hard caps
+### MVP decision rules
 
-These caps cannot be raised silently:
+Before implementation, the user must approve a practical effect threshold
+`delta_mvp`, expressed as an absolute task-resolution percentage-point gain. The
+recommended default is 10 percentage points; it is a deployment choice, not a
+number supplied by literature. With eight tasks and two attempts per real MD,
+macro differences occur in 6.25-point increments, so a nominal 10-point threshold
+has an effective smallest observable passing value of 12.5 points.
 
-- Changed paths: at most 14 total, including at most 8 task/fixture/check paths.
-- Total added lines across all changed paths: at most 1,100; deletions do not offset additions.
-- New production modules: at most 2.
-- Net new production code: at most 250 lines.
-- Task fixture and check code: at most 600 lines total.
-- Implementation agents: at most 2 concurrently and at most 3 total.
-- Review: exactly 2 reviewer passes total; exactly 1 is blocker-only.
-- Repair: at most 1 repair cycle; no recursive audits.
-- Full unit-test attempts: at most 2 before repair and at most 1 after repair.
-- Live calls during implementation: exactly 0.
-- Any later live pilot requires fresh explicit authorization and is capped at 16
-  subject calls: 2 MDs × 4 tasks × 2 repeats. It makes 0 qualitative-judge calls.
-- Implementation wall clock: at most 4 hours from recorded start to handoff.
-- Any authorized live pilot: at most 2 hours and at most the user-approved dollar
-  ceiling recorded before launch.
+The decision implementation must be completely exercised on synthetic data and
+frozen before calls. For each task, let `d_t` be B's mean resolution minus A's
+mean resolution, and let `T` be the mean of the eight `d_t` values. Exhaustively
+enumerate all `2^8` task-block sign flips, carrying every repetition within a task
+together. The exact two-sided p-value is the fraction whose absolute flipped mean
+is at least `abs(T)`. Alpha is 0.05. Call this an exact paired sign-flip test under
+task-block exchangeability; do not call it a randomization test merely because
+run slots are randomized.
 
-If any cap binds, stop. Only the user may expand scope or a cap.
+This task-level test supports only the frozen-pack claim. It assumes every task's
+subject calls use independent fresh sessions and workspaces, that A/B outcomes are
+exchangeable within a task under the null, and that no shared run state couples
+outcomes across tasks. Two tasks may use separate snapshots of one synthetic
+repository because repository similarity is fixed content, not shared execution
+state. If those execution assumptions do not hold, the task-level test is invalid
+and the MVP stops. Any inference to a repository or deployment population must
+instead preserve repository clustering and remains deferred.
 
-## Ordered implementation stages
+- `B_BETTER`: `T >= delta_mvp`, the exact two-sided p-value is at most 0.05, and
+  no integrity disqualification occurred.
+- `A_BETTER`: `T <= -delta_mvp`, the same two-sided p-value is at most 0.05, and
+  no integrity disqualification occurred.
+- `INCONCLUSIVE`: every other valid real-candidate result.
+- `INVALID`: a frozen validity/integrity gate prevents interpretation.
 
-Implementation begins only after fresh user authorization. At the end of every
-stage, report changed paths, line counts, elapsed time, agent/review counts, and
-remaining caps. A failed gate stops the program. Root orchestrates and reviews but
-does not code. Agents may not spawn recursive audits or change scope.
+The eight-task MVP does not declare statistical equivalence. Non-significance is
+not a tie. A later powered study may add equivalence only after defining a target
+population and deriving its task count prospectively.
 
-### Stage 0 — Restore candidate extensibility only
+### Control gates
 
-Fix only these stale assumptions without weakening validation semantics:
+The complete decision path must pass all of these before a real A/B result is
+eligible:
 
-- `tests/test_config.py::test_candidate_registry_accepts_sorted_versions_and_schema_is_open`
-- `tests/test_config.py::test_reserved_roles_and_at_least_one_candidate_are_required`
-- `tests/test_cli.py::test_validate`
+1. **Offline null calibration:** for every attainable eight-task difference-
+   magnitude pattern, enumerate every sign assignment and verify that the full
+   gated workflow's chance of returning either winner cannot exceed alpha.
+2. **Live A/A:** applying the ordinary decision code to `C1` versus `C2` must not
+   declare either byte-identical label better. A false winner stops the MVP; do
+   not rerun it away. This one live A/A comparison is an end-to-end symmetry
+   diagnostic, not an empirical estimate of the false-positive rate.
+3. **Live known-better control:** the same ordinary comparator used for real MDs
+   must return `A_BETTER` for `C1` bound as A versus `H` bound as B. At least six
+   tasks must favor `C1`, with zero favoring `H`; six unanimous discordances have
+   exact two-sided probability 0.03125. This proves gross outcome sensitivity,
+   not fine discrimination between competent files or general validity.
+4. **Oracle controls:** every task's pristine/reference/alternative/mutant and
+   repeatability checks must pass before live calls.
 
-Gate: arbitrary valid candidate rows no longer require test rewrites; all reserved
-role, schema, path, duplicate-byte, and candidate-specific integrity rules remain.
+No task or control may be edited after observing a failed gate. A failed gate
+produces `STOP/REDESIGN` and ends spending.
 
-### Stage 1 — Prove task and check feasibility first
+### Efficiency
 
-Create the two repositories and four tasks. Validate pristine inversion, reference
-solutions, regression preservation, wrong-solution rejection, isolation of hidden
-material, and outcome-only contracts before writing production scoring code.
+Record input, cached-input, output, reasoning, and total tokens when available;
+wall time; tool/model call counts; and failures for every attempt. Correctness is
+the only MVP decision outcome. Tokens and time are separate descriptive results
+and are never folded into a weighted score or used to rescue a correctness loss.
 
-Gate: all four tasks satisfy the feasibility content gate within the path/LOC caps.
+## Bounded live waves
 
-### Stage 2 — Add only the minimum scorer and wiring
+Live execution requires one explicit user authorization recording the model,
+reasoning setting, timeout, retry rule, maximum subject calls, maximum wall time,
+and dollar ceiling. Zero qualitative-judge calls are permitted.
 
-Only after Stage 1 passes, add the separated scoring fields, deterministic check
-execution, evidence capture/wiring, and a fake offline comparison. Reuse existing
-infrastructure; do not add future benchmark, lockbox, role, or optimizer seams.
+Run every wave as randomized complete task blocks, preserving blind labels:
 
-Gate: correct code resolves regardless of ceremony; incorrect code does not;
-infrastructure invalidity is not charged to either MD; diagnostics cannot promote.
+- **Wave 1 — controls:** `C1`, `C2`, and `H` once on each task: exactly 24 planned
+  subject calls. Stop unless every control gate passes.
+- **Wave 2 — fresh real comparison:** `A1`, `A2`, `B1`, and `B2` once on each task:
+  exactly 32 more planned subject calls. Interleave all four labels within each
+  task block. Never reuse control-wave champion observations as real evidence.
 
-### Stage 3 — Offline verification and handoff
+Every launched subject invocation counts, including invalid, interrupted, and
+failed calls. Base cap is 56 launched calls. If an observation is infrastructure-
+invalid, preserve the entire affected task block as superseded evidence and rerun
+that complete three- or four-label block once; never replace one arm selectively.
+At most one block retry is allowed across the complete demonstration and it may
+launch at most four calls. The absolute cap is 60 launched calls. A second invalid
+block, an incomplete balanced block, or a cap breach produces `INVALID`; analysis
+never averages unequal arm/task denominators.
 
-Run the repository-mandated full unit suite within the attempt cap, then the two
-fixed reviews, one of which is blocker-only. Permit at most one bounded repair and
-one post-repair full-suite attempt. Verify diff, caps, raw-evidence behavior, and
-that no live-call path ran.
+## Implementation stages and gates
 
-Gate: hand off evidence and a feasibility recommendation; do not run the pilot.
+Implementation begins only after the user approves this audited plan and
+`delta_mvp`. Root delegates bounded packets; agents may not spawn subagents.
 
-## Exit report and re-entry
+### Stage 0 — Freeze contract and treatments
 
-The exit report must include authoring difficulty, hidden-check quality, failure
-classifications, elapsed time, cost, all cap usage, and any process/style leakage.
-If a later live pilot is separately authorized, also report ties, repeat variance,
-noise, invalid observations, per-task resolution, calls, tokens, duration, and
-actual spend.
+Before editing implementation or task content, run the repository's full offline
+unit suite once at the exact starting commit in the designated worktree. It must
+be green. The docs-only planning check found two pre-existing clean-worktree
+errors: a fixture test assumes an ignored `.pyc` exists, and the historical-
+inventory test assumes an ignored `reports/evidence-index.json` exists and matches
+its canonical inventory. If either reproduces, stop before MVP implementation and
+request a separate decision; do not copy, regenerate, or rewrite historical
+evidence to force a green baseline.
 
-The only go/no-go conclusion is `STOP/REDESIGN` or a justification for a separate
-expanded phase. It is never promotion. At every phase exit, re-entry review must
-test whether any deferred trigger below is satisfied and update **this same file**.
-Never create a competing active V2 plan.
+Record the seven blind-label bindings and hashes, model/runtime configuration,
+analysis rule, randomization seed derivation, retry/invalidation table, live caps,
+and permitted paths. Create the generic harmful control before task authoring.
 
-## Deferred register
+Gate: the exact starting baseline is green, task authors can work without
+candidate/control access, and no unresolved measurement choice can change after
+seeing outcomes.
 
-| ID | Idea | Invalid/unresolved specifics not to copy | Evidence trigger | Snapshot anchor | Status |
-| --- | --- | --- | --- | --- | --- |
-| `POP-001` | Target population and sampling | Arbitrary 24-task quotas, language weights, and “representative” labels without a workload frame | User approves deployment workload, estimand, weights, and independent sampling owner | §5.1–5.5 | DEFERRED |
-| `STAT-001` | Power, statistics, and controls | Eight-task sign test, two repeats, 10-point lift, non-significant A/A, and undefined “material” control | Feasibility outcomes plus repeat-noise evidence support a prospective clustered power plan | §4.3–4.5, §7 | DEFERRED |
-| `LOCK-001` | Concealed validation and lockbox | Champion-piloted “unused” tasks, fixed 6/8 counts, and unpowered one-use verdict | Sampling and power gates pass and user authorizes a confirmatory phase | §5, §8 | DEFERRED |
-| `CUST-001` | Isolation, custody, receipts, evidence release | Unproven container/account boundary, receipt authority, hash-chain freshness, and post-spend reproduction | A real custodian and tested isolation boundary exist for an authorized lockbox | §6.3–6.4, §8 | DEFERRED |
-| `CTRL-001` | Candidate-independent controls | Control-core hashing and gates before the primary scorer and failure taxonomy stabilize | Thin scorer is stable and a powered control purpose is predeclared | §7.1–7.3 | DEFERRED |
-| `LANG-001` | Languages and ecosystems | Unsupported 16 Python/8 JavaScript ratio, Node requirement, and package-free generalization | Approved workload sampling shows language/ecosystem demand | §5.1–5.2 | DEFERRED |
-| `CAUS-001` | Karpathy-style causal ablation | Inferring style from arbitrary whole-file differences | User asks the causal question and freezes a matched treatment/control contrast | §1, §4 | DEFERRED |
-| `ROLE-001` | Future role evaluators | Reusing binary repository resolution or single-agent topology for unlike roles | CODER feasibility exits and a role-specific outcome/topology charter is approved | §1, §14 | DEFERRED |
-| `REAL-001` | Real repositories | Public-solution memorization, dependency, license, provenance, and issue-selection bias | Synthetic feasibility passes and external-validity scope is approved | §5.2, §5.4 | DEFERRED |
-| `OPT-001` | Optimizer and dashboard | Candidate search, automatic editing, hosted service, and UI before measurement is valid | Multiple role evaluators have valid development and confirmatory protocols | §13–14 | DEFERRED |
+### Stage 1 — Repair measurement and reporting offline
 
-## Future horizon only
+Implement only task-level pass@1 aggregation, the exact paired decision function,
+control-gate evaluation, and compact JSON/Markdown reporting. Reuse the existing
+runner/evidence plumbing; do not create a second runner or framework. Test the
+complete gated workflow, null, superiority, inferiority, inconclusive, invalid,
+repeat aggregation, deterministic reporting, and cap enforcement using synthetic
+observations.
 
-Preserve the conceptual seam of immutable instructions/tasks, raw evidence,
-observation validity, role outcome, integrity, diagnostics, and blinded optional
-judgment. Build no generalized framework now. A later role plan must define:
+Gate: the old ceiling pilot replays as `INCONCLUSIVE`; synthetic known-better and
+null cases produce the predeclared decisions; no live path runs in tests.
 
-- AUDITOR: defect precision, recall, severity calibration, and evidence fidelity.
-- RESEARCHER: factual correctness, source authority, coverage, and citation fidelity.
-- ORCHESTRATOR: delegation, handoff, integration, completion, and budget adherence,
-  with agent topology frozen as a separate experimental factor.
+### Stage 2 — Author and audit the task pack offline
 
-## Decision log
+One candidate-blind agent authors the eight tasks. A different candidate-blind
+reviewer checks outcome neutrality, tamper protection, and repeatability and must
+independently produce at least one additional alternative correct change and one
+additional plausible semantic mutant per task. Record all findings without a
+repair at this stage. This verifier review is the first of the plan's exactly two
+post-authoring review passes and also serves as the statistical/correctness review.
 
-- Construct/claim audit: objective role outcomes replace Karpathy-like behavior;
-  whole-file results do not establish a style cause.
-- Statistics/controls audit: population, independence, power, effect, A/A, negative
-  control, and invalid-observation rules were blockers, not implementation details.
-- Scope/feasibility audit: the 907-line design bundled benchmark, custody, language,
-  role, and optimization work before proving four objective tasks and thin scoring.
-- Governance decision: preserve exact snapshot
-  `a4fe6e5dffa7e037fd1d92338a7ce357df902863`, maintain one active file and one
-  `AGENTS.md` pointer, use exactly two reviews and at most one revision cycle.
+Gate: initial author checks pass and the reviewer has either found no blocker or
+recorded every blocker for the single global repair. Candidate execution remains
+forbidden. Final oracle acceptance occurs at the Stage 3 gate.
 
-## Stop conditions and protocol
+### Stage 3 — Repository verification and scope audit
 
-Stop immediately if authorization is absent; the worktree is not the designated
-clean implementation worktree; another path is modified; a cap would be exceeded;
-a new dependency, network access, live call, concealed pack, public repository, or
-future-role abstraction is proposed; a contract prescribes process/style; checks
-cannot prove baseline inversion and regression preservation; infrastructure and
-subject failures cannot be classified deterministically; a reviewer requests a
-second repair cycle; or evidence would be discarded or rewritten.
+Run `python -m unittest discover -s tests -v`, then conduct the second and final
+post-authoring review pass: one blocker-only scope review. Collect its findings
+with the Stage 2 verifier/statistical findings, permit exactly one global bounded
+repair, and run the full suite exactly once afterward. No stage has a separate
+repair allowance and no third review is permitted.
 
-On stop, preserve current evidence, report the exact gate and cap, and request a
-user decision. Do not weaken a check, expand scope, start another plan, retry a
-live observation, commit, push, merge, or promote to force progress.
+Gate: tests and every task oracle pass after the one allowed global repair (or
+without repair), no live calls occurred, every cap holds, and the frozen run
+manifest can be produced. Then stop and request explicit authorization to commit
+the permitted implementation paths. After authorization, create the commit,
+record its exact SHA and frozen input hashes, and verify the implementation
+worktree is clean at that SHA. Only then may root request live authorization. This
+gate authorizes neither a push nor a merge, and live execution from an uncommitted,
+dirty, or different commit is forbidden.
+
+### Stage 4 — Demonstrate controls live
+
+After explicit authorization, execute Wave 1 once. Preserve all evidence and
+produce the interim human-readable control report.
+
+Gate: A/A, known-better, oracle, integrity, and environment gates pass. Otherwise
+stop permanently on this frozen pack and report the failed construct.
+
+### Stage 5 — Compare the real MDs and finish the MVP
+
+Only after Stage 4 passes, execute Wave 2 without modifying any frozen input.
+Generate the final JSON and Markdown report and independently reproduce the
+decision from raw observations.
+
+Gate: the report shows that the ordinary comparator selected the known-better
+control opponent, gives one honest real A/B outcome, includes per-task and
+efficiency evidence, and states the narrow claim. It also states that eight tasks
+with two attempts per real MD is intentionally low-powered and likely inconclusive
+for modest competent-MD differences. This is the demonstrable MVP exit.
+
+## Hard implementation caps
+
+Caps exclude preserved/generated raw run evidence but include all hand-written
+code, tests, fixtures, and documentation after this plan is approved:
+
+- At most 20 changed implementation paths from an explicit predeclared allowlist.
+- At most 2 new production modules and 350 net new production lines.
+- At most 900 added task/fixture/check lines.
+- At most 500 added unit-test lines.
+- At most 1,750 total hand-written added lines; deletions do not offset additions.
+- At most 2 implementation agents total, never concurrently editing the same path.
+- Exactly 2 implementation review passes, at most 1 global repair cycle after all
+  offline findings are collected, and no recursive audits.
+- At most 3 full unit-suite executions before live authorization.
+- Zero new dependencies, networked task execution, containers, public benchmark
+  imports, dashboards, optimizers, generalized role abstractions, or other roles.
+- Offline implementation wall time at most 6 hours; any overrun stops for user
+  review rather than silently expanding.
+
+Before each agent starts, root records its exact allowed paths and acceptance
+criteria. After each stage, root reports changed paths, added-line counts, tests,
+elapsed time, and remaining caps. Any requested work outside these bounds is
+classified `MVP_BLOCKER`, `DEFER`, or `REJECT`; only `MVP_BLOCKER` may enter the
+single repair pass.
+
+## Demonstrable MVP acceptance checklist
+
+The MVP is complete only when all are true:
+
+- One documented command runs the frozen demonstration and another regenerates
+  the report from raw evidence without model calls.
+- The generic harmful control was frozen before tasks and the ordinary comparator
+  selects champion over it under the predeclared decision rule and discordance
+  gate.
+- Byte-identical A/A arms use the ordinary analysis and produce no false winner.
+- Eight tasks passed pristine/reference/alternative/mutant/repeatability audits.
+- The real champion-versus-`karpathy-v1` comparison returns exactly one allowed
+  outcome without qualitative override.
+- Raw trajectories, patches, checks, hashes, tokens, durations, invalidity/retry
+  records, and reports are preserved.
+- The repository's full unit suite passes and no hard cap was exceeded.
+- No champion replacement, merge, or generalized claim occurs automatically.
+
+## Explicitly deferred after MVP
+
+- A minimal/no-special-instruction baseline, deployment-representative sampling,
+  multiple languages, public benchmark qualification, and real-repository
+  dependency/container support.
+- Prospective power analysis for a larger study, equivalence testing, and a fresh
+  independently controlled confirmation lockbox.
+- Candidate optimization, automatic MD editing, dashboards, publication work,
+  and AUDITOR/RESEARCHER/ORCHESTRATOR evaluators.
+- A matched Karpathy-style causal ablation; whole-file A/B results cannot answer
+  that causal question.
+
+These are potential next phases, not MVP incompleteness. None may be started from
+an auditor suggestion or unused budget.
+
+## Plan-audit dispositions
+
+Three independent read-only audits were incorporated in one revision pass:
+
+- Statistics: adopted a two-sided exact test, fresh contemporaneous real arms,
+  balanced block retries, and a 60-launched-call absolute cap.
+- Construct validity: required the ordinary chooser to select the known-better
+  control, operational task-author blindness, independent verifier challenges,
+  and narrower report language.
+- Scope: expanded only the path allowlist from 16 to 20, consolidated all repairs
+  into one global pass, and removed the nongating minimal baseline and bootstrap.
+
+Requests for more tasks, external benchmarks, equivalence/power infrastructure,
+qualitative judging, dashboards, generalized roles, and recursive reviews were
+deferred or rejected for this MVP.
+
+## Stop conditions
+
+Stop immediately if the designated worktree is dirty outside permitted paths; a
+candidate or frozen input changes; a task author sees candidate material; a task
+checker cannot accept an alternative correct implementation or reject its
+mutants; infrastructure and subject failures cannot be classified deterministically;
+a control gate fails; a cap would be exceeded; a new dependency or live call is
+proposed without authorization; evidence would be discarded; or a second repair
+or audit loop is requested.
+
+On stop, preserve evidence, identify the exact failed gate, and request one user
+decision. Do not weaken checks, replace failed observations, add tasks, tune an MD,
+or rerun controls to manufacture a successful demonstration.

@@ -17,7 +17,16 @@ class HistoricalEvidenceInventoryTests(unittest.TestCase):
         self.assertEqual(
             inventory["algorithm"], "os.scandir-lstat-full-sha256-v1"
         )
-        actual = no_ignore_inventory(ROOT, inventory["roots"])
+        roots = inventory["roots"]
+        present = [
+            root
+            for root in roots
+            if (ROOT / root).exists() or (ROOT / root).is_symlink()
+        ]
+        if not present:
+            self.skipTest("ignored historical evidence is absent from this checkout")
+        self.assertEqual(present, roots, "historical evidence roots are incomplete")
+        actual = no_ignore_inventory(ROOT, roots)
         self.assertEqual(actual, inventory["entries"])
         self.assertEqual(len(actual), inventory["entry_count"])
 
