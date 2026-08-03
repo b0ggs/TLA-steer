@@ -16,6 +16,18 @@
     "timeout_seconds": 300,
     "qualitative_judge_calls": 0
   },
+  "environment": {
+    "authentication_mode": "chatgpt_oauth",
+    "max_wall_seconds": 10800,
+    "clean_exact_commit_required": true,
+    "isolated_runner_preflight_required": true,
+    "integrity_paths": {
+      "evaluator": "src/mdseval/outcome_mvp.py",
+      "design": "experiments/coder-outcomes-v2-mvp.json",
+      "analysis": "src/mdseval/outcome_mvp.py",
+      "wrapper": "src/mdseval/wrapper.py"
+    }
+  },
   "task_pack": {
     "task_count": 8,
     "repository_count": 4,
@@ -125,30 +137,22 @@
     "integrity_violation": "invalidate_demonstration",
     "incomplete_or_second_invalid_block": "invalidate_demonstration"
   },
-  "live_authorization": {
-    "positive_dollar_ceiling_required": true,
-    "dollar_ceiling": null
-  },
-  "implementation_paths": [
-    "controls/coder/no-implementation-v2.md",
-    "experiments/coder-outcomes-v2-mvp.json",
-    "src/mdseval/outcome_mvp.py",
-    "tests/test_outcome_mvp.py",
-    "evals/mvp/coder-outcomes-v2/ledger/tasks.json",
-    "evals/mvp/coder-outcomes-v2/ledger/check.py",
-    "evals/mvp/coder-outcomes-v2/ledger/fixture/ledger.py",
-    "evals/mvp/coder-outcomes-v2/ledger/fixture/test_public.py",
-    "evals/mvp/coder-outcomes-v2/catalog/tasks.json",
-    "evals/mvp/coder-outcomes-v2/catalog/check.py",
-    "evals/mvp/coder-outcomes-v2/catalog/fixture/catalog.py",
-    "evals/mvp/coder-outcomes-v2/catalog/fixture/test_public.py",
-    "evals/mvp/coder-outcomes-v2/notifier/tasks.json",
-    "evals/mvp/coder-outcomes-v2/notifier/check.py",
-    "evals/mvp/coder-outcomes-v2/notifier/fixture/notifier.py",
-    "evals/mvp/coder-outcomes-v2/notifier/fixture/test_public.py",
-    "evals/mvp/coder-outcomes-v2/workflow/tasks.json",
-    "evals/mvp/coder-outcomes-v2/workflow/check.py",
-    "evals/mvp/coder-outcomes-v2/workflow/fixture/workflow.py",
-    "evals/mvp/coder-outcomes-v2/workflow/fixture/test_public.py"
-  ]
+  "qualification": {
+    "oracle_path": "evals/qualification/coder-outcomes-v2/oracle-variants.json",
+    "oracle_sha256": "61ba70bbdc1eaed069cebb7ed182ef1c71a814c6deb173de3eefbc9b32a21205",
+    "repeats_per_case": 3,
+    "authoritative_receipt_required": true,
+    "receipt_hash_bindings": [
+      "verified_commit",
+      "evaluator_sha256",
+      "design_sha256",
+      "analysis_sha256",
+      "wrapper_sha256",
+      "task_tree_sha256",
+      "checker_hashes",
+      "oracle_sha256",
+      "command_config_sha256",
+      "results_sha256"
+    ]
+  }
 }
