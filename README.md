@@ -81,6 +81,59 @@ PYTHONPATH=src python3 -m mdseval.outcome_mvp \
   runs/coder-outcomes-v2-replay
 ```
 
+## CODER beneficial-sensitivity M2 commands
+
+Run the complete offline gate in this order. Provisional output belongs in a
+temporary directory outside the repository:
+
+```bash
+python3 -m unittest discover -s tests -v
+M2_OFFLINE_DIR="$(mktemp -d)"
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity validate \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity qualify \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --output "$M2_OFFLINE_DIR/qualification"
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity verify-power \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity simulate \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --output "$M2_OFFLINE_DIR/simulation"
+git diff --check
+git status --short
+```
+
+Each live stage requires its own explicit authorization receipt and must run in
+order. There is no output or runtime override:
+
+```bash
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity run-stage \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --instance <instance-id> --stage smoke \
+  --authorization-receipt <smoke-authorization.json>
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity run-stage \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --instance <instance-id> --stage calibration \
+  --authorization-receipt <calibration-authorization.json>
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity run-stage \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --instance <instance-id> --stage controls \
+  --authorization-receipt <controls-authorization.json>
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity run-stage \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --instance <instance-id> --stage helpful \
+  --authorization-receipt <helpful-authorization.json>
+```
+
+Stop on any predeclared gate, integrity failure, unresolved validation blocker,
+or call-cap condition. Replay only after an allowed terminal verdict:
+
+```bash
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity replay \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --instance <instance-id>
+```
+
 There is no dollar-ceiling argument, oracle-passed assertion, or runtime
 implementation-path allowlist. Each subject observation preserves raw capture,
 the resulting workspace, protected-contract hashes, baseline/final tree hashes,
