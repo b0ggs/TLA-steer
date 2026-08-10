@@ -1,0 +1,24 @@
+{
+  "schema": "mdseval.coder-beneficial-sensitivity-m2-helpful-authorship-v1",
+  "experiment": "coder-beneficial-sensitivity-m2",
+  "role_identity": "/root/m2_helpful_author",
+  "requested_model": "gpt-5.6-sol",
+  "requested_reasoning_effort": "high",
+  "observed_model_metadata": "unavailable",
+  "call_count": 1,
+  "input_hashes": {
+    "/private/tmp/mdseval-m2-helpful-packet-16851d3/packet.md": "0c2c5031d49c1520c59e06af03b9c3e8a5933342e9f7793de6126b00177479b7"
+  },
+  "output_hashes": {
+    "/private/tmp/mdseval-m2-helpful-packet-16851d3/return/controls/coder/helpful-requirement-coverage-m2.md": "fbf1bcc1dfd388cb06aac2966157317ab9896132f081311213a2082e2f1fa84a"
+  },
+  "paths_read": [
+    "/private/tmp/mdseval-m2-helpful-packet-16851d3/packet.md"
+  ],
+  "paths_written": [
+    "/private/tmp/mdseval-m2-helpful-packet-16851d3/return/controls/coder/helpful-requirement-coverage-m2.md",
+    "/private/tmp/mdseval-m2-helpful-packet-16851d3/return/controls/coder/helpful-requirement-coverage-m2.authorship.json"
+  ],
+  "packet_only_attested": true,
+  "forbidden_access_attested": true
+}
