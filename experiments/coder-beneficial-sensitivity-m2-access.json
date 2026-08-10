@@ -1,0 +1,58 @@
+{
+  "schema": "mdseval.coder-beneficial-sensitivity-m2-access",
+  "experiment": "coder-beneficial-sensitivity-m2",
+  "version": 1,
+  "starting_branch": "agent/coder-beneficial-sensitivity-protocol",
+  "starting_commit": "bfda5f78e418784f6390cc4aead927bbd7b896ff",
+  "authorities": {
+    "protocol": {"path": "CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md", "version": "0.2", "sha256": "4384a005b7d934b86ef91dd7d7fa6b9b46c2374fd7790bd89f8ed1a2222c6b0d"},
+    "implementation_plan": {"path": "CODER_BENEFICIAL_SENSITIVITY_M2_IMPLEMENTATION_PLAN.md", "sha256": "896f01fadf0ca9e575af8593305d3a0fc42919308dc49fa07ddfd1770f2e7f06"}
+  },
+  "roles": {
+    "/root/m2_access_owner": {
+      "packet_inputs": ["AGENTS.md", "CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md", "CODER_BENEFICIAL_SENSITIVITY_M2_IMPLEMENTATION_PLAN.md", "Git identity for starting_commit"],
+      "writable_outputs": ["experiments/coder-beneficial-sensitivity-m2-access.json"],
+      "forbidden_inputs": ["P", "candidate tasks/checks/solutions/mutants", "candidate/champion CODER files", "calibration or scored outcomes", "unrelated untracked documents"], "forbidden_paths": ["runs/**", "reports/**", "all repository paths other than packet_inputs and writable_outputs"],
+      "required_attestation_fields": ["role_identity", "starting_commit", "input_hashes", "output_hashes", "paths_read", "paths_written", "forbidden_access_attested"]
+    },
+    "/root/m2_helpful_author": {
+      "packet_inputs": ["verbatim protocol §1", "verbatim protocol §3.1", "verbatim protocol §4.1", "helpful Markdown/authorship output schema", "P size/content restrictions from implementation-plan §4"],
+      "writable_outputs": ["controls/coder/helpful-requirement-coverage-m2.md", "controls/coder/helpful-requirement-coverage-m2.authorship.json"],
+      "forbidden_inputs": ["candidate tasks/checks/solutions/mutants", "candidate/champion CODER files", "calibration or scored outcomes", "other role packets"], "forbidden_paths": ["all repository paths", "runs/**", "reports/**"],
+      "required_attestation_fields": ["role_identity", "requested_model", "requested_reasoning_effort", "observed_model_metadata", "call_count", "input_hashes", "output_hashes", "paths_read", "paths_written", "packet_only_attested", "forbidden_access_attested"]
+    },
+    "/root/m2_task_author": {
+      "packet_inputs": ["verbatim protocol §1", "verbatim protocol §3", "verbatim protocol §6", "task/master/authorship/oracle output schemas", "exact writable task paths listed below"],
+      "writable_outputs": ["evals/m2/coder-beneficial-sensitivity/master.json", "evals/m2/coder-beneficial-sensitivity/authorship.json", "evals/qualification/coder-beneficial-sensitivity-m2/oracle-variants.json", "evals/m2/coder-beneficial-sensitivity/bug-{01,02,03,04,05}/{task.json,contract.md,check.py,fixture/**}", "evals/m2/coder-beneficial-sensitivity/feature-{01,02,03,04,05}/{task.json,contract.md,check.py,fixture/**}", "evals/m2/coder-beneficial-sensitivity/integration-{01,02,03,04,05}/{task.json,contract.md,check.py,fixture/**}", "evals/m2/coder-beneficial-sensitivity/refactor-data-{01,02,03,04,05}/{task.json,contract.md,check.py,fixture/**}"],
+      "forbidden_inputs": ["exact P", "helpful authorship record", "candidate/champion CODER files", "calibration or treatment outcomes", "other role packets"], "forbidden_paths": ["all repository paths", "runs/**", "reports/**"],
+      "required_attestation_fields": ["role_identity", "requested_model", "requested_reasoning_effort", "observed_model_metadata", "call_count", "input_hashes", "output_hashes", "paths_read", "paths_written", "packet_only_attested", "independent_original_task_attested", "forbidden_access_attested"]
+    },
+    "/root/m2_task_validator": {
+      "packet_inputs": ["hash-locked task-author master/authorship/oracle outputs", "hash-locked copies of all 20 task.json/contract.md/check.py/fixture trees", "task-validation output schema", "validation criteria from protocol §6 and implementation-plan §§4-5"],
+      "writable_outputs": ["evals/qualification/coder-beneficial-sensitivity-m2/validation.json"],
+      "forbidden_inputs": ["exact P", "helpful authorship record", "all live outcomes", "other role packets except copied task-author outputs"], "forbidden_paths": ["all repository paths", "runs/**", "reports/**"],
+      "required_attestation_fields": ["role_identity", "requested_model", "requested_reasoning_effort", "observed_model_metadata", "call_count", "input_hashes", "output_hashes", "paths_read", "paths_written", "packet_only_attested", "no_task_edit_attested", "blockers", "forbidden_access_attested"]
+    },
+    "/root/m2_engine_owner": {
+      "packet_inputs": ["AGENTS.md", "both bound authorities", "this access record", "all hash-locked helpful/task/validator outputs", "src/mdseval/{runner/codex_cli.py,config.py,fixtures.py,capture.py,hashing.py,gitutils.py,processutils.py,wrapper.py,outcome_mvp.py}", "tests/test_outcome_mvp.py", "experiments/coder-outcomes-v2-mvp.json", "evals/mvp/coder-outcomes-v2/**", "evals/qualification/coder-outcomes-v2/**", "controls/coder/no-implementation-v2.md"],
+      "writable_outputs": ["README.md", "src/mdseval/beneficial_sensitivity.py", "tests/test_beneficial_sensitivity.py", "experiments/coder-beneficial-sensitivity-m2.json", "controls/coder/null-m2.md"],
+      "forbidden_inputs": ["existing runs or reports", "live outcomes", "unblinding information not required for offline construction"], "forbidden_paths": ["runs/**", "reports/**", "all repository paths except writable_outputs; packet_inputs are read-only"],
+      "required_attestation_fields": ["role_identity", "requested_model", "requested_reasoning_effort", "observed_model_metadata", "call_count", "input_hashes", "output_hashes", "paths_read", "paths_written", "reuse_call_import_sites", "no_copied_framework_logic_attested", "forbidden_access_attested"]
+    },
+    "/root/m2_final_auditor": {
+      "packet_inputs": ["AGENTS.md", "both bound authorities", "this access record", "complete post-engine implementation restricted to implementation-plan §3 allowlist", "role attestations and hashes", "Git history/diff/counts from starting_commit", "implementation-plan §9 acceptance table"],
+      "writable_outputs": [],
+      "forbidden_inputs": ["existing runs or reports", "live outcomes", "unrelated repository material"], "forbidden_paths": ["runs/**", "reports/**", "paths outside the implementation-plan §3 allowlist and governing documents", "all repository writes"],
+      "required_attestation_fields": ["role_identity", "requested_model", "requested_reasoning_effort", "observed_model_metadata", "call_count", "input_hashes", "output_hashes", "paths_read", "paths_written", "acceptance_checks", "findings_with_M2_BLOCKER_DEFER_or_REJECT", "read_only_attested", "forbidden_access_attested"]
+    },
+    "/root": {
+      "packet_inputs": ["all hash-locked role returns and attestations", "governing documents and implementation-plan §3 allowlist", "Git metadata from starting_commit", "offline gate outputs and consolidated blockers"],
+      "writable_outputs": [],
+      "forbidden_inputs": ["stage unblinding mappings before corresponding mechanical outcomes lock", "live outcomes without the applicable explicit stage authorization"], "forbidden_paths": ["implementation-content writes", "runs/** before applicable live authorization", "paths outside authorized integration and gate scope"],
+      "required_attestation_fields": ["role_identity", "input_hashes", "integrated_commit_hashes", "paths_read", "paths_written", "access_violations", "allowlist_and_cap_results", "correction_pass_count", "final_freeze_commit"]
+    }
+  },
+  "packet_only_isolation": {"roles": ["/root/m2_helpful_author", "/root/m2_task_author", "/root/m2_task_validator"], "directory_rule": "three distinct temporary directories outside the repository; never repository worktrees or a shared directory", "content_rule": "each directory contains only its exact packet_inputs and empty locations for its writable_outputs", "transfer_rule": "root hashes returns before integration; validator receives only hash-locked copies of task outputs and never P", "cross_packet_rule": "no packet role may inspect another packet or repository paths; helpful and task authors remain mutually independent"},
+  "single_correction": {"maximum_passes": 1, "eligible_roles": ["/root/m2_helpful_author", "/root/m2_task_author", "/root/m2_task_validator", "/root/m2_engine_owner"], "rule": "after task validation and the sole final audit, root consolidates findings once; each eligible role receives only its original packet plus blockers scoped to its own outputs and may change only those outputs", "closure": "mechanical closure only; no second audit or correction, and any unresolved blocker stops"},
+  "final_freeze": {"prerequisite": "mechanical closure plus explicit authorization", "rule": "root integrates final artifact bytes into one clean local commit and records every final hash; no frozen byte may change", "post_freeze": "perform alignment without edits, then run all 300 qualification executions on that exact commit; any gap, drift, or failure stops without repair"}
+}
