@@ -1,13 +1,14 @@
 # CODER beneficial-sensitivity protocol
 
-Status: revised once after one statistical audit and one construct/scope audit;
-approved for Milestone 2 planning
+Status: prospective proposed amendment; requires approval before implementation
+and does not reinterpret or rescue any prior evidence
 
-Protocol version: 0.2
+Proposed protocol version: 0.4
 
 Roadmap authority: `MD_EVAL_PROJECT_ROADMAP.md`
 
-Applies to: Milestone 1 and the one-shot Milestone 2 diagnostic experiment
+Applies prospectively to: future Milestone 2 only; Milestone 1 and prior history
+are unchanged
 
 ## 1. Purpose and claim boundary
 
@@ -44,7 +45,12 @@ It does not establish that:
 
 This is a scientific protocol, not an implementation plan. Approval freezes the
 scientific choices below but authorizes no production code, task creation,
-treatment creation, or live model calls.
+treatment creation, commissioning probe, or authoritative live model call.
+Version 0.4 is prospective: the
+`coder-beneficial-sensitivity-m2-ada7a71` and
+`coder-beneficial-sensitivity-m2-b9c3a8e` evidence roots remain byte-for-byte
+historical development diagnostics, are excluded from every estimate and
+verdict, and cannot be reclassified to satisfy this protocol.
 
 Before Milestone 2 work begins, one bounded implementation plan must name this
 protocol and explicitly supersede the older V2 implementation plan for new
@@ -58,6 +64,9 @@ Allowed Milestone 2 outputs are limited to:
 3. the smallest runner/report changes required by this protocol;
 4. calibration, control, and helpful-comparison evidence; and
 5. one replayable report with the claim boundary above.
+
+Items 1–2 and their validation/authorship history are completed read-only
+prerequisites; before the campaign v0.4 permits only its plan’s engineering delta.
 
 Candidate optimization, representative evaluation, confirmation holdouts,
 leaderboards, dashboards, other roles, bundles, topology experiments, autonomous
@@ -144,10 +153,16 @@ condition:
   the subject workspace; and
 - no LLM qualitative judge calls.
 
-The exact Codex CLI version, evaluator commit, wrapper hash, runtime arguments,
-and service-reported model metadata are recorded and held constant throughout
-the run. Disabling network is a condition of this self-contained diagnostic,
-not a claim that network access cannot help on a representative workload.
+The exact requested model and effort, strict command/configuration, resolved
+Codex CLI path, executable SHA-256 and version, isolated configuration, evaluator
+commit/hash, wrapper hash, and runtime arguments are recorded and held constant.
+Service-emitted model or effort fields must match when present. Absence is
+recorded as `not_reported`, is not fabricated, and is a disclosed limitation;
+explicit contradictory or reroute metadata is fatal. Claims therefore concern
+the client-configured `gpt-5.6-sol/high` runtime as served, not provider-attested
+backend identity. Disabling network is a condition of this self-contained
+diagnostic, not a claim that network access cannot help on a representative
+workload.
 
 The shared wrapper supplies only the coding request, workspace authority, and
 ordinary execution rules. It must not teach the target construct, disclose an
@@ -176,10 +191,18 @@ Neither author may revise an artifact after seeing calibration or treatment
 outcomes. Alignment between tasks and the construct is documented only after
 both sides are frozen; a gap is reported rather than repaired in place.
 
-## 6. Objective qualification before model calls
+At authoritative initialization before any outcome, generate every nontrivial arm mapping once from
+standard-library system entropy plus a fresh nonce; hash-bind all mapping objects
+in the manifest and campaign authorization. Conceal material from operator and
+analyst until its outcome lock: “sealed” never means accessible plaintext. Never
+regenerate or reuse entropy, nonce, or mapping bytes; coincidentally identical
+semantic permutations are allowed. Public deterministic seeds order schedules only.
 
-Every candidate task must pass deterministic qualification without a model
-call. Its checker must:
+## 6. Objective qualification before authoritative model calls
+
+After runner commissioning passes and the same clean commit is frozen, every
+candidate task must pass deterministic qualification without a model call. Its
+checker must:
 
 1. fail the pristine repository on at least one requested behavior while its
    own environment/self-checks pass;
@@ -194,11 +217,13 @@ call. Its checker must:
 7. keep checks, reference solutions, mutants, and their paths outside the
    subject workspace.
 
-A separate validator reviews prompt clarity, requirement-to-check coverage,
-checker independence, repository isolation, and task uniqueness. One bounded
-author correction pass is allowed before the entire pool is frozen. A task that
-still fails is removed before calibration; it is not repaired after outcomes.
-All twenty qualified tasks must exist before calibration starts.
+The prior validator review and author correction are completed historical
+provenance. Under v0.4 all twenty tasks, treatments, checkers, wrapper, and
+statistics are read-only; any failure stops. The first commissioning PASS commit
+is bound by an automatic non-user freeze record. External qualification verifies
+that commit/PASS, runs 300 cases once, and binds every raw result plus terminal,
+config/evaluator/tests/runtime hashes. Fresh initialization validates and copies
+that envelope and executes zero checkers.
 
 ## 7. Null-only calibration and task selection
 
@@ -413,18 +438,41 @@ post-calibration power gate fails, the result also is
 `SENSITIVITY_NOT_DEMONSTRATED` and terminates before scored waves. It is not
 `INVALID` and authorizes no replacement, recalibration, or another run.
 
-## 12. Call ceiling, invalid runs, and stopping
+## 12. Commissioning, call ceiling, invalid runs, and stopping
 
-A subject call is one launched Codex solver attempt, whether it succeeds,
-fails, times out, or returns unusable output. The full base experiment is:
+Runner commissioning is bounded non-authoritative development before initialization.
+Its authorization fixes a starting clean commit, the five-path/350-churn delta,
+runtime/config/CLI, one external root, three launched probes, and two repairs.
+Each probe exclusively records its clean descendant commit and cumulative diff;
+later probes cite a concrete prior failure and changed relevant bytes. Unchanged
+reruns are forbidden. Invocation-only no-call/no-evidence corrections consume no
+probe but remain inside the repair limit.
+
+Each fresh discarded session uses a synthetic locally created zero-byte
+`CODER.md`, never M2 `N` or any M2 label/artifact, and requires exact bytes
+`IMPLEMENTED\nSMOKE_READY` without trailing newline plus unchanged tree. PASS
+hash-binds commit, config/evaluator/tests/wrapper, CLI path/hash/version, exact
+command/config/request, credential-free profile status, raw streams/final, and
+tree result. Identity is collected only from the implementation plan’s enumerated
+service fields: none=`not_reported`, consistent=`reported_match`, and any
+contradiction=`reported_mismatch`; this is not provider attestation.
+
+The lifecycle is `DEVELOPMENT/OFFLINE_READY` -> `COMMISSIONING` ->
+`COMMISSIONED` -> freeze that same clean commit -> one authoritative 300-case
+qualification -> fresh authoritative instance/campaign -> `TERMINAL`.
+Qualification runs once after the final commissioning-passing commit, not after
+each repair. Focused tests and the full unit suite are development evidence.
+
+An authoritative subject call is one launched Codex solver attempt after
+authoritative initialization, whether it succeeds, fails, times out, or returns
+unusable output. The full base experiment is:
 
 | Stage | Base subject calls |
 | --- | ---: |
-| One authenticated smoke attempt | 1 |
 | Null calibration: 20 tasks x 6 | 120 |
 | Control wave: 16 tasks x 3 | 48 |
 | Helpful wave: 16 tasks x 8 | 128 |
-| **Full base maximum** | **297** |
+| **Full base maximum** | **296** |
 
 Only a failure attributable to the evaluator, machine, authentication, or model
 service before a usable subject turn is infrastructure-invalid. Preserve it and
@@ -438,19 +486,35 @@ replacement makes the experiment `INVALID`.
 
 At most one block may be replaced in each live stage: six calibration calls,
 three control calls, and eight helpful calls. The absolute ceiling is therefore
-314 subject calls. The smoke attempt is not retried. Authoring or validation
-model calls, if used, are disclosed separately and never counted as subject
-observations.
+313 subject calls. Commissioning probes and authoring or validation model calls,
+if used, are disclosed separately and never counted as subject observations.
+
+One later campaign authorization binds instance, commit, manifest/config/runtime,
+all mapping hashes, ordered stages, gates, fallbacks, and the 313 ceiling. One
+stage runs per invocation; after PASS the operator automatically invokes only the
+unique eligible next stage with identical authorization bytes. No chat gate,
+outcome-based choice, mapping regeneration, repair, or second campaign exists.
+Resume is only at declared block boundaries; manual noncompletion earns no
+favorable verdict. A no-call/no-evidence prelaunch environment correction is
+permitted; after launch only frozen fallback rules apply.
+
+Exact response/tree gates apply only to commissioning; authoritative coding
+patches are expected and mechanically checked. Structural validation covers row
+schema, slot, and evidence completeness. Every structurally complete row is
+published and classified as predeclared, never thrown for outcome, identity,
+bytes, timeout, or tree failure. Only corrupt/incomplete publication stops as
+preserved incomplete and is never hand-repaired or reused.
 
 Stop immediately, preserving evidence, when any of these occurs:
 
-- smoke, oracle, hash, isolation, balance, or authorship validation fails;
+- commissioning reaches a stop condition without passing, or an oracle, hash,
+  isolation, balance, or authorship validation fails;
 - any stratum has fewer than four diagnostically eligible tasks, or the
   post-calibration simulated helpful-gate power is below 0.80;
 - a stage needs a second infrastructure block replacement;
 - the A/A or harmful gate fails;
 - a frozen artifact would need to change;
-- the 314-call ceiling would be exceeded; or
+- the 313-call ceiling would be exceeded; or
 - the helpful wave finishes, whether it passes or fails.
 
 There is no automatic tuning, replacement task, second positive control, or
@@ -461,7 +525,7 @@ evidence prove an exact block-boundary resume.
 
 ## 13. Evidence and report
 
-Before the first call, preserve a manifest containing every artifact hash,
+Before the first authoritative call, preserve a manifest containing every artifact hash,
 authorship attestation, access packet, role assignment, runtime setting, seed,
 task stratum, qualification result, decision rule, call ceiling, and planned
 schedule. Raw attempt evidence is append-only.
@@ -475,7 +539,11 @@ The final report must show:
   interval, and power result;
 - all secondary efficiency and behavior metrics without a composite score;
 - invalid calls, retries, pauses, missing telemetry, deviations, and failed
-  gates; and
+  gates;
+- one concise external exclusion/deviation record identifying the preserved
+  `coder-beneficial-sensitivity-m2-ada7a71` and
+  `coder-beneficial-sensitivity-m2-b9c3a8e` development diagnostics without
+  modifying their roots; and
 - explicit distinctions among diagnostic sensitivity, practical value, and
   candidate superiority.
 
@@ -483,13 +551,15 @@ Offline replay must regenerate the result from raw evidence without model calls.
 
 ## 14. Definition of done
 
-Milestone 1 is complete when this protocol passes exactly one statistical audit
-and one construct/scope audit, receives at most one bounded revision, and is
-approved by the user.
+Milestone 1 and the v0.2 review remain historical. This prospective v0.4
+amendment becomes authoritative only after the three requested one-turn
+adversarial design audits are consolidated, any in-scope blockers receive one
+bounded revision, and the user approves it.
 
 The authorized Milestone 2 experiment is administratively closed when the
 approved implementation:
 
+- commissions the live runner before authoritative initialization;
 - creates and freezes independent artifacts without an access violation;
 - either obtains sixteen balanced eligible tasks or stops at the predeclared
   eligibility/power gate;
@@ -524,8 +594,9 @@ iterate until a preferred result appears.
 
 The construct, four strata, synthetic task population, calibration band,
 sixteen-task sample, four helpful repeats, effect floor, exact sign-flip test,
-power model, retry rule, and call ceiling are local design choices. They are not
-presented as requirements from the cited literature.
+power model, commissioning envelope, identity-attestation limitation, terminal
+publication rule, retry rule, campaign authorization, and call ceiling are local
+design choices. They are not presented as requirements from the cited literature.
 
 Unresolved questions intentionally deferred past this manipulation check are
 external validity, sensitivity to smaller effects, representative task

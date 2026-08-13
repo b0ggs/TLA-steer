@@ -1,8 +1,8 @@
 # CODER beneficial-sensitivity Milestone 2 implementation plan
 
-Status: proposed correction; one offline implementation authorization and four
-stage-specific live authorizations are required below
-Scientific authority: `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` version 0.2
+Status: prospective proposed v0.4 amendment; no implementation or live call is
+authorized by this document, and prior evidence is not reinterpreted or rescued
+Scientific authority: proposed `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` v0.4
 Roadmap stage: Milestone 2 only — demonstrate beneficial measurement sensitivity
 
 ## 1. Authority, outcome, and scope
@@ -25,8 +25,12 @@ The one-shot manipulation check compares complete project-level files:
 The subject runtime is strictly `gpt-5.6-sol`, reasoning effort `high`, one
 ephemeral agent, subagents off, workspace-write, agent-command network off,
 300 seconds per attempt, serial execution, and zero qualitative-judge calls.
-Requested and service-observed model/reasoning identity must both be present and
-match; otherwise the experiment is `INVALID`.
+Freeze the requested model/effort, strict command/configuration, resolved CLI
+path/SHA/version, isolated configuration, evaluator commit/hash, and wrapper
+hash. Service-emitted identity must match when present; absence is recorded as
+`not_reported`, disclosed, and nonfatal. Explicit contradictory or reroute
+metadata is fatal. Claims concern the configured runtime as served, not
+provider-attested backend identity.
 The only successful verdict is `SENSITIVITY_DEMONSTRATED`. A valid failed
 selection, power, control, or helpful gate is
 `SENSITIVITY_NOT_DEMONSTRATED`; an integrity failure is `INVALID`. Either closes
@@ -47,6 +51,15 @@ checkers, and tests are Python-standard-library-only. Tests/CI make zero live or
 network calls. This plan authorizes no implementation, commit, push, merge, or
 live call by itself.
 
+`P`, `H`, tasks, checkers, wrapper, construct, and statistics are completed
+read-only prerequisites; only Section 3.1 engineering and lifecycle evidence remain active.
+
+The existing `coder-beneficial-sensitivity-m2-ada7a71` and
+`coder-beneficial-sensitivity-m2-b9c3a8e` roots remain byte-for-byte preserved,
+excluded development diagnostics. They do not contribute observations, validate
+this amendment, or authorize reuse. A future implementation adds one concise
+external exclusion/deviation record without altering either root.
+
 ## 2. Reuse proof and one justified module
 
 The implementation owner must record the actual call/import sites below. A new
@@ -63,18 +76,17 @@ abstraction requires a reproduced blocking mismatch.
 | V2 checker/receipt pattern | Checks outside the workspace and clean-commit hash-bound qualification |
 | `outcome_mvp.py` and V2 pack | Preserve read-only: hardcoded historical 8-task, 2-wave, 56/60-call replay |
 
-The historical module cannot express smoke, 20-by-6 null calibration,
+The historical module cannot express commissioning, 20-by-6 null calibration,
 model-bound 16-task selection, three stage-specific fallbacks, four helpful
-rounds, 297/314 calls, power, or stratified bootstrap without changing historical
-replay. One new `beneficial_sensitivity.py` module is therefore allowed. It is a
-thin orchestrator over the named functions, not a runner, capture/evidence
+rounds, 296/313 calls, power, or stratified bootstrap without changing historical
+replay. The existing `beneficial_sensitivity.py` remains the sole M2-specific
+module. It is a thin orchestrator over the named functions, not a runner, capture/evidence
 framework, judge, or generalized experiment platform. Copying their logic is a
 cap violation and blocker.
 ## 3. Exact path allowlist and hard budgets
 
-No packet may touch a path absent below. `/**` is limited to the stated subtree;
-every generated or hand-written line counts. Existing unrelated dirty/untracked
-paths remain untouched.
+The original construction paths below document existing M2 scope; they do not
+authorize v0.4 edits. Existing unrelated dirty/untracked paths remain untouched.
 
 ### Reuse read-only
 
@@ -88,11 +100,11 @@ paths remain untouched.
 Historical preservation is checked from Git/hash inventories and existing tests;
 implementation roles receive no access to existing `runs/**` or reports.
 
-### Modify
+### Original construction modify path (closed)
 
-- `README.md` — exact M2 offline, staged-live, stop, and replay commands only
+- `README.md` — exact M2 offline, commissioning, campaign, stop, and replay commands only
 
-### New
+### Original construction new paths (closed)
 
 - `src/mdseval/beneficial_sensitivity.py`
 - `tests/test_beneficial_sensitivity.py`
@@ -113,27 +125,34 @@ subtree may contain only `task.json`, `contract.md`, `check.py`, and `fixture/**
 - `evals/m2/coder-beneficial-sensitivity/feature-{01,02,03,04,05}/**`
 - `evals/m2/coder-beneficial-sensitivity/integration-{01,02,03,04,05}/**`
 - `evals/m2/coder-beneficial-sensitivity/refactor-data-{01,02,03,04,05}/**`
-Added physical lines are counted from the authorized starting commit; deletions
-do not offset additions. Blank/comment lines and generated/copied fixture/JSON
-lines count. There is no hidden exception.
+### 3.1 Prospective v0.4 implementation delta
 
-| Category | Expected target | Hard cap |
-| --- | ---: | ---: |
-| Production module | <=500 | 600 |
-| Tests | <=550 | 650 |
-| Full 20-task corpus, checkers, oracle, validation | <=2,400 | 2,750 |
-| Config, README, treatments, access/authorship | <=250 | 300 |
-| **Total** | **<=3,700** | **4,300** |
-
-Any category/total breach stops before write or commit for a new user decision.
-Expected targets are below caps; unused capacity cannot justify work or scope.
-## 4. Access, provisional artifacts, and final freeze
+The current code/config baseline is clean commit `b9c3a8e`. Implementation churn
+is measured from the future clean commit containing the approved v0.4 document
+amendment and no engineering changes. It may modify only
+`src/mdseval/beneficial_sensitivity.py`, `tests/test_beneficial_sensitivity.py`,
+`experiments/coder-beneficial-sensitivity-m2.json`, and `README.md`, and may add
+only `experiments/coder-beneficial-sensitivity-m2-exclusions.json`. The new file
+is the concise external exclusion/deviation record for the full
+`coder-beneficial-sensitivity-m2-ada7a71` and
+`coder-beneficial-sensitivity-m2-b9c3a8e` instance roots.
+The target is at most 250 and the hard cap is 350 total textual churn (additions
+plus deletions; untracked text counts as additions) across those five paths; the
+final evaluator is at most 1,000 lines and its M2 test file at most 650. These are
+ceilings, not entitlements. No binary, dependency, module, task, treatment,
+checker, wrapper, runner, evidence-root, framework, statistic, or historical
+artifact change is allowed. The exclusions JSON minimally records its schema,
+the two full instance IDs, diagnostic-only reason, and inference exclusion; its
+SHA-256 is bound by config, authoritative manifest, and final report. A need
+outside this delta stops for a separate user decision.
+## 4. Completed provenance and active v0.4 lifecycle
 
 Root orchestrates only: assign packets, enforce access, record hashes/counts,
 integrate authorized local commits, and run gates. Root writes no implementation
 content.
 
-Sequence is mandatory:
+Steps 1–6 and the authorship/access text below record completed historical
+provenance. They are read-only prerequisites, not active work or correction paths:
 
 1. An access owner creates and hashes
    `experiments/coder-beneficial-sensitivity-m2-access.json` first. It contains
@@ -152,9 +171,6 @@ Sequence is mandatory:
 6. Findings are consolidated once. Original owners receive only their original
    packet plus their own blockers and may make one correction pass. Mechanical
    closure follows; there is no second audit or correction.
-7. After closure, freeze final artifact bytes in an authorized clean local commit;
-   perform post-freeze alignment (any gap stops without edits); then run the authoritative 300-case qualification on that exact commit, issue its create-once receipt,
-   create the initial manifest, and stop for smoke authorization.
 The helpful owner receives only Protocol Sections 1, 3.1, and 4.1 plus size/content
 rules. `P` is UTF-8 Markdown, at most 250 words and 4,096 bytes, general to the
 construct, and may not mention evaluator, arms, controls, benchmarks, task
@@ -172,9 +188,22 @@ auditor uses `gpt-5.6-sol/high`. Requested identity, available observed metadata
 call count, role, and output hashes are disclosed in separate authorship/audit
 receipts and never counted as subject calls. No cheap-model role is used.
 
-Operator schedules and pre-unblinding evidence use opaque arm IDs only. Each
-stage mapping and hash is created before schedules but withheld from the operator
-and analyst until that stage's mechanical outcomes are locked.
+The only active sequence is: five-path delta; focused then full tests; one final
+read-only reviewer; at most one bounded code correction and its focused/full
+validation; bounded commissioning; freeze the first passing clean commit;
+external 300-case qualification once; fresh initialization; one-authorized
+campaign; replay and terminal report. No treatment, task, checker, `P`, `H`,
+wrapper, construct, scoring, or statistics correction is permitted.
+
+Operator schedules and pre-unblinding evidence use opaque arm IDs only. At
+authoritative initialization before any outcome, generate every nontrivial stage mapping exactly
+once with standard-library system entropy plus a fresh nonce. Hash-bind every
+mapping object in the initial manifest and campaign authorization; keep mapping
+material outside operator/analyst packets until its outcome lock, then disclose.
+“Sealed” means concealed and hash-committed, not plaintext in an accessible live
+packet. Never regenerate or reuse nonce, entropy, or mapping bytes; a coincidentally
+identical semantic permutation is allowed. Public deterministic seeds control
+schedule order only.
 Subjects see one file, never an arm ID. Analysis unblinds exactly once through a
 create-once receipt; identity never reaches a qualitative judge because none runs.
 
@@ -194,11 +223,16 @@ fails at least one requested behavior; both correct states resolve; both mutants
 fail for declared reasons; their union exercises every requested behavior;
 correct states preserve regressions; all repeats are identical. Symlink, hidden
 path, reused repository, nondeterminism, truncation, or hash drift fails.
-All 20 must pass after the sole correction; no task is substituted or repaired.
-After mechanical closure, freeze final bytes in an authorized clean local commit
-and perform post-freeze alignment; any gap stops without edits. Then run all 300
-cases on that exact commit and issue the create-once receipt binding results,
-identities, final hashes/config/commit; create the manifest and stop for smoke.
+All 20 frozen tasks must pass; none may be corrected, substituted, or repaired.
+After commissioning PASS, the qualifier automatically creates the non-user
+`<output>/freeze-record.json`, binding the PASS hash and exact clean commit, before
+any checker execution. External qualification verifies
+that commit and commissioning hash, executes the 300 cases once outside any live
+root, and emits a complete receipt binding all 300 raw record hashes/results, its
+terminal result, config/evaluator/tests/runtime hashes, commit, commissioning
+PASS, and freeze record. Fresh `initialize` validates and copies that envelope
+into a new authoritative root and executes zero checkers. Freeze and qualification
+records are internal provenance, not either of the two user live authorizations.
 ## 6. Frozen all-20 schedules, selection, and retry
 
 Config is strict and has no CLI runtime override. It pins all protocol settings,
@@ -206,8 +240,8 @@ hashes, seeds, invalidity table, and caps. Current-runtime strictness comes from
 the frozen config plus receipt hash, not a model-name branch in evaluator logic.
 Any changed/non-Sol design or requested override fails validation.
 
-Before smoke, freeze base and fallback schedules for all 20 task IDs for every
-stage. Calibration contains six rounds of all 20 under null with task order varied
+Before authoritative initialization, freeze base and fallback schedules for all
+20 task IDs for every scored stage. Calibration contains six rounds of all 20 under null with task order varied
 per round. The control master has, for every task, one three-arm opaque unit. The
 helpful master has four rounds and one consecutive opaque pair per task/round.
 After null-only selection, derive executable control/helpful schedules solely by
@@ -234,7 +268,8 @@ For the first allowed invalidity in a live stage, complete unaffected base slots
 mark every original observation in that task-stage block `SUPERSEDED`, exclude all
 of them, and run exactly its frozen replacement at stage end: six calibration,
 three control, or eight helpful calls. Any second invalid task block in that stage
-or invalid replacement is `INVALID`. Smoke is never retried.
+or invalid replacement is `INVALID`. Commissioning probes are governed
+separately by Section 9 and are not scored.
 Resume is allowed only after an intact completed scheduled attempt in calibration,
 after a complete three-arm task unit in controls, or after a complete consecutive
 pair in helpful. A partial unit/attempt, changed remaining schedule, missing byte,
@@ -242,14 +277,13 @@ or failed sentinel is `INVALID`. Whole task-stage supersession still governs ret
 
 | Stage | Base | Maximum fallback | Cumulative maximum |
 | --- | ---: | ---: | ---: |
-| Authenticated smoke | 1 | 0 | 1 |
-| Null calibration: 20 x 6 | 120 | 6 | 127 |
-| Controls: 16 x 3 | 48 | 3 | 178 |
-| Helpful: 16 x 8 | 128 | 8 | 314 |
-| **Total** | **297** | **17** | **314** |
+| Null calibration: 20 x 6 | 120 | 6 | 126 |
+| Controls: 16 x 3 | 48 | 3 | 177 |
+| Helpful: 16 x 8 | 128 | 8 | 313 |
+| **Total** | **296** | **17** | **313** |
 
-Every launched attempt counts, including failed, invalid, interrupted, and
-superseded attempts. No billing estimate exists.
+Every launched authoritative subject attempt counts, including failed, invalid,
+interrupted, and superseded attempts. No billing estimate exists.
 
 ## 7. Selection, statistics, power, and verdicts
 
@@ -295,23 +329,29 @@ stratum, and sorted zero-based endpoints 2,499 and 97,500. It changes no gate an
 supports no population claim. Report mechanically verified requirement coverage
 and protocol secondary metrics separately; no composite score or judge override.
 
-## 8. Minimal immutable evidence and replay
+## 8. Minimal authoritative evidence and replay
 
-For one predeclared instance ID, exactly two persisted create-once roots exist:
+For one predeclared authoritative instance ID, exactly two persisted create-once
+roots exist:
 
 1. `runs/<instance-id>/live` — qualification, initial manifest, attempts, later
    receipts, stage reports, and final report; and
 2. `runs/<instance-id>/replay` — one offline replay output.
 
-No arbitrary root is accepted. Neither may preexist at instance initialization;
+No arbitrary root is accepted. Neither may preexist at authoritative initialization;
 later stages only add exclusive-create entries to the initialized live root.
-Offline provisional work uses a temporary external directory, not evidence.
+Offline work and commissioning use one reusable external diagnostic root, never
+these roots. Each launched probe exclusively creates
+`<root>/<exact-clean-descendant-commit>/probe-N/`; it contains only labeled
+non-authoritative raw JSONL, stderr, final response, runtime/tree result, and PASS
+if earned—no scientific manifest, receipt DAG, replay, or instance.
 
-After final qualification and before smoke, create the initial manifest once. It
-binds final artifact/receipt hashes, unordered treatment hashes and mapping hash,
-all-20 schedules/fallbacks/sentinels, seeds, runtime/Python identities, invalidity
-table, wrapper, roots, and 297/314 caps. Never mutate it. Later access,
-authorization, unblinding, selection, filtered-schedule, power, and stage results
+Fresh initialization copies the validated commissioning/freeze/qualification
+envelope and creates the initial manifest once. It binds those hashes, all
+artifact/treatment and fresh mapping hashes, schedules/fallbacks/sentinels, seeds,
+runtime/Python identities, invalidity table, wrapper, roots, and 296/313 caps.
+Never mutate it. Later campaign authorization, unblinding, selection,
+filtered-schedule, power, and stage results
 are separate create-once receipts; each subsequent stage receipt references the
 manifest and all prerequisite receipt hashes. Earlier evidence is never rewritten.
 There are no block receipts and no new ledger.
@@ -325,6 +365,15 @@ Reconstruct the final state only from frozen fixture plus captured diff/untracke
 content; do not duplicate a workspace snapshot. Any capture truncation is
 `INVALID`.
 
+Commissioning alone requires exact final bytes and an unchanged synthetic tree;
+authoritative coding patches are expected and external checkers/capture score
+them. Structural row validation checks schema, slot, and evidence completeness.
+A structurally complete row is published and deterministically classified under
+the predeclared `Y=0`, infrastructure-invalid, or campaign-`INVALID` rule; outcome,
+identity, response bytes, timeout, or tree-integrity failure never makes it throw.
+Only corrupt/incomplete publication stops as preserved incomplete and is never
+hand-repaired, resumed, or reused.
+
 Replay takes only frozen config and instance ID, validates exclusive roots,
 manifest/receipt references, all hashes/sentinels, attempt ordering, deletions,
 tampering, supersession, and caps, then creates the one replay root and regenerates
@@ -334,21 +383,40 @@ selection, task/arm/repeat outcomes, `d_t`, macro effect, exact p, bootstrap,
 power, coverage, secondary metrics, invalid/superseded calls, deviations, gates,
 and the exact claim boundary.
 
-## 9. CLI, smoke, tests, audit, and commits
+## 9. CLI, commissioning, tests, audit, and commits
 
 Python code invokes checkers/helpers with `sys.executable`; receipts record its
 resolved path and version. README commands use `python3` for this repository/Mac.
 The module exposes strict `validate`, `qualify`, `verify-power`, `simulate`,
-`run-stage --stage smoke|calibration|controls|helpful`, and `replay`. `run-stage`
-rejects missing stage authorization, out-of-order/prerequisite stages, reused
+`commission`, `initialize`, `run-stage --stage calibration|controls|helpful`, and
+`replay`.
+`run-stage` rejects missing campaign authorization, out-of-order/prerequisite stages, reused
 roots/attempt paths, changed hashes/sentinels, and every model/reasoning/timeout/
 network/parallelism/output override. `replay` rejects any live option.
 
-Smoke uses `N` in a fresh prepared repo and an embedded frozen contract requiring
-exact final response `IMPLEMENTED\nSMOKE_READY`, with no changes. It passes only on
-exit zero, no timeout/interruption, exact response, untouched tree, complete
-capture, and matching requested/observed `gpt-5.6-sol/high`. Any failure is
-`INVALID` and stops; it is not retried.
+`commission` creates a disposable sentinel and its zero-byte `CODER.md` locally;
+it never imports M2 `N`, labels, tasks, treatments, or artifacts. Every probe uses
+a fresh discarded session. Its authorization binds the starting clean commit,
+five engineering paths and cumulative 350-churn cap, fixed config/runtime/CLI,
+one reusable diagnostic root, at most three launched probes, and at most two
+concrete repair cycles. Each probe path follows Section 8, records its exact clean
+descendant commit and cumulative start-to-current diff, and, for `N>1`, cites the
+prior concrete failure and proves relevant bytes changed. Unchanged reruns are
+forbidden. A prelaunch/invocation-only failure with no model call or evidence may
+be corrected without consuming a probe but remains within the repair limit.
+
+Commissioning PASS binds the exact commit; config/evaluator/tests/wrapper hashes;
+resolved CLI path/hash/version; exact command, strict config, requested
+`gpt-5.6-sol/high`, and isolated-profile status without credentials; raw event,
+stderr, and final hashes; expected no-trailing-newline bytes
+`IMPLEMENTED\nSMOKE_READY`; and unchanged sentinel-tree result. Service identity
+is collected only from `$.model`, `$.reasoning_effort`, `$.service.model`, and
+`$.service.reasoning_effort` on event types `session.config`, `turn.started`, or
+`response.completed`—never user/assistant/tool/command payloads. Collect all:
+none is nonfatal `not_reported`, all consistent with the request is
+`reported_match`, and any contradiction is failing `reported_mismatch`; none is
+provider attestation. The first PASS ends commissioning. Repairs then require
+focused and full tests; caps, repeated cause, no progress, or expansion stop it.
 
 `tests/test_beneficial_sensitivity.py` is table-driven and stays within 650 lines:
 
@@ -356,27 +424,21 @@ capture, and matching requested/observed `gpt-5.6-sol/high`. Any failure is
 | --- | --- |
 | Config/hash/path | strict keys/hashes/safe paths; reject non-Sol design and all overrides |
 | Blinding | opaque schedules/evidence; mapping unavailable until locked-outcome unblinding |
-| Scheduling/caps | frozen all-20 filtering, balance, freshness, ordering, 297/314, stage order |
+| Scheduling/caps | frozen all-20 filtering, balance, freshness, ordering, 296/313, stage order |
 | Retry | every listed path, every nonlisted failure as `Y=0`, second invalid, invalid replacement |
 | Objective | resolve iff every requirement, regression, integrity passes; no judge override |
-| Evidence/replay | exclusive creation, tamper/deletion/reorder detection, exact resume boundaries, byte-identical replay |
-| Runtime/offline | `sys.executable`, smoke cases, requested/observed equality, offline code never instantiates live runner |
+| Evidence/replay | commissioning separation; terminal invalid attempts; corruption, tamper/deletion/reorder detection; exact resume; byte-identical replay |
+| Runtime/offline | `sys.executable`; exact no-newline sentinel; frozen client identity; match-if-reported semantics; offline code never instantiates live runner |
 | Analysis/history | exact selection, power grid, sign test, bootstrap endpoints, all verdicts, unchanged V2 hashes/tests |
 
-Packets and local commit boundaries are: `access` first; independent provisional
-`treatment` and `tasks` plus validator record; `engine` plus tests/config/README;
-then, only if needed, one consolidated correction commit. One explicit
-offline implementation authorization covers these bounded local commits and the
-sole correction. It authorizes no push, default-branch merge, or live call. Root
-does not code. Keep only the task validator and one final adversarial audit—no
-owner-reviewer layer, initial review loop, or second audit.
+The prior access/treatment/task/validator/engine packets, implementation
+authorization, audit, and correction are completed read-only provenance. They
+grant no current role, edit, review loop, or live authority. Root does not code.
 
-The final auditor checks the acceptance table, access isolation, allowlist/caps, copied-code absence, hashes, schedules, runtime, statistics, replay, history, and scope.
-Findings are `M2_BLOCKER`, `DEFER`, or `REJECT`; only consolidated blockers enter
-the one correction. After mechanical closure, freeze final bytes in an authorized
-clean local commit, perform post-freeze alignment (gap stops without edits), run
-the 300 cases on that commit, issue the receipt, create the manifest, and stop for
-smoke authorization. An unresolved blocker stops for the user.
+For v0.4, one final read-only reviewer checks only the five-path delta against
+this amendment; at most one bounded engineering correction may resolve its
+in-scope blockers. Then follow the sole active sequence in Section 4. An
+unresolved blocker stops; no audit loop or historical-artifact correction exists.
 
 ## 10. Offline gates, live authorization, and stopping
 
@@ -387,9 +449,6 @@ python3 -m unittest discover -s tests -v
 M2_OFFLINE_DIR="$(mktemp -d)"
 PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity validate \
   --experiment experiments/coder-beneficial-sensitivity-m2.json
-PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity qualify \
-  --experiment experiments/coder-beneficial-sensitivity-m2.json \
-  --output "$M2_OFFLINE_DIR/qualification"
 PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity verify-power \
   --experiment experiments/coder-beneficial-sensitivity-m2.json
 PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity simulate \
@@ -399,36 +458,55 @@ git diff --check
 git status --short
 ```
 
-Gate order: known green baseline; offline authorization; access packet/hash;
-independent provisional artifacts; task validation; engine/tests; power/fake
-replay; final audit; at most one correction; mechanical closure; full command
-block once; allowlist/line check; freeze final bytes in an authorized clean local
-commit; post-freeze alignment (gap stops without edits); authoritative 300-case
-qualification on that exact commit and create-once receipt; initial manifest;
-then stop for smoke authorization. Any earlier failure blocks later gates.
+Active gate order: five-path delta; focused/full tests; one final review and at
+most one correction; bounded commissioning; automatic freeze of its first PASS
+commit; external 300-case qualification once; fresh zero-checker initialization;
+campaign authorization; calibration; controls only after selection/power PASS;
+helpful only after both controls PASS; replay and terminal report.
 
-Live contract, with no output or runtime override:
+Commissioning and authoritative contracts, with no output or runtime override:
 
 ```bash
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity commission \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --starting-commit <clean-development-commit> \
+  --diagnostic-root <one-reusable-external-root> \
+  --authorization-receipt <commissioning-authorization.json>
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity qualify \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --verified-commit <same-frozen-commit> \
+  --commissioning-pass <external-commissioning-pass.json> \
+  --output "$M2_OFFLINE_DIR/qualification"
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity initialize \
+  --experiment experiments/coder-beneficial-sensitivity-m2.json \
+  --instance <fresh-instance-id> --verified-commit <same-frozen-commit> \
+  --qualification-receipt "$M2_OFFLINE_DIR/qualification/qualification-receipt.json"
 PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity run-stage \
   --experiment experiments/coder-beneficial-sensitivity-m2.json \
-  --instance <instance-id> --stage <smoke|calibration|controls|helpful> \
-  --authorization-receipt <stage-specific-create-once-receipt.json>
+  --instance <instance-id> --stage <calibration|controls|helpful> \
+  --authorization-receipt <campaign-authorization.json>
 PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity replay \
   --experiment experiments/coder-beneficial-sensitivity-m2.json \
   --instance <instance-id>
 ```
 
-Four separate explicit user decisions authorize: smoke; calibration after smoke;
-controls after balanced selection and power `>=0.80`; and helpful after A/A and
-harmful pass. Each is copied into a separate create-once live-root receipt before
-its first call and cannot authorize another stage or artifact change.
+Commissioning and campaign are the only user live authorizations. Campaign schema
+`mdseval.coder-beneficial-sensitivity-m2-campaign-authorization-v1` binds exact
+instance, commit, manifest/config/runtime hashes, every mapping hash, ordered
+stages, mechanical gates, frozen fallbacks, and 313 ceiling. One stage runs per
+invocation; after mechanical PASS the operator automatically invokes the uniquely
+eligible next stage with identical authorization bytes—no chat gate, outcome-based
+choice, mapping regeneration, repair, or second campaign. Resume is only at the
+exact Section 6 block boundaries. Manual noncompletion earns no favorable verdict.
+A prelaunch environment failure that makes no call and mutates no authoritative
+evidence permits invocation-only correction; after launch, frozen rules control.
+Freeze, qualification, and stage receipts are non-user internal provenance.
 
 Stop and preserve evidence on failed baseline/access/authorship/oracle/hash/
 wrapper/isolation/runtime/balance/evidence/receipt/sentinel gate; frozen-byte
 change; fewer than four eligible tasks per stratum; power `<0.80`; second invalid
 block in a stage; invalid replacement; failed A/A or harmful gate; invalid resume;
-cap/allowlist breach; a 315th call would launch; or helpful completion. Never retune, substitute,
+cap/allowlist breach; a 314th call would launch; or helpful completion. Never retune, substitute,
 change seeds/checkers, add a control, selectively retry, or repeat until pass.
 
 ## 11. Narrow portability and handoff
@@ -442,9 +520,11 @@ experiment, calibration, subset, power, evidence roots, and authorization; no
 cross-model command, comparison, pooling, ranking, or cheap-model machinery is
 implemented now.
 
-Offline handoff requires all 20 tasks and 300 qualification executions passing;
-the protocol grid reproduced; tests/fake replay green; access/authorship complete;
-one audit and optional correction mechanically closed; all paths/caps satisfied;
-historical V2 unchanged; and deterministic proof of 297/314 ceilings. Milestone 2
-is administratively complete on one allowed verdict plus offline replay and
-scientifically passes only on `SENSITIVITY_DEMONSTRATED`.
+Authoritative-campaign readiness requires successful commissioning; all 20 tasks
+and 300 qualification executions passing once on the same frozen commit; the
+protocol grid reproduced; tests/fake replay green; access/authorship complete;
+one implementation audit and optional correction mechanically closed; all
+paths/caps satisfied; historical V2 and excluded diagnostic roots unchanged; and
+deterministic proof of 296/313 ceilings. Milestone 2 is administratively complete
+on one allowed verdict plus offline replay and scientifically passes only on
+`SENSITIVITY_DEMONSTRATED`.
