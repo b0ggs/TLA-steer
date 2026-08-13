@@ -4,7 +4,7 @@ if len(sys.argv)!=2:raise SystemExit(2)
 root=Path(sys.argv[1]);target=root/"solution.py"
 def run(code):
  try:
-  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=4);return p.returncode==0,("ok" if p.returncode==0 else "failed")
+  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=10);return p.returncode==0,("ok" if p.returncode==0 else "failed")
  except subprocess.TimeoutExpired:return False,"timeout"
 r1=run("import os,subprocess,sys\ne=os.environ.copy();e[\"USER_NAME\"]=\"Ada\";p=subprocess.run([sys.executable,sys.argv[1]+\"/solution.py\"],input=\"Hi ${USER_NAME}!\",text=True,capture_output=True,env=e);assert p.stdout==\"Hi Ada!\"")
 r2=run("import subprocess,sys\np=subprocess.run([sys.executable,sys.argv[1]+\"/solution.py\"],input=\"$$5 ${M2_DEFINITELY_MISSING}\",text=True,capture_output=True);assert p.stdout==\"$5 ${M2_DEFINITELY_MISSING}\"")

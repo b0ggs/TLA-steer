@@ -4,7 +4,7 @@ if len(sys.argv)!=2:raise SystemExit(2)
 root=Path(sys.argv[1]);target=root/"solution.py"
 def run(code):
  try:
-  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=4);return p.returncode==0,("ok" if p.returncode==0 else "failed")
+  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=10);return p.returncode==0,("ok" if p.returncode==0 else "failed")
  except subprocess.TimeoutExpired:return False,"timeout"
 r1=run("from solution import coerce_rows\nout,e=coerce_rows([{\"age\":\"3\",\"extra\":1}],{\"age\":(int,0),\"name\":(str,\"\")});assert out==[{\"age\":3,\"name\":\"\"}] and e==[]")
 r2=run("from solution import coerce_rows\ndefault=[];out,_=coerce_rows([{},{\"x\":None}],{\"x\":(str,default)});out[0][\"x\"].append(1);assert out[1][\"x\"]==[] and default==[]")

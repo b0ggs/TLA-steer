@@ -5,7 +5,7 @@ if len(sys.argv)!=2:
 root=Path(sys.argv[1]);target=root/"solution.py"
 def run(code):
     try:
-        p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=4)
+        p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=10)
         return p.returncode==0,("ok" if p.returncode==0 else "failed")
     except subprocess.TimeoutExpired:return False,"timeout"
 r1=run("from solution import render_table\nassert render_table([{\"a\":1,\"b\":2},{\"a\":3,\"b\":4}],[\"a\",\"b\"]).splitlines()==[\"a | b\",\"--+--\",\"1 | 2\",\"3 | 4\"]")

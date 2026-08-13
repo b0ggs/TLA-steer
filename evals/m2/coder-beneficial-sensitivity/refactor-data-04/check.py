@@ -4,7 +4,7 @@ if len(sys.argv)!=2:raise SystemExit(2)
 root=Path(sys.argv[1]);target=root/"solution.py"
 def run(code):
  try:
-  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=4);return p.returncode==0,("ok" if p.returncode==0 else "failed")
+  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=10);return p.returncode==0,("ok" if p.returncode==0 else "failed")
  except subprocess.TimeoutExpired:return False,"timeout"
 r1=run("from solution import overlay_config\nassert overlay_config({\"db\":{\"host\":\"h\",\"port\":1},\"x\":2},{\"db\":{\"port\":3}})=={\"db\":{\"host\":\"h\",\"port\":3},\"x\":2}")
 r2=run("from solution import overlay_config\nassert overlay_config({\"a\":1,\"nested\":{\"x\":1,\"y\":2}},{\"a\":None,\"nested\":{\"x\":None}})=={\"nested\":{\"y\":2}}")

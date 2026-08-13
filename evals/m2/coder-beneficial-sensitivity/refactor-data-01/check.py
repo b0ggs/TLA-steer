@@ -4,7 +4,7 @@ if len(sys.argv)!=2:raise SystemExit(2)
 root=Path(sys.argv[1]);target=root/"solution.py"
 def run(code):
  try:
-  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=4);return p.returncode==0,("ok" if p.returncode==0 else "failed")
+  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=10);return p.returncode==0,("ok" if p.returncode==0 else "failed")
  except subprocess.TimeoutExpired:return False,"timeout"
 r1=run("from solution import dedupe_records\nassert dedupe_records([{\"id\":2,\"v\":\"a\"},{\"id\":1},{\"id\":2,\"v\":\"b\"}])==[{\"id\":2,\"v\":\"b\"},{\"id\":1}]")
 r2=run("from solution import dedupe_records\nassert dedupe_records([{\"id\":1,\"a\":1},{\"id\":1,\"b\":2}])==[{\"id\":1,\"b\":2}]")

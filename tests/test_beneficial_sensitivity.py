@@ -1,242 +1,589 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import itertools
 import json
-import sys
+import os
+import shutil
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
 from fractions import Fraction
 from pathlib import Path
-from unittest import mock
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from mdseval.beneficial_sensitivity import (
-    GRID, STRATA, TASK_ID, _checker, analyze, build_schedules,
-    classify_failure, compare, exact_sign_test, filtered_schedule, load_design,
-    main, objective_resolved, replay, resume_boundary, retry_decision,
-    runtime_matches, select_tasks, service_metadata, simulate, smoke_passes,
-    stratified_bootstrap, verify_power,
-)
-from mdseval.hashing import sha256_file
-
-ROOT = Path(__file__).resolve().parents[1]
-DESIGN = ROOT / "experiments/coder-beneficial-sensitivity-m2.json"
+from mdseval import beneficial_sensitivity as m2
 
 
-class BeneficialSensitivityTests(unittest.TestCase):
+HERE = Path(__file__).resolve().parents[1]
+ROOT = Path(os.environ.get("M2_TEST_ROOT", HERE))
+CONFIG = ROOT / "experiments/coder-beneficial-sensitivity-m2.json"
+COMMIT = "a" * 40
+
+
+def write_json(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(m2.canonical(value))
+
+
+def commit_probe(root: Path, commit: str, paths: list[str]) -> dict[str, object]:
+    return {"head": commit, "clean": True,
+            "frozen_hashes": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in paths}}
+
+
+class FakeChecker:
+    def __init__(self, root: Path):
+        self.root = root
+        self.calls = 0
+
+    def __call__(self, checker: Path, task_id: str, workspace: Path, timeout: int) -> dict[str, object]:
+        self.calls += 1
+        state = ("pristine", "correct-a", "correct-b", "mutant-a", "mutant-b")[((self.calls - 1) % 15) // 3]
+        task = json.loads((self.root / "evals/m2/coder-beneficial-sensitivity" / task_id / "task.json").read_text())
+        requirement_ids = [x["id"] for x in task["requirements"]]
+        regression_ids = [x["id"] for x in task["regressions"]]
+        failed = set()
+        if state == "pristine":
+            failed = {requirement_ids[0]}
+        elif state.startswith("mutant"):
+            matrix = task["requirement_to_negative_case_matrix"]
+            failed = {rid for rid, mutants in matrix.items() if state in mutants}
+        resolved = not failed and state.startswith("correct")
+        payload = {"schema": m2.CHECK_SCHEMA, "task_id": task_id, "environment": {"passed": True},
+                   "requirements": {rid: {"passed": rid not in failed, "detail": "synthetic"} for rid in requirement_ids},
+                   "regressions": {rid: {"passed": True, "detail": "synthetic"} for rid in regression_ids},
+                   "integrity": {"passed": True}, "resolved": resolved}
+        return {"valid": True, "resolved": resolved, "mechanical": True, "payload": payload}
+
+
+class FakeAttempts:
+    def __init__(self, mode: str = "pass"):
+        self.mode = mode
+        self.calls = 0
+
+    def __call__(self, design: dict, slot: dict, semantic: str, index: int) -> dict:
+        self.calls += 1
+        stage = slot["stage"]
+        if self.mode == "invalid-smoke" and stage == "smoke":
+            invalid, resolved = True, False
+        else:
+            invalid = False
+            resolved = (stage == "smoke" or (stage == "calibration" and slot["round"] <= 3)
+                        or (stage == "controls" and semantic in {"N1", "N2"}) or (stage == "helpful" and semantic == "P"))
+        row = {**slot, "launch_index": index, "requested_model": "gpt-5.6-sol", "observed_model": None if invalid else "gpt-5.6-sol",
+               "requested_reasoning_effort": "high", "observed_reasoning_effort": None if invalid else "high", "judge_calls": 0,
+               "objective_resolved": resolved, "checker_valid": not invalid, "mechanical_integrity": not invalid,
+               "requirements_passed": 3 if resolved else 0, "requirements_total": 3, "status": "ACTIVE",
+               "infrastructure_invalid": invalid, "final_message_hex": m2.EXPECTED_FINAL.hex() if stage == "smoke" else "",
+               "tree_unchanged": True, "capture_complete": True, "raw": {"source": "deterministic-fake"}}
+        return row
+
+
+def initialize_case(base: Path, *, instance: str = "case", checker: FakeChecker | None = None) -> tuple[Path, FakeChecker]:
+    checker = checker or FakeChecker(ROOT)
+    closure = base / "closure.json"
+    freeze = base / "freeze.json"
+    write_json(closure, {"schema": "mdseval.coder-beneficial-sensitivity-m2-4-closure-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1",
+                         "authoritative": False, "status": "PASS"})
+    write_json(freeze, {"schema": "mdseval.coder-beneficial-sensitivity-m2-freeze-authorization-v1",
+                        "experiment": "coder-beneficial-sensitivity-m2-timeout-v1", "instance": instance,
+                        "verified_commit": COMMIT, "authorized": True})
+    m2.initialize(design_path=CONFIG, instance=instance, verified_commit=COMMIT, freeze_authorization=freeze,
+                  closure_record=closure, runs_root=base / "runs", checker=checker, process=commit_probe)
+    return base / "runs", checker
+
+
+def authorize(base: Path, runs: Path, stage: str, instance: str = "case") -> Path:
+    path = base / f"auth-{stage}.json"
+    write_json(path, {"schema": "mdseval.coder-beneficial-sensitivity-m2-stage-authorization-v1",
+                      "experiment": "coder-beneficial-sensitivity-m2-timeout-v1", "instance": instance, "stage": stage,
+                      "authorized": True, "manifest_sha256": m2.sha256_file(runs / instance / "live/initial-manifest.json")})
+    return path
+
+
+def qualification_freeze(path: Path) -> Path:
+    write_json(path, {"schema": "mdseval.coder-beneficial-sensitivity-m2-4-freeze-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1",
+                      "status": "PASS", "authoritative": False})
+    return path
+
+
+def disposable_root(base: Path) -> Path:
+    root = base / "repo"
+    for source in ("controls/coder", "evals/m2/coder-beneficial-sensitivity", "evals/qualification/coder-beneficial-sensitivity-m2"):
+        shutil.copytree(ROOT / source, root / source)
+    for source in ("experiments/coder-beneficial-sensitivity-m2-1-access.json",
+                   "experiments/coder-beneficial-sensitivity-m2-3-task-reliability-authorship.json",
+                   "src/mdseval/beneficial_sensitivity.py", "src/mdseval/wrapper.py", "tests/test_beneficial_sensitivity.py",
+                   "experiments/coder-beneficial-sensitivity-m2.json"):
+        target = root / source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / source, target)
+    return root
+
+
+class FrozenDesignTests(unittest.TestCase):
     @classmethod
-    def setUpClass(cls) -> None:
-        cls.design = load_design(DESIGN)
+    def setUpClass(cls):
+        cls.design = json.loads(CONFIG.read_text())
 
-    def mutated_design(self, change) -> Path:
-        value = json.loads(DESIGN.read_text())
-        change(value)
-        temporary = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
-        with temporary:
-            json.dump(value, temporary)
-        self.addCleanup(Path(temporary.name).unlink, missing_ok=True)
-        return Path(temporary.name)
-
-    def evidence(self) -> dict:
-        calibration = {task: [True, True, True, False, False, False] for task in TASK_ID}
-        selection = select_tasks(self.design, {task: 3 for task in TASK_ID})
-        selected = selection["selected_ids"]
-        return {
-            "schema": "mdseval.coder-beneficial-sensitivity-m2-evidence-v1",
-            "launched_calls": 297,
-            "calibration": calibration,
-            "controls": {task: {"N1": [True], "N2": [True], "H": [False]} for task in selected},
-            "helpful": {task: {"P": [True] * 4, "N": [False] * 4} for task in selected},
-            "invalid": [], "superseded": [],
-        }
-
-    def test_config_hash_path_runtime_and_blockers_are_strict(self) -> None:
+    def test_config_is_canonical_one_line_and_authority_runtime_are_frozen(self):
+        raw = CONFIG.read_bytes()
+        self.assertEqual(raw, m2.canonical(json.loads(raw)))
+        self.assertEqual(len(raw.splitlines()), 1)
+        self.assertEqual(self.design["protocol"]["m2_4_authority_sha256"], "227c8a5b152421973a837d664f1c226af79b0ea0b4f7614835f4baff5accb901")
+        self.assertEqual((self.design["schema"], self.design["experiment"]), (m2.SCHEMA, "coder-beneficial-sensitivity-m2-timeout-v1"))
         self.assertEqual((self.design["runtime"]["model"], self.design["runtime"]["reasoning_effort"]), ("gpt-5.6-sol", "high"))
-        self.assertEqual([item["id"] for item in self.design["blockers"]], ["B001", "B002", "B003", "B004"])
-        self.assertEqual((ROOT / "controls/coder/null-m2.md").read_bytes(), b"")
-        cases = (
-            lambda d: d["runtime"].update(model="gpt-5.6-terra"),
-            lambda d: d["runtime"].update(reasoning_effort="medium"),
-            lambda d: d["runtime"].update(timeout_seconds=299),
-            lambda d: d["runtime"].update(max_parallel_runs=2),
-            lambda d: d["runtime"].update(network_for_agent_commands=True),
-            lambda d: d.update(extra="override"),
-            lambda d: d["treatments"]["null"].update(path="../escape"),
-            lambda d: d["calls"].update(absolute_cap=315),
-            lambda d: d["invalidity"].update(smoke_retry=True),
-        )
-        for change in cases:
-            with self.subTest(change=change), self.assertRaises(ValueError):
-                load_design(self.mutated_design(change), ROOT)
+        self.assertEqual((self.design["calls"]["base_cap"], self.design["calls"]["absolute_cap"]), (297, 314))
 
-    def test_frozen_hashes_and_historical_v2_remain_bound(self) -> None:
-        expected = self.design["artifacts"]
-        for relative in ("src/mdseval/outcome_mvp.py", "tests/test_outcome_mvp.py", "experiments/coder-outcomes-v2-mvp.json", "evals/qualification/coder-outcomes-v2/oracle-variants.json"):
-            self.assertEqual(sha256_file(ROOT / relative), expected[relative])
-        self.assertEqual(sha256_file(ROOT / "controls/coder/no-implementation-v2.md"), "aaf88530c73385ad6d38a45dae67be4872e650afc27d620a8d640430e2ec5606")
+    def test_strict_paths_config_and_no_override_seam(self):
+        for value in ("/a", "../a", "a/../b", "", "."):
+            with self.subTest(value=value), self.assertRaises(ValueError): m2._safe(value, "x")
+        config = m2.runner_config(self.design)
+        self.assertEqual((config.model, config.reasoning_effort, config.max_parallel_runs), ("gpt-5.6-sol", "high", 1))
+        clone = json.loads(json.dumps(self.design)); clone["runtime"]["model"] = "not-sol"
+        with patch.object(m2, "_root", return_value=ROOT), patch.object(Path, "read_text", return_value=json.dumps(clone)):
+            with self.assertRaisesRegex(ValueError, "runtime"): m2.load_design(Path("x"))
 
-    def test_schedules_are_opaque_balanced_frozen_and_capped(self) -> None:
-        schedules = build_schedules(self.design)
-        self.assertEqual(schedules, build_schedules(self.design))
-        self.assertEqual({stage: len(rows) for stage, rows in schedules["base"].items()}, {"calibration": 120, "controls": 60, "helpful": 160})
-        self.assertEqual({stage: len(rows) for stage, rows in schedules["fallback"].items()}, {"calibration": 120, "controls": 60, "helpful": 160})
-        self.assertEqual(schedules["sentinels"], self.design["schedules"])
-        self.assertTrue(all("treatment" not in row and row["opaque_arm_id"].startswith("O") for stage in schedules["base"].values() for row in stage))
-        selected = select_tasks(self.design, {task: 3 for task in TASK_ID})["selected_ids"]
-        controls, helpful = filtered_schedule(self.design, "controls", selected), filtered_schedule(self.design, "helpful", selected)
-        self.assertEqual((len(controls["slots"]), len(helpful["slots"])), (48, 128))
-        self.assertEqual(controls["slots"], [row for row in schedules["base"]["controls"] if row["task_id"] in selected])
-        self.assertEqual((1 + 120 + 48 + 128, 1 + 126 + 51 + 136), (297, 314))
-        self.assertEqual(len({row["slot_id"] for stage in schedules["base"].values() for row in stage}), 340)
+    def test_cli_has_initialize_and_no_output_or_runtime_options(self):
+        source = Path(m2.__file__).read_text()
+        self.assertIn('"initialize","run-stage","replay"', source)
+        self.assertNotIn("--model", source)
+        self.assertNotIn("--runs-root", source)
 
-    def test_selection_is_exact_balanced_and_stops_on_short_stratum(self) -> None:
-        successes = {task: (index % 5) + 1 for index, task in enumerate(TASK_ID)}
-        first = select_tasks(self.design, successes)
-        self.assertEqual(first, select_tasks(self.design, successes))
-        self.assertEqual(len(first["selected_ids"]), 16)
-        for stratum in STRATA:
-            self.assertEqual(sum(task.startswith(stratum + "-") for task in first["selected_ids"]), 4)
-        for task in self.design["master"]["strata"]["feature"][:2]:
-            successes[task] = 0
-        stopped = select_tasks(self.design, successes)
-        self.assertEqual((stopped["status"], stopped["selected_ids"]), ("SENSITIVITY_NOT_DEMONSTRATED", []))
+    def test_exact_timeout_protocol_artifacts_qualification_and_owner_payload(self):
+        self.assertEqual(set(self.design["protocol"]), {"version", "base_protocol_sha256", "m2_2_completion_sha256", "m2_3_authority_sha256",
+            "m2_3_closure_sha256", "m2_3_1_authority_sha256", "m2_3_1_closure_sha256", "m2_4_authority_sha256", "measurement_base_commit"})
+        self.assertEqual(set(self.design["artifacts"]), {"access", "helpful", "helpful_authorship", "harmful", "null", "master", "task_authorship",
+            "task_reliability_authorship", "oracle", "wrapper", "evaluator", "tests"})
+        self.assertTrue(all(set(value) == {"path", "sha256"} for value in self.design["artifacts"].values()))
+        self.assertEqual(self.design["qualification"]["internal_timeout_seconds"], 10)
+        owner = json.loads((ROOT / self.design["artifacts"]["task_reliability_authorship"]["path"]).read_text())
+        stripped = sorted(f"644 {value} {key.removeprefix('return/')}\n".encode() for key, value in owner["output_hashes"].items())
+        prefixed = sorted(f"644 {value} {key}\n".encode() for key, value in owner["output_hashes"].items())
+        self.assertEqual(hashlib.sha256(b"".join(stripped)).hexdigest(), "a9bcb692d71290ed7b5bddf5bf65a80a022bfb9e491c03ca9ef59480c001e355")
+        self.assertEqual(hashlib.sha256(b"".join(prefixed)).hexdigest(), "e3c8ad8f8cdc8bae3f0b2befcba140a2191a2b386cc77a89b554167d6ee9e156")
 
-    def test_retry_invalidity_and_resume_tables_are_arm_blind(self) -> None:
-        replaceable = ("evaluator_failure", "machine_failure", "authentication_failure", "service_failure")
-        for code in replaceable:
-            self.assertEqual(classify_failure(self.design, code, False), "REPLACE_BLOCK")
-            self.assertEqual(classify_failure(self.design, code, True), "Y_ZERO")
-        for code in self.design["invalidity"]["score_zero"] + ["unexpected"]:
-            self.assertEqual(classify_failure(self.design, code, False), "Y_ZERO")
-        self.assertEqual(retry_decision("controls", 1), "FROZEN_FALLBACK_AT_STAGE_END")
-        self.assertEqual(retry_decision("helpful", 2), "INVALID")
-        self.assertEqual(retry_decision("calibration", 1, True), "INVALID")
-        self.assertEqual(retry_decision("smoke", 1), "INVALID")
-        cases = (("calibration", 1, True), ("controls", 3, True), ("controls", 2, False), ("helpful", 2, True), ("helpful", 1, False))
-        for stage, count, expected in cases:
-            self.assertIs(resume_boundary(stage, count), expected)
 
-    def test_objective_requires_every_mechanical_field_without_override(self) -> None:
-        payload = {"resolved": True, "environment": {"passed": True}, "requirements": {"R1": {"passed": True}, "R2": {"passed": True}}, "regressions": {"G1": {"passed": True}}, "integrity": {"passed": True}}
-        self.assertTrue(objective_resolved(payload))
-        for path in (("environment", "passed"), ("requirements", "R1"), ("regressions", "G1"), ("integrity", "passed")):
-            changed = json.loads(json.dumps(payload))
-            if path[1] == "passed": changed[path[0]]["passed"] = False
-            else: changed[path[0]][path[1]]["passed"] = False
-            self.assertFalse(objective_resolved(changed))
-        payload["judge_override"] = True; payload["resolved"] = False
-        self.assertFalse(objective_resolved(payload))
+class ScheduleAndStatisticsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.design = json.loads(CONFIG.read_text()); cls.master = m2.build_master_schedules(cls.design)
 
-    @staticmethod
-    def brute(differences) -> Fraction:
-        nonzero = [value for value in differences if value]
-        observed = abs(sum(nonzero, Fraction()))
-        extreme = sum(abs(sum((value if sign else -value for value, sign in zip(nonzero, signs)), Fraction())) >= observed for signs in itertools.product((False, True), repeat=len(nonzero)))
-        return Fraction(extreme, 1 << len(nonzero))
+    def test_schedules_are_opaque_balanced_consecutive_and_deterministic(self):
+        self.assertEqual(self.master, m2.build_master_schedules(self.design))
+        for stage, expected, fallback in (("calibration", 120, 6), ("controls", 60, 3), ("helpful", 160, 8)):
+            value = self.master[stage]
+            self.assertEqual(len(value["base"]), expected)
+            self.assertTrue(all(len(x) == fallback for x in value["fallback_by_task"].values()))
+            self.assertEqual(len(value["block_sentinels"]), 20)
+        text = json.dumps(self.master)
+        for semantic in ('"N1"', '"N2"', '"H"', '"N"', '"P"'): self.assertNotIn(semantic, text)
+        for index in range(0, 160, 2):
+            a, b = self.master["helpful"]["base"][index:index + 2]
+            self.assertEqual((a["task_id"], a["round"]), (b["task_id"], b["round"]))
 
-    def test_exact_sign_test_matches_bruteforce_for_every_k_through_16(self) -> None:
-        for k in range(17):
-            values = tuple(Fraction((index % 4) + 1, 4) * (-1 if index % 3 == 0 else 1) for index in range(k))
-            result = exact_sign_test(values)
-            self.assertEqual(Fraction(*result["fraction"]), self.brute(values))
-            self.assertEqual(result["assignments"], 1 << k)
-        result = exact_sign_test((Fraction(1),) * 6 + (Fraction(0),) * 10)
-        self.assertEqual((result["nonzero"], result["fraction"]), (6, [1, 32]))
+    def test_filter_selection_resume_and_exact_caps(self):
+        counts = {task: 3 for task in m2.TASKS}; selection = m2.select_tasks(counts)
+        self.assertEqual(len(selection["selected_ids"]), 16)
+        filtered = m2.filter_schedule(self.master, selection["selected_ids"], "controls")
+        self.assertEqual(len(filtered["slots"]), 48)
+        control = self.master["controls"]["base"]
+        self.assertFalse(m2.validate_resume("controls", control, 1)); self.assertTrue(m2.validate_resume("controls", control, 3))
+        self.assertEqual(1 + 120 + 48 + 128, 297); self.assertEqual(297 + 6 + 3 + 8, 314)
+        counts.update({task: 0 for task in m2.TASKS if task.startswith("bug-")})
+        self.assertEqual(m2.select_tasks(counts)["status"], "SENSITIVITY_NOT_DEMONSTRATED")
 
-    def test_directional_rule_and_attainable_helpful_minimum(self) -> None:
-        tasks = tuple(f"t-{index}" for index in range(16))
-        a = {task: [True] * 4 for task in tasks}
-        b = {task: [False] * 4 for task in tasks}
-        strong = compare(a, b)
-        self.assertTrue(strong["passes"])
-        a = {task: [False] * 4 for task in tasks}
-        for task in tasks[:13]: a[task][0] = True
-        minimum = compare(a, b)
-        self.assertEqual(minimum["effect"], [13, 64])
-        self.assertTrue(minimum["passes"])
-        aa = compare(a, a)
-        self.assertFalse(aa["passes"])
+    def test_sign_test_matches_bruteforce_and_directional_gates(self):
+        values = [Fraction(1, 4)] * 6 + [Fraction()] * 10
+        observed = abs(sum(values)); nonzero = [x for x in values if x]
+        brute = Fraction(sum(abs(sum((v if bit else -v for bit, v in zip(bits, nonzero)), Fraction())) >= observed
+                             for bits in itertools.product((0, 1), repeat=len(nonzero))), 2 ** len(nonzero))
+        got = m2.exact_sign_test(values)
+        self.assertEqual(Fraction(got["p_value"]["numerator"], got["p_value"]["denominator"]), brute)
+        selected = list(m2.TASKS[:4] + m2.TASKS[5:9] + m2.TASKS[10:14] + m2.TASKS[15:19]); outcomes = {}
+        for task in selected:
+            outcomes[task, "N1"] = [True]; outcomes[task, "N2"] = [True]; outcomes[task, "H"] = [False]
+            outcomes[task, "P"] = [True] * 4; outcomes[task, "N"] = [False] * 4
+        self.assertFalse(m2.compare(outcomes, selected, "N1", "N2", bootstrap_iterations=100)["a_wins"])
+        self.assertTrue(m2.compare(outcomes, selected, "N1", "H", bootstrap_iterations=100)["a_wins"])
+        helpful = m2.compare(outcomes, selected, "P", "N", bootstrap_iterations=100)
+        self.assertTrue(helpful["a_wins"]); self.assertEqual((helpful["bootstrap"]["lower_index"], helpful["bootstrap"]["upper_index"]), (2, 97))
 
-    def test_bootstrap_uses_frozen_zero_based_endpoints(self) -> None:
-        rows = {task: Fraction(index // 5, 4) for index, task in enumerate(TASK_ID)}
-        strata = self.design["master"]["strata"]
-        first = stratified_bootstrap(rows, strata)
-        self.assertEqual(first, [0.375, 0.375])
+    def test_invalidity_table_and_power_draw_contract(self):
+        result = SimpleNamespace(timed_out=False, interrupted=False, exit_code=1)
+        self.assertEqual(m2.classify_attempt(result, SimpleNamespace(events=()), "SERVICE_PRE_USABLE", ["SERVICE_PRE_USABLE"]), "INFRASTRUCTURE_INVALID")
+        self.assertEqual(m2.classify_attempt(result, SimpleNamespace(events=({},)), "SERVICE_PRE_USABLE", ["SERVICE_PRE_USABLE"]), "Y0")
+        power = m2.post_calibration_power({t: 3 for t in m2.TASKS}, list(m2.TASKS[:4] + m2.TASKS[5:9] + m2.TASKS[10:14] + m2.TASKS[15:19]), self.design, iterations=500)
+        self.assertEqual(power["selected_ids"], sorted(power["selected_ids"])); self.assertTrue(all(x["value"] == .5 for x in power["rates"]))
 
-    def test_protocol_power_grid_exact_draw_order(self) -> None:
-        result = verify_power(self.design, 2000)
-        self.assertEqual([(row["null"], row["helpful"], row["expected"]) for row in result["rows"]], list(GRID))
-        self.assertEqual([round(row["observed"], 4) for row in result["rows"]], [.883, .865, .8355, .8485, .875, .925, .947])
 
-    def test_all_verdicts_and_aa_name_are_fail_closed(self) -> None:
-        evidence = self.evidence()
-        with mock.patch("mdseval.beneficial_sensitivity.post_calibration_power", return_value=.9), mock.patch("mdseval.beneficial_sensitivity.stratified_bootstrap", return_value=[0.0, 1.0]):
-            passed = analyze(self.design, evidence)
-            self.assertEqual((passed["verdict"], passed["aa"]["gate"]), ("SENSITIVITY_DEMONSTRATED", "NO_FALSE_WINNER"))
-            failed = json.loads(json.dumps(evidence)); selected = passed["selection"]["selected_ids"]
-            failed["helpful"] = {task: {"P": [False] * 4, "N": [False] * 4} for task in selected}
-            self.assertEqual(analyze(self.design, failed)["verdict"], "SENSITIVITY_NOT_DEMONSTRATED")
-            failed = json.loads(json.dumps(evidence)); failed["controls"] = {task: {"N1": [False], "N2": [False], "H": [False]} for task in selected}
-            self.assertEqual(analyze(self.design, failed)["verdict"], "SENSITIVITY_NOT_DEMONSTRATED")
-            invalid = json.loads(json.dumps(evidence)); invalid["launched_calls"] = 315
-            self.assertEqual(analyze(self.design, invalid)["verdict"], "INVALID")
+class QualificationTests(unittest.TestCase):
+    def test_checker_demands_canonical_complete_mechanical_payload(self):
+        source = ('import json\np={"schema":"mdseval.coder-beneficial-sensitivity-m2-check-v1","task_id":"t",'
+                  '"environment":{"passed":True},"requirements":{"R1":{"passed":False}},'
+                  '"regressions":{"G1":{"passed":True}},"integrity":{"passed":True},"resolved":True}\nprint(json.dumps(p))\n')
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); checker = root / "check.py"; checker.write_text(source)
+            self.assertFalse(m2._checker(checker, "t", root)["valid"])
 
-    def test_fake_simulation_and_replay_are_offline_create_once_and_tamper_evident(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            with mock.patch("mdseval.beneficial_sensitivity.post_calibration_power", return_value=.9), mock.patch("mdseval.beneficial_sensitivity.stratified_bootstrap", return_value=[0.0, 1.0]):
-                report = simulate(self.design, root / "simulation")
-            self.assertEqual(report["verdict"], "SENSITIVITY_DEMONSTRATED")
-            live = root / "runs/demo/live"; live.mkdir(parents=True)
-            evidence = self.evidence(); evidence_path = live / "evidence.json"; evidence_path.write_text(json.dumps(evidence))
-            manifest = {"design_sha256": sha256_file(DESIGN), "schedule_sentinels": self.design["schedules"], "evidence_sha256": sha256_file(evidence_path)}
-            (live / "manifest.json").write_text(json.dumps(manifest))
-            with mock.patch("mdseval.beneficial_sensitivity.post_calibration_power", return_value=.9), mock.patch("mdseval.beneficial_sensitivity.stratified_bootstrap", return_value=[0.0, 1.0]):
-                replayed = replay(self.design, "demo", root)
-            self.assertEqual(replayed, report)
-            with self.assertRaises(FileExistsError), mock.patch("mdseval.beneficial_sensitivity.post_calibration_power", return_value=.9):
-                replay(self.design, "demo", root)
-            evidence_path.write_text("{}")
-            (root / "runs/demo/replay").rename(root / "old-replay")
-            with self.assertRaisesRegex(ValueError, "tampering"):
-                replay(self.design, "demo", root)
+    def test_public_initialize_runs_all_300_and_creates_manifest_last(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td); runs, checker = initialize_case(base)
+            live = runs / "case/live"
+            self.assertEqual(checker.calls, 300)
+            self.assertTrue((live / "final-freeze-receipt.json").is_file())
+            self.assertTrue((live / "post-freeze-alignment-receipt.json").is_file())
+            receipt = json.loads((live / "qualification-receipt.json").read_text())
+            self.assertEqual((receipt["task_count"], receipt["execution_count"]), (20, 300))
+            manifest = json.loads((live / "initial-manifest.json").read_text())
+            self.assertEqual(set(manifest["mapping_hashes"]), set(m2.STAGES))
+            self.assertNotIn('"mapping"', json.dumps(manifest))
 
-    def test_offline_paths_do_not_import_or_construct_live_runner(self) -> None:
-        with mock.patch("mdseval.runner.codex_cli.CodexCLI") as live:
-            with tempfile.TemporaryDirectory() as temporary, mock.patch("mdseval.beneficial_sensitivity.post_calibration_power", return_value=.9), mock.patch("mdseval.beneficial_sensitivity.stratified_bootstrap", return_value=[0.0, 1.0]):
-                simulate(self.design, Path(temporary) / "sim")
-            with self.assertRaisesRegex(RuntimeError, "VALIDATION_BLOCKERS"):
-                from mdseval.beneficial_sensitivity import run_stage
-                run_stage(self.design, "demo", "smoke", Path("missing"))
-            live.assert_not_called()
+    def test_initialize_rejects_closure_root_and_commit_failures(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td); closure = base / "closure.json"; freeze = base / "freeze.json"
+            write_json(closure, {"schema": "mdseval.coder-beneficial-sensitivity-m2-4-closure-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1", "authoritative": False, "status": "FAIL"})
+            write_json(freeze, {"schema": "mdseval.coder-beneficial-sensitivity-m2-freeze-authorization-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1",
+                                "instance": "case", "verified_commit": COMMIT, "authorized": True})
+            with self.assertRaisesRegex(RuntimeError, "closure"):
+                m2.initialize(design_path=CONFIG, instance="case", verified_commit=COMMIT, freeze_authorization=freeze,
+                              closure_record=closure, runs_root=base / "runs", checker=FakeChecker(ROOT), process=commit_probe)
 
-    def test_checker_uses_resolved_sys_executable_and_runtime_metadata_matches(self) -> None:
-        outcome = mock.Mock(returncode=0, timed_out=False, interrupted=False, stdout=json.dumps({"resolved": False}), stderr="")
-        with mock.patch("mdseval.beneficial_sensitivity.run_process_group", return_value=outcome) as called:
-            _checker(ROOT / "evals/m2/coder-beneficial-sensitivity/bug-01/check.py", ROOT)
-        self.assertEqual(called.call_args.args[0][0], str(Path(sys.executable).resolve()))
-        requested = {"model": "gpt-5.6-sol", "reasoning_effort": "high"}
-        self.assertTrue(runtime_matches(requested, requested))
-        for observed in ({}, {"model": "gpt-5.6-sol"}, {"model": "other", "reasoning_effort": "high"}):
-            self.assertFalse(runtime_matches(requested, observed))
-        observed = service_metadata(({"type": "thread.started", "metadata": {"model": "gpt-5.6-sol", "model_reasoning_effort": "high"}},))
-        result = mock.Mock(exit_code=0, timed_out=False, interrupted=False)
-        self.assertTrue(smoke_passes(result, "IMPLEMENTED\nSMOKE_READY", (), True, requested, observed))
-        for final, changed, complete, metadata in (("wrong", (), True, observed), ("IMPLEMENTED\nSMOKE_READY", ("x",), True, observed), ("IMPLEMENTED\nSMOKE_READY", (), False, observed), ("IMPLEMENTED\nSMOKE_READY", (), True, {})):
-            self.assertFalse(smoke_passes(result, final, changed, complete, requested, metadata))
 
-    def test_cli_is_exact_and_rejects_every_runtime_or_output_override(self) -> None:
-        output = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stdout(output):
-            main(["--help"])
-        self.assertTrue(all(command in output.getvalue() for command in ("validate", "qualify", "verify-power", "simulate", "run-stage", "replay")))
-        with redirect_stdout(io.StringIO()):
-            self.assertEqual(main(["validate", "--experiment", str(DESIGN)]), 1)
-        for option in ("--model", "--reasoning-effort", "--timeout", "--network", "--parallelism", "--output"):
-            with self.subTest(option=option), self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
-                main(["run-stage", "--experiment", str(DESIGN), "--instance", "x", "--stage", "smoke", "--authorization-receipt", "x", option, "x"])
+@unittest.skipUnless(os.name == "posix", "M2.4 qualification requires POSIX process groups")
+class ProcessSafetyTests(unittest.TestCase):
+    def make_checker(self, root: Path, *, child: str = "", detail: str = "ok", stderr: str = "") -> Path:
+        payload = {"schema": m2.CHECK_SCHEMA, "task_id": "t", "environment": {"passed": True, "checks": []},
+                   "requirements": {"R1": {"passed": detail != "timeout", "detail": detail}},
+                   "regressions": {"G1": {"passed": True, "detail": "ok"}}, "integrity": {"passed": True, "detail": "ok"},
+                   "resolved": detail != "timeout"}
+        source = "import json,subprocess,sys,time\n" + child + f"\np={payload!r}\n"
+        source += f"sys.stderr.buffer.write({stderr.encode()!r})\nsys.stdout.buffer.write((json.dumps(p,sort_keys=True,separators=(',',':'))+'\\n').encode())\n"
+        path = root / "check.py"
+        path.write_text(source)
+        return path
+
+    def test_normal_completion_cleans_leaked_and_term_resistant_children(self):
+        children = (("subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)", False),
+                    ("subprocess.Popen([sys.executable,'-c','import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(30)'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);time.sleep(.1)", True))
+        for child, killed in children:
+            with self.subTest(killed=killed), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                got = m2._checker(self.make_checker(root, child=child), "t", root)
+                self.assertTrue(got["valid"])
+                self.assertTrue(got["raw"]["process_cleanup"]["term_sent"])
+                self.assertEqual(got["raw"]["process_cleanup"]["kill_sent"], killed)
+                self.assertTrue(got["raw"]["process_cleanup"]["direct_checker_waited"])
+                self.assertTrue(got["raw"]["process_cleanup"]["no_live_process_group_members"])
+
+    def test_outer_timeout_preserves_partial_binary_and_process_exception_cleans(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            path = root / "partial.py"
+            path.write_bytes(b"import sys,time\nsys.stdout.buffer.write(b'\\xff\\x00');sys.stdout.buffer.flush()\nsys.stderr.buffer.write(b'\\xfe');sys.stderr.buffer.flush()\ntime.sleep(30)\n")
+            got = m2._checker(path, "t", root, timeout=.5)
+            self.assertEqual(got["raw"]["disposition"], "outer-timeout")
+            self.assertIn("ff00", got["raw"]["stdout_hex"])
+            self.assertIn("fe", got["raw"]["stderr_hex"])
+            self.assertTrue(got["infrastructure_invalid"])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            path = root / "sleep.py"
+            path.write_text("import time\ntime.sleep(30)\n")
+            original = m2.subprocess.Popen.communicate
+            def explode(process, *args, **kwargs):
+                if kwargs.get("timeout") == .5:
+                    return original(process, *args, **kwargs)
+                raise RuntimeError("post-launch")
+            with patch.object(m2.subprocess.Popen, "communicate", new=explode):
+                got = m2._checker(path, "t", root)
+            self.assertEqual(got["raw"]["disposition"], "process-error")
+            self.assertTrue(got["raw"]["process_cleanup"]["succeeded"])
+
+    def test_stderr_and_internal_timeout_are_never_successes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.assertFalse(m2._checker(self.make_checker(root, stderr="noise"), "t", root)["valid"])
+            timed = m2._checker(self.make_checker(root, detail="timeout"), "t", root)
+            self.assertTrue(timed["infrastructure_invalid"])
+            self.assertFalse(timed["valid"])
+
+
+class QualificationEvidenceTests(unittest.TestCase):
+    def test_raw_root_creation_failure_publishes_zero_execution_terminal(self):
+        with tempfile.TemporaryDirectory() as td:
+            base=Path(td); freeze=qualification_freeze(base/"freeze.json"); original=Path.mkdir
+            def mkdir(path,*args,**kwargs):
+                if path.name=="raw": raise OSError("raw unavailable")
+                return original(path,*args,**kwargs)
+            with patch.object(Path,"mkdir",new=mkdir): result=m2.qualify(CONFIG,base/"return/qualification-evidence",final_freeze_receipt=freeze,checker=FakeChecker(ROOT))
+            terminal=json.loads((base/"return/qualification-evidence/terminal.json").read_text()); self.assertEqual((result["status"],terminal["status"],result["execution_count"],terminal["execution_count"],terminal["execution_records"]),("FAIL","FAIL",0,0,[]))
+    def test_workspace_delta_allows_only_new_cache_bytes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "solution.py").write_text("x=1\n")
+            before = m2._manifest(root)
+            (root / "__pycache__").mkdir()
+            (root / "__pycache__/solution.pyc").write_bytes(b"cache")
+            self.assertTrue(m2._workspace_ok(before, m2._manifest(root)))
+            (root / "extra.txt").write_text("x")
+            self.assertFalse(m2._workspace_ok(before, m2._manifest(root)))
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            target = root / "solution.py"
+            target.write_text("x=1\n")
+            before = m2._manifest(root)
+            target.write_text("x=2\n")
+            self.assertFalse(m2._workspace_ok(before, m2._manifest(root)))
+            target.write_text("x=1\n")
+            target.chmod(0o600)
+            self.assertFalse(m2._workspace_ok(before, m2._manifest(root)))
+
+    def test_timeout_detail_in_pristine_and_mutant_is_terminal_infrastructure_fail(self):
+        class TimeoutChecker:
+            def __init__(self, at: int): self.fake, self.at = FakeChecker(ROOT), at
+            def __call__(self, *args):
+                got = self.fake(*args)
+                if self.fake.calls == self.at:
+                    first = next(iter(got["payload"]["requirements"].values()))
+                    first["detail"] = "timeout"
+                return got
+        for at in (1, 13):
+            with self.subTest(execution=at), tempfile.TemporaryDirectory() as td:
+                base = Path(td)
+                result = m2.qualify(CONFIG, base / "return/qualification-evidence", final_freeze_receipt=qualification_freeze(base / "freeze.json"), checker=TimeoutChecker(at))
+                self.assertEqual((result["status"], result["execution_count"]), ("FAIL", at))
+                terminal = json.loads((base / "return/qualification-evidence/terminal.json").read_text())
+                self.assertEqual((terminal["status"], terminal["execution_count"]), ("FAIL", at))
+
+    def test_exception_publishes_raw_before_workspace_deletion_and_create_once_collides(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            def failing(*_args): raise RuntimeError("synthetic")
+            result = m2.qualify(CONFIG, base / "return/qualification-evidence", final_freeze_receipt=qualification_freeze(base / "freeze.json"), checker=failing)
+            raw = base / "return/qualification-evidence/raw/execution-0001.json"
+            self.assertEqual((result["status"], result["execution_count"], raw.is_file()), ("FAIL", 1, True))
+            self.assertFalse((base / "scratch/qualification/workspace-0001").exists())
+            with self.assertRaises(FileExistsError): m2._publish(raw, {"collision": True})
+
+    def test_disposable_source_mutation_is_recorded_and_stops(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            root = disposable_root(base)
+            fake = FakeChecker(root)
+            def mutate(checker, task_id, workspace, timeout):
+                got = fake(checker, task_id, workspace, timeout)
+                checker.write_text(checker.read_text() + "\n")
+                return got
+            result = m2.qualify(root / "experiments/coder-beneficial-sensitivity-m2.json", base / "return/qualification-evidence",
+                                final_freeze_receipt=qualification_freeze(base / "freeze.json"), checker=mutate)
+            self.assertEqual((result["status"], result["execution_count"]), ("FAIL", 1))
+            record = json.loads((base / "return/qualification-evidence/raw/execution-0001.json").read_text())
+            self.assertNotEqual(record["pre_state"]["governed"], record["post_state"]["governed"])
+
+
+class PublicLifecycleTests(unittest.TestCase):
+    def test_actual_initialize_four_stages_terminal_and_replay_without_live_runner(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td); runs, checker = initialize_case(base); fake = FakeAttempts()
+            def forbidden_runner(_config):
+                raise AssertionError("live runner constructed")
+            for stage in m2.STAGES:
+                result = m2.run_stage(design_path=CONFIG, instance="case", stage=stage,
+                    authorization_receipt=authorize(base, runs, stage), runs_root=runs, runner_factory=forbidden_runner,
+                    attempt_executor=fake, power_iterations=1000, bootstrap_iterations=100)
+            self.assertEqual(checker.calls, 300); self.assertEqual(fake.calls, 297)
+            live = runs / "case/live"
+            self.assertEqual(result["verdict"], "SENSITIVITY_DEMONSTRATED")
+            self.assertTrue((live / "locked-evidence-manifest.json").is_file())
+            self.assertEqual(len(list(live.glob("*-unblinding-receipt.json"))), 4)
+            replayed = m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=100)
+            self.assertEqual(replayed, result)
+            self.assertEqual((runs / "case/replay/report.json").read_bytes(), (live / "reports/report.json").read_bytes())
+
+    def test_selection_stop_is_terminal_reportable_and_blocks_controls(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td); runs, _ = initialize_case(base)
+            fake = FakeAttempts()
+            m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"),
+                         runs_root=runs, attempt_executor=fake, bootstrap_iterations=20)
+            def floor(design, slot, semantic, index):
+                row = fake(design, slot, semantic, index)
+                if slot["stage"] == "calibration" and slot["task_id"].startswith("bug-"): row["objective_resolved"] = False
+                return row
+            report = m2.run_stage(design_path=CONFIG, instance="case", stage="calibration", authorization_receipt=authorize(base, runs, "calibration"),
+                                  runs_root=runs, attempt_executor=floor, power_iterations=20, bootstrap_iterations=20)
+            self.assertEqual((report["verdict"], report["terminal_reason"]), ("SENSITIVITY_NOT_DEMONSTRATED", "selection"))
+            with self.assertRaisesRegex(RuntimeError, "active initialized"):
+                m2.run_stage(design_path=CONFIG, instance="case", stage="controls", authorization_receipt=base / "none", runs_root=runs, attempt_executor=fake)
+            self.assertEqual(m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)["verdict"], "SENSITIVITY_NOT_DEMONSTRATED")
+
+    def test_invalid_smoke_terminalizes_and_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td); runs, _ = initialize_case(base); fake = FakeAttempts("invalid-smoke")
+            report = m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"),
+                                  runs_root=runs, attempt_executor=fake, bootstrap_iterations=20)
+            self.assertEqual(report["verdict"], "INVALID"); self.assertEqual(fake.calls, 1)
+            self.assertFalse((runs / "case/live/smoke-supersession.json").exists())
+
+    def test_transition_authorization_smoke_bytes_and_duplicate_receipts_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td); runs, _ = initialize_case(base); fake = FakeAttempts()
+            with self.assertRaisesRegex(RuntimeError, "prerequisites"):
+                m2.run_stage(design_path=CONFIG, instance="case", stage="calibration", authorization_receipt=authorize(base, runs, "calibration"), runs_root=runs, attempt_executor=fake)
+            bad = FakeAttempts()
+            def newline(design, slot, semantic, index):
+                row = bad(design, slot, semantic, index); row["final_message_hex"] = b"IMPLEMENTED\nSMOKE_READY".hex(); return row
+            with self.assertRaisesRegex(RuntimeError, "smoke raw bytes"):
+                m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"), runs_root=runs, attempt_executor=newline)
+
+    def test_initial_evidence_bindings_block_stage_and_replay(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td); runs, _ = initialize_case(base); live = runs / "case/live"
+            cases = (("qualification-receipt.json", False), ("final-freeze-receipt.json", True),
+                     ("qualification/qualification-results.json", False))
+            for relative, delete in cases:
+                with self.subTest(relative=relative):
+                    target = live / relative; original = target.read_bytes()
+                    target.unlink() if delete else target.write_bytes(b"{}\n")
+                    fake = FakeAttempts()
+                    with self.assertRaisesRegex(ValueError, "initial evidence binding"):
+                        m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"),
+                                     runs_root=runs, attempt_executor=fake, bootstrap_iterations=20)
+                    self.assertEqual(fake.calls, 0)
+                    target.write_bytes(original)
+            fake = FakeAttempts("invalid-smoke")
+            m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"),
+                         runs_root=runs, attempt_executor=fake, bootstrap_iterations=20)
+            target = live / "final-freeze-receipt.json"; target.write_bytes(b"{}\n")
+            locked = json.loads((live / "locked-evidence-manifest.json").read_text())
+            with patch.object(m2, "governed_inventory", return_value=locked["files"]), self.assertRaisesRegex(ValueError, "initial evidence binding"):
+                m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)
+
+    def test_replay_detects_tamper_deletion_insertion_and_never_accepts_summary(self):
+        design = json.loads(CONFIG.read_text())
+        self.assertEqual(m2.analyze(design, {"schema": "mdseval.coder-beneficial-sensitivity-m2-evidence-v1", "attempts": []})["verdict"], "INVALID")
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td); runs, _ = initialize_case(base); fake = FakeAttempts("invalid-smoke")
+            m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"),
+                         runs_root=runs, attempt_executor=fake, bootstrap_iterations=20)
+            live = runs / "case/live"
+            inserted = live / "inserted"
+            inserted.write_text("x")
+            with self.assertRaisesRegex(ValueError, "changed"): m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)
+            inserted.unlink()
+            report = live / "reports/report.json"
+            original = report.read_bytes()
+            report.unlink()
+            with self.assertRaisesRegex(ValueError, "missing|changed"): m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)
+            report.write_bytes(original)
+            report.write_bytes(m2.canonical({"supplied": "summary"}))
+            with self.assertRaisesRegex(ValueError, "changed"):
+                m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)
+
+
+class LifecycleIntegrityTests(unittest.TestCase):
+    def test_live_checker_timeout_propagates_infrastructure_invalid_without_a_live_runner(self):
+        Run = m2.make_dataclass("Run", [(x, object) for x in ("timed_out", "interrupted", "exit_code")])
+        Events = m2.make_dataclass("Events", [("events", object), ("valid", object)])
+        Capture = m2.make_dataclass("Capture", [(x, object) for x in ("status", "diff", "untracked")])
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            repo = base / "repo"
+            shutil.copytree(ROOT / "evals/m2/coder-beneficial-sensitivity/bug-01/fixture", repo)
+            prepared = SimpleNamespace(repo=repo, baseline_commit=COMMIT, cleanup=lambda: None)
+            class Runner:
+                def run(self, _prepared, output, _timeout, _redactor):
+                    output.mkdir(parents=True)
+                    (output / "final.txt").write_bytes(b"done")
+                    return Run(False, False, 0)
+            events = Events(({"model": "gpt-5.6-sol", "reasoning_effort": "high"},), True)
+            capture = Capture("", "", [])
+            timeout = {"valid": False, "resolved": None, "mechanical": False, "payload": {}, "infrastructure_invalid": True}
+            slot = {"slot_id": "calibration:base:r1:bug-01:K0", "stage": "calibration", "round": 1,
+                    "task_id": "bug-01", "opaque_arm_id": "K0", "fallback": False}
+            with patch("mdseval.fixtures.prepare_fixture", return_value=prepared), patch("mdseval.fixtures.audit_final_subject_tree"), \
+                 patch("mdseval.capture.parse_event_stream", return_value=events), patch("mdseval.capture.capture_git", return_value=capture), \
+                 patch.object(m2, "_checker", return_value=timeout):
+                row = m2._live_attempt(json.loads(CONFIG.read_text()), CONFIG, base / "live", slot, "N", Runner(), 1)
+            self.assertTrue(row["infrastructure_invalid"])
+            self.assertFalse(row["objective_resolved"])
+            self.assertFalse(row["mechanical_integrity"])
+
+    def test_noncanonical_record_and_dependency_cycle_are_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            live = Path(td)
+            noncanonical = live / "bad.json"
+            noncanonical.write_text("{}")
+            with self.assertRaisesRegex(RuntimeError, "noncanonical"): m2._json(noncanonical)
+            prerequisites = ("final-freeze-receipt.json", "post-freeze-alignment-receipt.json",
+                             "qualification-receipt.json")
+            for name in prerequisites:
+                write_json(live / name, {"fixture": name})
+            write_json(live / "qualification/qualification-results.json", {"fixture": "qualification-results"})
+            manifest = {"schedules": {}, "schedule_sha256": m2.digest({}),
+                        "prerequisite_sha256": {name: m2.sha256_file(live / name) for name in prerequisites},
+                        "qualification_results_sha256": m2.sha256_file(live / "qualification/qualification-results.json")}
+            write_json(live / "initial-manifest.json", manifest)
+            manifest_hash = m2.sha256_file(live / "initial-manifest.json")
+            write_json(live / "cycle-receipt.json", {"manifest_sha256": manifest_hash,
+                       "prerequisite_sha256": {"cycle-receipt.json": "0" * 64}})
+            with self.assertRaisesRegex(ValueError, "prerequisite"): m2._validate_dag(live, manifest_hash)
+
+    def test_process_capability_and_workspace_deletion_failures_terminalize(self):
+        for branch in ("capability", "deletion"):
+            with self.subTest(branch=branch), tempfile.TemporaryDirectory() as td:
+                base = Path(td)
+                freeze = qualification_freeze(base / "freeze.json")
+                context = patch.object(m2.os, "name", "non-posix") if branch == "capability" else patch.object(m2.shutil, "rmtree", side_effect=OSError("synthetic"))
+                with context:
+                    result = m2.qualify(CONFIG, base / "return/qualification-evidence", final_freeze_receipt=freeze, checker=FakeChecker(ROOT))
+                self.assertEqual(result["status"], "FAIL")
+                terminal = json.loads((base / "return/qualification-evidence/terminal.json").read_text())
+                self.assertEqual(terminal["status"], "FAIL")
+                self.assertEqual(terminal["execution_count"], 0 if branch == "capability" else 1)
+
+    def test_post_checker_and_final_hash_exceptions_preserve_terminal_evidence(self):
+        for branch,expected in (("post-checker",1),("final-hash",300)):
+            with self.subTest(branch=branch), tempfile.TemporaryDirectory() as td:
+                base=Path(td); seen={}; original_manifest,original_tree=m2._manifest,m2.tree_sha256
+                def manifest(path):
+                    value=original_manifest(path); key=str(path)
+                    seen[key]=seen.get(key,0)+1
+                    if branch=="post-checker" and path.name=="workspace-0002" and seen[key]==2: raise OSError("synthetic")
+                    return value
+                def tree(path):
+                    key=str(path); seen[key]=seen.get(key,0)+1
+                    if branch=="final-hash" and path.name=="bug-01" and seen[key]==2: raise OSError("synthetic")
+                    return original_tree(path)
+                with patch.object(m2,"_manifest",side_effect=manifest), patch.object(m2,"tree_sha256",side_effect=tree):
+                    result=m2.qualify(CONFIG,base/"return/qualification-evidence",final_freeze_receipt=qualification_freeze(base/"freeze.json"),checker=FakeChecker(ROOT))
+                terminal=json.loads((base/"return/qualification-evidence/terminal.json").read_text())
+                self.assertEqual((result["status"],terminal["status"],terminal["execution_count"]),("FAIL","FAIL",expected))
+                self.assertEqual(len(terminal["execution_records"]),expected)
+                self.assertEqual(len(list((base/"return/qualification-evidence/raw").glob("execution-*.json"))),expected)
+
+    def test_terminal_publication_failure_propagates_without_terminal_claim(self):
+        with tempfile.TemporaryDirectory() as td:
+            base=Path(td); original_manifest,original_publish=m2._manifest,m2._publish; calls=0
+            def manifest(path):
+                nonlocal calls
+                if path.name=="workspace-0001":
+                    calls+=1
+                    if calls==2: raise OSError("matrix")
+                return original_manifest(path)
+            def publish(path,value):
+                if path.name=="terminal.json": raise OSError("terminal unavailable")
+                return original_publish(path,value)
+            with patch.object(m2,"_manifest",side_effect=manifest), patch.object(m2,"_publish",side_effect=publish), self.assertRaisesRegex(OSError,"terminal unavailable"):
+                m2.qualify(CONFIG,base/"return/qualification-evidence",final_freeze_receipt=qualification_freeze(base/"freeze.json"),checker=FakeChecker(ROOT))
+            self.assertFalse((base/"return/qualification-evidence/terminal.json").exists())
+
+
+class BudgetTests(unittest.TestCase):
+    def test_returned_source_and_tests_stay_within_nonreallocatable_caps(self):
+        self.assertLessEqual(len(Path(m2.__file__).read_text().splitlines()), 980)
+        self.assertLessEqual(len(Path(__file__).read_text().splitlines()), 590)
 
 
 if __name__ == "__main__":

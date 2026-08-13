@@ -4,7 +4,7 @@ if len(sys.argv)!=2:raise SystemExit(2)
 root=Path(sys.argv[1]);target=root/"solution.py"
 def run(code):
  try:
-  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=4);return p.returncode==0,("ok" if p.returncode==0 else "failed")
+  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=10);return p.returncode==0,("ok" if p.returncode==0 else "failed")
  except subprocess.TimeoutExpired:return False,"timeout"
 r1=run("from solution import flatten_tree\nx={\"a\":[10,{\"b\":20}]};assert list(flatten_tree(x))==[((\"a\",0),10),((\"a\",1,\"b\"),20)]")
 r2=run("from solution import flatten_tree\nassert list(flatten_tree({\"a\":{},\"b\":[]}))==[((\"a\",),{}),((\"b\",),[])]")

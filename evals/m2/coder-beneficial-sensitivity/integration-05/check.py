@@ -4,7 +4,7 @@ if len(sys.argv)!=2:raise SystemExit(2)
 root=Path(sys.argv[1]);target=root/"solution.py"
 def run(code):
  try:
-  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=4);return p.returncode==0,("ok" if p.returncode==0 else "failed")
+  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=10);return p.returncode==0,("ok" if p.returncode==0 else "failed")
  except subprocess.TimeoutExpired:return False,"timeout"
 r1=run("import subprocess,sys,tempfile,pathlib,hashlib\nwith tempfile.TemporaryDirectory() as d:\n p=pathlib.Path(d);(p/\"b\").write_bytes(b\"B\");(p/\"a\").write_bytes(b\"A\");out=subprocess.run([sys.executable,sys.argv[1]+\"/solution.py\",d],text=True,capture_output=True).stdout;want=\"\\n\".join(hashlib.sha256(x).hexdigest()+\"  \"+n for x,n in ((b\"A\",\"a\"),(b\"B\",\"b\")))+\"\\n\";assert out==want")
 r2=run("import subprocess,sys,tempfile,pathlib\nwith tempfile.TemporaryDirectory() as d:\n p=pathlib.Path(d);(p/\"sub\").mkdir();(p/\"sub\"/\"x\").write_text(\"x\");(p/\".skip\").write_text(\"s\");(p/\".git\").mkdir();(p/\".git\"/\"x\").write_text(\"g\");out=subprocess.run([sys.executable,sys.argv[1]+\"/solution.py\",d],text=True,capture_output=True).stdout;assert out.endswith(\"  sub/x\\n\") and \".skip\" not in out and \".git\" not in out")

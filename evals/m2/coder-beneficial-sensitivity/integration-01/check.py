@@ -4,7 +4,7 @@ if len(sys.argv)!=2:raise SystemExit(2)
 root=Path(sys.argv[1]);target=root/"solution.py"
 def run(code):
  try:
-  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=4);return p.returncode==0,("ok" if p.returncode==0 else "failed")
+  p=subprocess.run([sys.executable,"-I","-c","import sys;sys.path.insert(0,sys.argv[1]);"+code,str(root)],text=True,capture_output=True,timeout=10);return p.returncode==0,("ok" if p.returncode==0 else "failed")
  except subprocess.TimeoutExpired:return False,"timeout"
 r1=run("import subprocess,sys\np=subprocess.run([sys.executable,sys.argv[1]+\"/solution.py\"],input=\"[1, 2, 3]\",text=True,capture_output=True);assert p.returncode==0 and p.stdout==\"{\\\"total\\\":6}\\n\"")
 r2=run("import subprocess,sys,json\np=subprocess.run([sys.executable,sys.argv[1]+\"/solution.py\",\"--field\",\"cost\"],input='[{\"cost\":2},{},{\"cost\":null},{\"cost\":3.5}]',text=True,capture_output=True);assert p.returncode==0 and json.loads(p.stdout)=={\"total\":5.5}")
