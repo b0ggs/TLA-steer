@@ -689,16 +689,14 @@ def _live_attempt(design: dict[str,Any], design_path: Path, live: Path, slot: di
             "tree_unchanged":not capture.status and not capture.diff and not capture.untracked,"capture_complete":complete,"baseline_tree_sha256":before,
             "final_tree_sha256":tree_sha256(prepared.repo),"status":"ACTIVE","infrastructure_invalid":checked.get("infrastructure_invalid") is True}
     except Exception as exc:
-        error=str(exc); invalid=run is None and error in set(design["evidence"]["invalidity_table"])
+        error=str(exc); error_code={"LIVE_RUNNER_UNAVAILABLE: MDSEVAL_CODEX_HOME is not set":"AUTHENTICATION_PRE_USABLE"}.get(error,error); invalid=run is None and error_code in set(design["evidence"]["invalidity_table"])
         row={**slot,"launch_index":launch_index,"requested_model":"gpt-5.6-sol","observed_model":None,"requested_reasoning_effort":"high",
             "observed_reasoning_effort":None,"judge_calls":0,"objective_resolved":False,"checker_valid":False,"mechanical_integrity":False,
-            "requirements_passed":0,"requirements_total":0,"status":"ACTIVE","infrastructure_invalid":invalid,"error":error}
+            "requirements_passed":0,"requirements_total":0,"status":"ACTIVE","infrastructure_invalid":invalid,"error":error,"error_code":error_code}
     finally:
         if prepared is not None: prepared.cleanup()
         if slot["stage"]=="smoke" and "temporary" in locals(): shutil.rmtree(temporary,ignore_errors=True)
     create_once(attempt/"attempt.json",row); return row
-
-
 def _attempt_path(live: Path, slot: dict[str,Any]) -> Path:
     return live/"attempts"/slot["stage"]/slot["slot_id"].replace(":","_")/"attempt.json"
 
@@ -715,8 +713,6 @@ def _validate_row(row: Any, slot: dict[str,Any], index: int) -> dict[str,Any]:
             or row.get("tree_unchanged") is not True or row.get("capture_complete") is not True):
         raise RuntimeError("smoke raw bytes, tree, or capture invalid")
     return row
-
-
 def _unblind(live: Path, stage: str, locked_name: str) -> dict[str,Any]:
     mapping=_json(live/"sealed-mappings"/f"{stage}.json")
     return _receipt(live,f"{stage}-unblinding-receipt.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-stage-unblinding-v1",
@@ -789,10 +785,13 @@ def _outcomes(rows: Sequence[dict[str,Any]], mapping: dict[str,str]) -> dict[tup
     for row in rows:
         if row["status"]=="ACTIVE": result.setdefault((row["task_id"],mapping[row["opaque_arm_id"]]),[]).append(row["objective_resolved"])
     return result
-
-
-def run_stage(*, design_path: Path | str, instance: str, stage: str, authorization_receipt: Path,
-              runs_root: Path | str=Path("runs"), runner_factory: Any=None, attempt_executor: Any=None,
+def _default_live_preflight() -> None:
+    value=os.environ.get("MDSEVAL_CODEX_HOME"); home=Path(os.path.expanduser(value)) if value else None; auth=home/"auth.json" if home else None
+    if home is None or not home.is_dir() or auth.is_symlink() or not auth.is_file(): raise RuntimeError("AUTHENTICATION_PRE_USABLE")
+    if any((home/name).exists() or (home/name).is_symlink() for name in ("AGENTS.md","AGENTS.override.md")): raise RuntimeError("EVALUATOR_PRE_USABLE")
+    if any(shutil.which(name) is None for name in ("codex","git")): raise RuntimeError("MACHINE_PRE_USABLE")
+def run_stage(*, design_path: Path | str, instance: str, stage: str, authorization_receipt: Path, runs_root: Path | str=Path("runs"),
+              runner_factory: Any=None, attempt_executor: Any=None,
               power_iterations: int | None=None, bootstrap_iterations: int=100000) -> dict[str,Any]:
     """Execute one authorized stage and all of its required post-stage transitions."""
     design_path=Path(design_path); design=load_design(design_path)
@@ -808,6 +807,7 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
             "helpful":["controls-gates-receipt.json","helpful-filtered-schedule-receipt.json"]}[stage]
     if any(not (live/x).is_file() for x in prereq) or any((live/f"{s}-receipt.json").exists() for s in STAGES[STAGES.index(stage)+1:]):
         raise RuntimeError("stage prerequisites or order invalid")
+    if attempt_executor is None and runner_factory is None: _default_live_preflight()
     _same_receipt(live/f"{stage}-authorization.json",auth)
     mapping_path=live/"sealed-mappings"/f"{stage}.json"
     if sha256_file(mapping_path)!=manifest["mapping_hashes"][stage]: raise RuntimeError("mapping hash drift")

@@ -400,11 +400,9 @@ class PublicLifecycleTests(unittest.TestCase):
             replayed = m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=100)
             self.assertEqual(replayed, result)
             self.assertEqual((runs / "case/replay/report.json").read_bytes(), (live / "reports/report.json").read_bytes())
-
     def test_selection_stop_is_terminal_reportable_and_blocks_controls(self):
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td); runs, _ = initialize_case(base)
-            fake = FakeAttempts()
+            base = Path(td); runs, _ = initialize_case(base); fake = FakeAttempts()
             m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"),
                          runs_root=runs, attempt_executor=fake, bootstrap_iterations=20)
             def floor(design, slot, semantic, index):
@@ -417,15 +415,20 @@ class PublicLifecycleTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "active initialized"):
                 m2.run_stage(design_path=CONFIG, instance="case", stage="controls", authorization_receipt=base / "none", runs_root=runs, attempt_executor=fake)
             self.assertEqual(m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)["verdict"], "SENSITIVITY_NOT_DEMONSTRATED")
-
-    def test_invalid_smoke_terminalizes_and_is_not_retried(self):
+    def test_preusable_smoke_failures_are_fail_closed_and_never_retried(self):
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td); runs, _ = initialize_case(base); fake = FakeAttempts("invalid-smoke")
-            report = m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"),
-                                  runs_root=runs, attempt_executor=fake, bootstrap_iterations=20)
-            self.assertEqual(report["verdict"], "INVALID"); self.assertEqual(fake.calls, 1)
-            self.assertFalse((runs / "case/live/smoke-supersession.json").exists())
-
+            base=Path(td); runs,_=initialize_case(base); auth=authorize(base,runs,"smoke"); live=runs/"case/live"
+            with patch.dict(os.environ,{"MDSEVAL_CODEX_HOME":""}), patch("mdseval.runner.codex_cli.CodexCLI",side_effect=AssertionError("constructed")), patch.object(m2,"_live_attempt",side_effect=AssertionError("launched")):
+                with self.assertRaisesRegex(RuntimeError,"^AUTHENTICATION_PRE_USABLE$"): m2.run_stage(design_path=CONFIG,instance="case",stage="smoke",authorization_receipt=auth,runs_root=runs)
+            self.assertEqual((list(live.glob("smoke-*")),(live/"attempts").exists()),([],False))
+        with tempfile.TemporaryDirectory() as td:
+            base=Path(td); runs,_=initialize_case(base); calls=[]
+            def fail(*_args): calls.append(1); raise RuntimeError("LIVE_RUNNER_UNAVAILABLE: MDSEVAL_CODEX_HOME is not set")
+            report=m2.run_stage(design_path=CONFIG,instance="case",stage="smoke",authorization_receipt=authorize(base,runs,"smoke"),runs_root=runs,runner_factory=lambda _:SimpleNamespace(run=fail),bootstrap_iterations=20)
+            live=runs/"case/live"; row=json.loads((live/"smoke-attempts.json").read_text())[0]
+            self.assertEqual((report["verdict"],calls,row["infrastructure_invalid"],row["error_code"],row["error"]),("INVALID",[1],True,"AUTHENTICATION_PRE_USABLE","LIVE_RUNNER_UNAVAILABLE: MDSEVAL_CODEX_HOME is not set"))
+            self.assertTrue(all((live/name).is_file() for name in ("smoke-outcome-lock.json","smoke-receipt.json","locked-evidence-manifest.json")))
+            self.assertFalse((live/"smoke-supersession.json").exists())
     def test_transition_authorization_smoke_bytes_and_duplicate_receipts_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td); runs, _ = initialize_case(base); fake = FakeAttempts()
@@ -436,7 +439,6 @@ class PublicLifecycleTests(unittest.TestCase):
                 row = bad(design, slot, semantic, index); row["final_message_hex"] = b"IMPLEMENTED\nSMOKE_READY".hex(); return row
             with self.assertRaisesRegex(RuntimeError, "smoke raw bytes"):
                 m2.run_stage(design_path=CONFIG, instance="case", stage="smoke", authorization_receipt=authorize(base, runs, "smoke"), runs_root=runs, attempt_executor=newline)
-
     def test_initial_evidence_bindings_block_stage_and_replay(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td); runs, _ = initialize_case(base); live = runs / "case/live"
@@ -459,7 +461,6 @@ class PublicLifecycleTests(unittest.TestCase):
             locked = json.loads((live / "locked-evidence-manifest.json").read_text())
             with patch.object(m2, "governed_inventory", return_value=locked["files"]), self.assertRaisesRegex(ValueError, "initial evidence binding"):
                 m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)
-
     def test_replay_detects_tamper_deletion_insertion_and_never_accepts_summary(self):
         design = json.loads(CONFIG.read_text())
         self.assertEqual(m2.analyze(design, {"schema": "mdseval.coder-beneficial-sensitivity-m2-evidence-v1", "attempts": []})["verdict"], "INVALID")
@@ -480,7 +481,6 @@ class PublicLifecycleTests(unittest.TestCase):
             report.write_bytes(m2.canonical({"supplied": "summary"}))
             with self.assertRaisesRegex(ValueError, "changed"):
                 m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)
-
 
 class LifecycleIntegrityTests(unittest.TestCase):
     def test_live_checker_timeout_propagates_infrastructure_invalid_without_a_live_runner(self):
