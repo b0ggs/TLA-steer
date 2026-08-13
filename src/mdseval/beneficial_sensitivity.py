@@ -578,7 +578,7 @@ def initialize(*, design_path: Path | str, instance: str, verified_commit: str, 
                closure_record: Path, runs_root: Path | str=Path("runs"), checker: Any=_checker,
                process: Any=None) -> dict[str,Any]:
     """Create the clean-commit -> closure -> freeze -> alignment -> qualification -> manifest chain."""
-    design_path=Path(design_path); design=load_design(design_path)
+    design_path=Path(design_path).resolve(); design=load_design(design_path)
     if not SAFE_ID.fullmatch(instance) or not COMMIT.fullmatch(verified_commit): raise ValueError("unsafe instance or commit")
     closure_path=Path(closure_record); expected_closure=_root(design_path)/M2_4_2_CLOSURE
     if closure_path.is_symlink() or not closure_path.is_file() or closure_path.resolve()!=expected_closure.resolve() or sha256_file(closure_path)!=M2_4_2_CLOSURE_SHA256: raise RuntimeError("exact M2.4.2 closure PASS required")

@@ -109,7 +109,7 @@ def disposable_root(base: Path) -> Path:
     root = base / "repo"
     for source in ("controls/coder", "evals/m2/coder-beneficial-sensitivity", "evals/qualification/coder-beneficial-sensitivity-m2"):
         shutil.copytree(ROOT / source, root / source)
-    for source in ("experiments/coder-beneficial-sensitivity-m2-1-access.json",
+    for source in ("experiments/coder-beneficial-sensitivity-m2-1-access.json", "experiments/coder-beneficial-sensitivity-m2-4-2-closure.json",
                    "experiments/coder-beneficial-sensitivity-m2-3-task-reliability-authorship.json",
                    "src/mdseval/beneficial_sensitivity.py", "src/mdseval/wrapper.py", "tests/test_beneficial_sensitivity.py",
                    "experiments/coder-beneficial-sensitivity-m2.json"):
@@ -224,18 +224,18 @@ class QualificationTests(unittest.TestCase):
             root = Path(td); checker = root / "check.py"; checker.write_text(source)
             self.assertFalse(m2._checker(checker, "t", root)["valid"])
 
-    def test_public_initialize_runs_all_300_and_creates_manifest_last(self):
+    def test_public_initialize_accepts_relative_paths_in_clean_repo(self):
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td); runs, checker = initialize_case(base)
-            live = runs / "case/live"
-            self.assertEqual(checker.calls, 300)
-            self.assertTrue((live / "final-freeze-receipt.json").is_file())
-            self.assertTrue((live / "post-freeze-alignment-receipt.json").is_file())
-            receipt = json.loads((live / "qualification-receipt.json").read_text())
-            self.assertEqual((receipt["task_count"], receipt["execution_count"]), (20, 300))
-            manifest = json.loads((live / "initial-manifest.json").read_text())
-            self.assertEqual(set(manifest["mapping_hashes"]), set(m2.STAGES))
-            self.assertNotIn('"mapping"', json.dumps(manifest))
+            base = Path(td); root = disposable_root(base); runs = base / "runs"; checker = FakeChecker(root)
+            for command in (["git", "init"], ["git", "add", "."], ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "fixture"]): m2.subprocess.run(command, cwd=root, check=True, capture_output=True)
+            commit = m2.subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+            freeze = base / "freeze.json"; write_json(freeze, {"schema": "mdseval.coder-beneficial-sensitivity-m2-freeze-authorization-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1", "instance": "case", "verified_commit": commit, "authorized": True})
+            cwd = Path.cwd(); os.chdir(root)
+            try: m2.initialize(design_path=Path("experiments/coder-beneficial-sensitivity-m2.json"), instance="case", verified_commit=commit, freeze_authorization=freeze, closure_record=m2.M2_4_2_CLOSURE, runs_root=runs, checker=checker)
+            finally: os.chdir(cwd)
+            live = runs / "case/live"; self.assertEqual((checker.calls, (live / "final-freeze-receipt.json").is_file(), (live / "post-freeze-alignment-receipt.json").is_file()), (300, True, True))
+            receipt = json.loads((live / "qualification-receipt.json").read_text()); self.assertEqual((receipt["task_count"], receipt["execution_count"]), (20, 300))
+            manifest = json.loads((live / "initial-manifest.json").read_text()); self.assertEqual(set(manifest["mapping_hashes"]), set(m2.STAGES)); self.assertNotIn('"mapping"', json.dumps(manifest))
 
     def test_initialize_rejects_every_closure_except_exact_m2_4_2_record(self):
         with tempfile.TemporaryDirectory() as td:
@@ -257,7 +257,7 @@ class ProcessSafetyTests(unittest.TestCase):
                    "requirements": {"R1": {"passed": detail != "timeout", "detail": detail}},
                    "regressions": {"G1": {"passed": True, "detail": "ok"}}, "integrity": {"passed": True, "detail": "ok"},
                    "resolved": detail != "timeout"}
-        source = "import json,subprocess,sys,time\n" + child + f"\np={payload!r}\n"
+        source = "import json,os,subprocess,sys,time\n" + child + f"\np={payload!r}\n"
         source += f"sys.stderr.buffer.write({stderr.encode()!r})\nsys.stdout.buffer.write((json.dumps(p,sort_keys=True,separators=(',',':'))+'\\n').encode())\n"
         path = root / "check.py"
         path.write_text(source)
@@ -265,7 +265,7 @@ class ProcessSafetyTests(unittest.TestCase):
 
     def test_normal_completion_cleans_leaked_and_term_resistant_children(self):
         children = (("subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)", False),
-                    ("subprocess.Popen([sys.executable,'-c','import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(30)'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);time.sleep(.1)", True))
+                    ("r,w=os.pipe();subprocess.Popen([sys.executable,'-c',f'import os,signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);os.write({w},b\"ready\");time.sleep(30)'],pass_fds=(w,),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);os.close(w);os.read(r,5);os.close(r)", True))
         for child, killed in children:
             with self.subTest(killed=killed), tempfile.TemporaryDirectory() as td:
                 root = Path(td)
