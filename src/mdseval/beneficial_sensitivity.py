@@ -39,8 +39,7 @@ CLAIM = ("Under the frozen diagnostic conditions, identical null files did not p
          "predeclared decision rule, the harmful instruction lost in the expected direction, and the helpful "
          "instruction produced an observed macro-average increase in complete task resolution of at least 0.20 "
          "while rejecting the taskwise no-effect/exchangeability null at exact two-sided p <= 0.05.")
-
-
+M2_4_2_CLOSURE, M2_4_2_CLOSURE_SHA256 = Path("experiments/coder-beneficial-sensitivity-m2-4-2-closure.json"), "e2ca4a05d98dd92b906ff5d294a6ad86da7b9224f9f1e38d6c57033742b05c67"
 def canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False) + "\n").encode()
 
@@ -581,9 +580,10 @@ def initialize(*, design_path: Path | str, instance: str, verified_commit: str, 
     """Create the clean-commit -> closure -> freeze -> alignment -> qualification -> manifest chain."""
     design_path=Path(design_path); design=load_design(design_path)
     if not SAFE_ID.fullmatch(instance) or not COMMIT.fullmatch(verified_commit): raise ValueError("unsafe instance or commit")
-    closure=_json(Path(closure_record)); authorization=_json(Path(freeze_authorization))
-    if closure.get("schema")!="mdseval.coder-beneficial-sensitivity-m2-4-closure-v1" or closure.get("status")!="PASS" or closure.get("authoritative") is not False or closure.get("experiment")!=design["experiment"]:
-        raise RuntimeError("M2.4 closure PASS required")
+    closure_path=Path(closure_record); expected_closure=_root(design_path)/M2_4_2_CLOSURE
+    if closure_path.is_symlink() or not closure_path.is_file() or closure_path.resolve()!=expected_closure.resolve() or sha256_file(closure_path)!=M2_4_2_CLOSURE_SHA256: raise RuntimeError("exact M2.4.2 closure PASS required")
+    closure=_json(closure_path); authorization=_json(Path(freeze_authorization))
+    if closure.get("schema")!="mdseval.coder-beneficial-sensitivity-m2-4-2-closure-v1" or closure.get("status")!="PASS" or closure.get("authoritative") is not False or closure.get("experiment")!=design["experiment"]: raise RuntimeError("exact M2.4.2 closure PASS required")
     if authorization != {"schema":"mdseval.coder-beneficial-sensitivity-m2-freeze-authorization-v1","experiment":design["experiment"],
                           "instance":instance,"verified_commit":verified_commit,"authorized":True}:
         raise RuntimeError("freeze authorization invalid")
@@ -595,7 +595,7 @@ def initialize(*, design_path: Path | str, instance: str, verified_commit: str, 
     if probe!={"head":verified_commit,"clean":True,"frozen_hashes":current}: raise RuntimeError("dirty, drifted, or incomplete commit probe")
     live.mkdir(parents=True,exist_ok=False)
     freeze={"schema":"mdseval.coder-beneficial-sensitivity-m2-final-freeze-v1","status":"PASS","verified_commit":verified_commit,
-        "authorization_sha256":sha256_file(Path(freeze_authorization)),"closure_sha256":sha256_file(Path(closure_record)),
+        "authorization_sha256":sha256_file(Path(freeze_authorization)),"closure_sha256":sha256_file(closure_path),
         "config_sha256":sha256_file(design_path),"evaluator_sha256":current[design["artifacts"]["evaluator"]["path"]],"governed_hashes":current}
     create_once(live/"final-freeze-receipt.json",freeze)
     alignment={"schema":"mdseval.coder-beneficial-sensitivity-m2-post-freeze-alignment-v1","status":"PASS","verified_commit":verified_commit,

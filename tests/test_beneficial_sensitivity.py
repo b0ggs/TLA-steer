@@ -81,10 +81,8 @@ class FakeAttempts:
 
 def initialize_case(base: Path, *, instance: str = "case", checker: FakeChecker | None = None) -> tuple[Path, FakeChecker]:
     checker = checker or FakeChecker(ROOT)
-    closure = base / "closure.json"
+    closure = ROOT / m2.M2_4_2_CLOSURE
     freeze = base / "freeze.json"
-    write_json(closure, {"schema": "mdseval.coder-beneficial-sensitivity-m2-4-closure-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1",
-                         "authoritative": False, "status": "PASS"})
     write_json(freeze, {"schema": "mdseval.coder-beneficial-sensitivity-m2-freeze-authorization-v1",
                         "experiment": "coder-beneficial-sensitivity-m2-timeout-v1", "instance": instance,
                         "verified_commit": COMMIT, "authorized": True})
@@ -239,15 +237,17 @@ class QualificationTests(unittest.TestCase):
             self.assertEqual(set(manifest["mapping_hashes"]), set(m2.STAGES))
             self.assertNotIn('"mapping"', json.dumps(manifest))
 
-    def test_initialize_rejects_closure_root_and_commit_failures(self):
+    def test_initialize_rejects_every_closure_except_exact_m2_4_2_record(self):
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td); closure = base / "closure.json"; freeze = base / "freeze.json"
-            write_json(closure, {"schema": "mdseval.coder-beneficial-sensitivity-m2-4-closure-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1", "authoritative": False, "status": "FAIL"})
-            write_json(freeze, {"schema": "mdseval.coder-beneficial-sensitivity-m2-freeze-authorization-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1",
-                                "instance": "case", "verified_commit": COMMIT, "authorized": True})
-            with self.assertRaisesRegex(RuntimeError, "closure"):
-                m2.initialize(design_path=CONFIG, instance="case", verified_commit=COMMIT, freeze_authorization=freeze,
-                              closure_record=closure, runs_root=base / "runs", checker=FakeChecker(ROOT), process=commit_probe)
+            base = Path(td); closure = base / "closure.json"; freeze = base / "freeze.json"; exact = json.loads((ROOT / m2.M2_4_2_CLOSURE).read_text())
+            write_json(freeze, {"schema": "mdseval.coder-beneficial-sensitivity-m2-freeze-authorization-v1", "experiment": "coder-beneficial-sensitivity-m2-timeout-v1", "instance": "case", "verified_commit": COMMIT, "authorized": True})
+            def reject(path):
+                with self.assertRaisesRegex(RuntimeError, "exact M2.4.2 closure"):
+                    m2.initialize(design_path=CONFIG, instance="case", verified_commit=COMMIT, freeze_authorization=freeze, closure_record=path, runs_root=base / "runs", checker=FakeChecker(ROOT), process=commit_probe)
+            variants = (exact, {**exact, "status": "FAIL"}, {**exact, "authoritative": True}, {**exact, "experiment": "wrong"}, {"schema": exact["schema"], "status": "PASS"})
+            for variant in variants:
+                with self.subTest(variant=variant): write_json(closure, variant); reject(closure)
+            reject(ROOT / "experiments/coder-beneficial-sensitivity-m2-4-closure.json")
 
 
 @unittest.skipUnless(os.name == "posix", "M2.4 qualification requires POSIX process groups")
