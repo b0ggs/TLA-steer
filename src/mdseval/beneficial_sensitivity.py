@@ -30,8 +30,9 @@ TASK_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-task-v1"
 CHECK_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-check-v1"
 TASKS = tuple(f"{kind}-{i:02d}" for kind in ("bug", "feature", "integration", "refactor-data") for i in range(1, 6))
 STRATA = ("bug", "feature", "integration", "refactor-data")
-STAGES = ("smoke", "calibration", "controls", "helpful")
-EXPECTED_FINAL = b"IMPLEMENTED\nSMOKE_READY\n"
+STAGES = ("calibration", "controls", "helpful")
+EXPECTED_FINAL = b"IMPLEMENTED\nSMOKE_READY"
+ENGINEERING_PATHS = ("src/mdseval/beneficial_sensitivity.py","tests/test_beneficial_sensitivity.py","experiments/coder-beneficial-sensitivity-m2.json","README.md","experiments/coder-beneficial-sensitivity-m2-exclusions.json")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
@@ -39,7 +40,6 @@ CLAIM = ("Under the frozen diagnostic conditions, identical null files did not p
          "predeclared decision rule, the harmful instruction lost in the expected direction, and the helpful "
          "instruction produced an observed macro-average increase in complete task resolution of at least 0.20 "
          "while rejecting the taskwise no-effect/exchangeability null at exact two-sided p <= 0.05.")
-M2_4_2_CLOSURE, M2_4_2_CLOSURE_SHA256 = Path("experiments/coder-beneficial-sensitivity-m2-4-2-closure.json"), "e2ca4a05d98dd92b906ff5d294a6ad86da7b9224f9f1e38d6c57033742b05c67"
 def canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False) + "\n").encode()
 
@@ -92,10 +92,10 @@ def load_design(path: Path | str = DEFAULT_EXPERIMENT) -> dict[str, Any]:
         "subagents_enabled", "ephemeral", "network_for_agent_commands", "timeout_seconds", "max_parallel_runs",
         "qualitative_judge_calls", "authentication_mode"}, "runtime")
     if runtime != {"adapter":"CodexCLI.run","model":"gpt-5.6-sol","reasoning_effort":"high","sandbox":"workspace-write","approval_policy":"never","subagents_enabled":False,"ephemeral":True,"network_for_agent_commands":False,"timeout_seconds":300,"max_parallel_runs":1,"qualitative_judge_calls":0,"authentication_mode":"chatgpt_oauth"}: raise ValueError("frozen Sol/high runtime mismatch")
-    expected_protocol = {"version":"0.3","base_protocol_sha256":"4384a005b7d934b86ef91dd7d7fa6b9b46c2374fd7790bd89f8ed1a2222c6b0d","m2_2_completion_sha256":"bd02f51b1ca9095c4b4d9cadcd89099c32229e9f215beb310cee2ce459fb0a7e","m2_3_authority_sha256":"22dfe34312cac1d6fb7003f84444478c3755c127246b0b8c21d218bc521aece1","m2_3_closure_sha256":"34f1d48d3b96dab4ef08c429353a32cec2c70248e7899cff08b7d256e8c1a591","m2_3_1_authority_sha256":"b5a21bc97954d5f71eb474e41665bc51627e21b7eeedd7cb568830363cd17341","m2_3_1_closure_sha256":"2678241683974dea11841049bef2490d96ea4f1613f7ffbadde234006cdc1d94","m2_4_authority_sha256":"227c8a5b152421973a837d664f1c226af79b0ea0b4f7614835f4baff5accb901","measurement_base_commit":"bfda5f78e418784f6390cc4aead927bbd7b896ff"}
+    expected_protocol = {"version":"0.4","protocol_sha256":"dc510763466ea7524069e2b947a17a856197cf092904f30313a265552ab82d06","implementation_plan_sha256":"5b1ef831fcedaa7a2104c77c2421ab1eceb2e7228d038475c8294bc4378db83a","measurement_base_commit":"bfda5f78e418784f6390cc4aead927bbd7b896ff"}
     if design["protocol"] != expected_protocol: raise ValueError("authority binding mismatch")
     root, artifacts = _root(path), design["artifacts"]
-    required = {"access","helpful","helpful_authorship","harmful","null","master","task_authorship","task_reliability_authorship","oracle","wrapper","evaluator","tests"}
+    required = {"access","helpful","helpful_authorship","harmful","null","master","task_authorship","task_reliability_authorship","oracle","wrapper","evaluator","tests","exclusions"}
     _strict_keys(artifacts, required, "artifacts")
     paths = {k: _bound_file(root, v, k) for k, v in artifacts.items()}
     if paths["null"].read_bytes() or artifacts["null"]["sha256"] != hashlib.sha256(b"").hexdigest(): raise ValueError("null treatment must be exactly zero bytes")
@@ -133,13 +133,13 @@ def load_design(path: Path | str = DEFAULT_EXPERIMENT) -> dict[str, Any]:
         matrix = task.get("requirement_to_negative_case_matrix")
         mutants = {x.get("id") for x in variants[record["id"] if record["id"] in variants else ""] if x.get("class") == "mutant"}
         if not 3 <= len(requirements) <= 5 or not isinstance(matrix, dict) or set(matrix) != requirements or any(not v or not set(v) <= mutants for v in matrix.values()): raise ValueError(f"incomplete negative-case matrix: {record['id']}")
-    if design["qualification"] != {"task_count":20,"states_per_task":5,"repeats_per_state":3,"executions_per_task":15,"execution_count":300,"checker_timeout_seconds":60,"authoritative_receipt_after_final_freeze_only":True,"receipt_schema":"mdseval.coder-beneficial-sensitivity-m2-qualification-receipt-v1","internal_timeout_seconds":10,"execution_record_schema":"mdseval.coder-beneficial-sensitivity-m2-4-execution-v1","terminal_record_schema":"mdseval.coder-beneficial-sensitivity-m2-4-terminal-v1","required_state_order":["pristine","correct-a","correct-b","mutant-a","mutant-b"]}: raise ValueError("qualification design mismatch")
+    if design["qualification"] != {"task_count":20,"states_per_task":5,"repeats_per_state":3,"executions_per_task":15,"execution_count":300,"checker_timeout_seconds":60,"authoritative_receipt_after_commissioning_only":True,"receipt_schema":"mdseval.coder-beneficial-sensitivity-m2-qualification-receipt-v1","internal_timeout_seconds":10,"execution_record_schema":"mdseval.coder-beneficial-sensitivity-m2-4-execution-v1","terminal_record_schema":"mdseval.coder-beneficial-sensitivity-m2-4-terminal-v1","required_state_order":["pristine","correct-a","correct-b","mutant-a","mutant-b"]}: raise ValueError("qualification design mismatch")
     if design["randomization"] != {"selection_seed":"coder-m2-selection-20260810-v1","schedule_seed":"coder-m2-schedule-20260810-v1",
         "power_grid_seed":20260810,"post_calibration_power_seed":20260811,"bootstrap_seed":20260812,
-        "opaque_ids":{"smoke":["S0"],"calibration":["K0"],"controls":["C0","C1","C2"],"helpful":["P0","P1"]}}: raise ValueError("randomization mismatch")
-    if design["calls"] != {"smoke":1,"calibration":120,"controls":48,"helpful":128,"base_cap":297,
-        "fallback_by_stage":{"smoke":0,"calibration":6,"controls":3,"helpful":8},"absolute_cap":314,"qualitative_judge_calls":0}: raise ValueError("call caps mismatch")
-    if set(design["stages"]) != set(STAGES) or any(x.get("separate_authorization_required") is not True for x in design["stages"].values()): raise ValueError("stage authorization design mismatch")
+        "opaque_ids":{"calibration":["K0"],"controls":["C0","C1","C2"],"helpful":["P0","P1"]}}: raise ValueError("randomization mismatch")
+    if design["calls"] != {"calibration":120,"controls":48,"helpful":128,"base_cap":296,
+        "fallback_by_stage":{"calibration":6,"controls":3,"helpful":8},"absolute_cap":313,"qualitative_judge_calls":0}: raise ValueError("call caps mismatch")
+    if set(design["stages"]) != set(STAGES) or any(x.get("campaign_authorization_required") is not True for x in design["stages"].values()): raise ValueError("campaign authorization design mismatch")
     expected_analysis = {"effect_floor":{"numerator":1,"denominator":5},"alpha":{"numerator":1,"denominator":20},
         "selection_successes":[1,2,3,4,5],"selected_per_stratum":4,"helpful_repeats_per_arm":4,"power_iterations":100000,
         "power_floor":{"numerator":4,"denominator":5},"planning_effect":{"numerator":3,"denominator":10},
@@ -270,14 +270,14 @@ def _copy_state(fixture: Path, workspace: Path, variant: dict[str, Any] | None) 
             target.write_text(contents,encoding="utf-8")
     return _manifest(workspace)
 
-def _qualify_started(design_path: Path | str, output: Path | str, *, authoritative: bool = False,
-                     final_freeze_receipt: Path | None = None, verified_commit: str | None = None, checker: Any = _checker) -> dict[str, Any]:
+def _qualify_started(design_path: Path | str, output: Path | str, *, authoritative: bool = False, final_freeze_receipt: Path | None = None, commissioning_pass: Path | None = None, verified_commit: str | None = None, checker: Any = _checker, process: Any=None) -> dict[str, Any]:
     """Run the frozen matrix once and publish immutable external evidence."""
     design = load_design(design_path)
     root,output = _root(Path(design_path)),Path(output)
     if authoritative:
-        if final_freeze_receipt is None or not verified_commit or not COMMIT.fullmatch(verified_commit): raise RuntimeError("authoritative qualification requires final-freeze receipt and exact commit")
-        freeze = _json(Path(final_freeze_receipt))
+        if commissioning_pass is None or not verified_commit or not COMMIT.fullmatch(verified_commit): raise RuntimeError("authoritative qualification requires commissioning PASS and exact commit")
+        passed_commission = _json(Path(commissioning_pass)); governed=[v["path"] for v in design["artifacts"].values()]+[Path(design_path).resolve().relative_to(root).as_posix()]; probe=(process or _default_commit_probe)(root,verified_commit,governed)
+        if passed_commission.get("schema")!="mdseval.coder-beneficial-sensitivity-m2-commission-pass-v1" or passed_commission.get("status")!="PASS" or passed_commission.get("verified_commit")!=verified_commit or probe!={"head":verified_commit,"clean":True,"frozen_hashes":{p:sha256_file(root/p) for p in governed}}: raise RuntimeError("commissioning PASS/commit mismatch")
     else:
         if verified_commit is not None: raise RuntimeError("provisional qualification cannot bind a commit")
         gate = Path(final_freeze_receipt) if final_freeze_receipt else root/"experiments/coder-beneficial-sensitivity-m2-4-freeze.json"
@@ -285,6 +285,9 @@ def _qualify_started(design_path: Path | str, output: Path | str, *, authoritati
         if freeze.get("schema") != "mdseval.coder-beneficial-sensitivity-m2-4-freeze-v1" or freeze.get("status") != "PASS" or freeze.get("authoritative") is not False: raise RuntimeError("M2.4 PASS freeze required")
     try: output.mkdir(parents=True,exist_ok=False)
     except Exception as exc: raise _OutputCreationError(exc) from exc
+    if authoritative:
+        _publish(output/"commissioning-pass.json",passed_commission)
+        freeze={"schema":"mdseval.coder-beneficial-sensitivity-m2-freeze-record-v1","status":"PASS","verified_commit":verified_commit,"commissioning_pass_sha256":sha256_file(output/"commissioning-pass.json"),"config_sha256":sha256_file(Path(design_path)),"evaluator_sha256":sha256_file(Path(__file__))}; _publish(output/"freeze-record.json",freeze)
     raw_root = output/"raw"
     try: raw_root.mkdir()
     except Exception as exc: raise _RawRootCreationError(exc) from exc
@@ -338,7 +341,7 @@ def _qualify_started(design_path: Path | str, output: Path | str, *, authoritati
                 payload_hash = hashlib.sha256(payload_bytes).hexdigest()
                 row = {"task_id":task_id,"state":state,"repeat":repeat,"expected_resolved":expected,"valid":checked.get("valid"),"resolved":checked.get("resolved"),"mechanical":checked.get("mechanical"),"infrastructure_invalid":bool(checked.get("infrastructure_invalid") or timeout_detail),"failed_requirements":sorted(failed),"checker_payload":payload,"checker_payload_sha256":payload_hash,"passed":passed}
                 raw = checked.get("raw") or {"command":[str(Path(sys.executable).resolve()),str(task_dir/"check.py"),str(workspace)],"environment":{},"disposition":"injected","process_cleanup":{"injected":True,"succeeded":True}}
-                execution = {"schema":design["qualification"]["execution_record_schema"],"experiment":design["experiment"],"authoritative":False,"execution_index":index,"task_id":task_id,"state":state,"repeat":repeat,"checker_command":raw.get("command"),"checker_environment":raw.get("environment"),"checker_disposition":raw.get("disposition"),"raw_checker":raw,"checker_payload":payload,"checker_payload_sha256":payload_hash,"pre_state":{"governed":governed_before,"workspace":workspace_before},"post_state":{"governed":governed_after,"workspace":workspace_after},"process_cleanup":raw.get("process_cleanup"),"outcome":row}
+                execution = {"schema":design["qualification"]["execution_record_schema"],"experiment":design["experiment"],"authoritative":authoritative,"execution_index":index,"task_id":task_id,"state":state,"repeat":repeat,"checker_command":raw.get("command"),"checker_environment":raw.get("environment"),"checker_disposition":raw.get("disposition"),"raw_checker":raw,"checker_payload":payload,"checker_payload_sha256":payload_hash,"pre_state":{"governed":governed_before,"workspace":workspace_before},"post_state":{"governed":governed_after,"workspace":workspace_after},"process_cleanup":raw.get("process_cleanup"),"outcome":row}
                 record_path = raw_root/f"execution-{index:04d}.json"
                 try: record_hash = _publish(record_path,execution)
                 except Exception as exc:
@@ -366,21 +369,21 @@ def _qualify_started(design_path: Path | str, output: Path | str, *, authoritati
             break
     after = {r["id"]:tree_sha256(root/r["path"]) for r in master["tasks"]}
     passed = failure is None and len(rows) == 300 and all(r["passed"] for r in rows) and before == after and (not authoritative or freeze.get("verified_commit") == verified_commit and freeze.get("status") == "PASS")
-    terminal = {"schema":design["qualification"]["terminal_record_schema"],"experiment":design["experiment"],"authoritative":False,"status":"PASS" if passed else "FAIL","failure":failure,"execution_count":len(rows),"execution_records":record_hashes,"ordered_execution_records_sha256":digest(record_hashes),"raw_root_sha256":digest(record_hashes),"freeze_sha256":sha256_file(Path(final_freeze_receipt) if final_freeze_receipt else gate),"catchable_outcomes_recorded":not (failure or "").startswith("execution evidence publication failed"),"no_uncatchable_crash_durability_claim":True}
+    freeze_path=output/"freeze-record.json" if authoritative else Path(final_freeze_receipt) if final_freeze_receipt else gate
+    terminal = {"schema":design["qualification"]["terminal_record_schema"],"experiment":design["experiment"],"authoritative":authoritative,"status":"PASS" if passed else "FAIL","failure":failure,"execution_count":len(rows),"execution_records":record_hashes,"ordered_execution_records_sha256":digest(record_hashes),"raw_root_sha256":digest(record_hashes),"freeze_sha256":sha256_file(freeze_path),"catchable_outcomes_recorded":not (failure or "").startswith("execution evidence publication failed"),"no_uncatchable_crash_durability_claim":True}
     bound = [{k:r[k] for k in ("task_id","state","repeat","expected_resolved","valid","resolved","mechanical","infrastructure_invalid","failed_requirements","checker_payload_sha256","passed")} for r in rows]
     result = {"schema":"mdseval.coder-beneficial-sensitivity-m2-qualification-results-v1","authoritative":authoritative,"status":"PASS" if passed else "FAIL","execution_count":len(rows),"python":{"executable":str(Path(sys.executable).resolve()),"version":sys.version},"input_hashes":{k:v["sha256"] for k,v in design["artifacts"].items()},"tree_hashes":{"before":before,"after":after},"results_sha256":digest(bound),"terminal_sha256":hashlib.sha256(canonical(terminal)).hexdigest(),"results":rows}
     if authoritative:
         _publish(output/"qualification-results.json",result)
         if passed:
-            receipt = {"schema":design["qualification"]["receipt_schema"],"experiment":design["experiment"],"status":"PASS","verified_commit":verified_commit,"config_sha256":sha256_file(Path(design_path)),"evaluator_sha256":sha256_file(Path(__file__)),"governed_artifacts":result["input_hashes"],"python":result["python"],"final_freeze_receipt_sha256":sha256_file(Path(final_freeze_receipt)),"execution_count":300,"task_count":20,"state_count":100,"results_sha256":result["results_sha256"]}
+            receipt = {"schema":design["qualification"]["receipt_schema"],"experiment":design["experiment"],"status":"PASS","verified_commit":verified_commit,"config_sha256":sha256_file(Path(design_path)),"evaluator_sha256":sha256_file(Path(__file__)),"tests_sha256":design["artifacts"]["tests"]["sha256"],"wrapper_sha256":design["artifacts"]["wrapper"]["sha256"],"runtime":design["runtime"],"governed_artifacts":result["input_hashes"],"python":result["python"],"commissioning_pass_sha256":sha256_file(output/"commissioning-pass.json"),"freeze_record_sha256":sha256_file(output/"freeze-record.json"),"execution_count":300,"task_count":20,"state_count":100,"execution_records":record_hashes,"ordered_execution_records_sha256":digest(record_hashes),"terminal_sha256":hashlib.sha256(canonical(terminal)).hexdigest(),"qualification_results_sha256":hashlib.sha256(canonical(result)).hexdigest(),"results_sha256":result["results_sha256"]}
             _publish(output/"qualification-receipt.json",receipt)
     _publish_terminal(output/"terminal.json",terminal)
     if authoritative and not passed: raise RuntimeError("authoritative qualification or final freeze failed")
     return result
 
-def qualify(design_path: Path | str, output: Path | str, *, authoritative: bool = False,
-            final_freeze_receipt: Path | None = None, verified_commit: str | None = None, checker: Any = _checker) -> dict[str, Any]:
-    try: return _qualify_started(design_path,output,authoritative=authoritative,final_freeze_receipt=final_freeze_receipt,verified_commit=verified_commit,checker=checker)
+def qualify(design_path: Path | str, output: Path | str, *, authoritative: bool = False, final_freeze_receipt: Path | None = None, commissioning_pass: Path | None = None, verified_commit: str | None = None, checker: Any = _checker, process: Any=None) -> dict[str, Any]:
+    try: return _qualify_started(design_path,output,authoritative=authoritative,final_freeze_receipt=final_freeze_receipt,commissioning_pass=commissioning_pass,verified_commit=verified_commit,checker=checker,process=process)
     except _TerminalPublicationError as exc: raise exc.args[0]
     except Exception as exc:
         output=Path(output); raw_root=output/"raw"
@@ -394,8 +397,8 @@ def qualify(design_path: Path | str, output: Path | str, *, authoritative: bool 
         packet=output.parent.parent if output.parent.name=="return" and output.name=="qualification-evidence" else output.parent
         try: shutil.rmtree(packet/"scratch/qualification")
         except Exception: pass
-        design=json.loads(Path(design_path).read_text()); freeze_path=Path(final_freeze_receipt) if final_freeze_receipt else _root(Path(design_path))/"experiments/coder-beneficial-sensitivity-m2-4-freeze.json"
-        terminal={"schema":design["qualification"]["terminal_record_schema"],"experiment":design["experiment"],"authoritative":False,"status":"FAIL","failure":f"qualification exception: {type(exc).__name__}","execution_count":len(rows),"execution_records":records,"ordered_execution_records_sha256":digest(records),"raw_root_sha256":digest(records),"freeze_sha256":sha256_file(freeze_path),"catchable_outcomes_recorded":False,"no_uncatchable_crash_durability_claim":True}
+        design=json.loads(Path(design_path).read_text()); freeze_path=output/"freeze-record.json" if authoritative else Path(final_freeze_receipt) if final_freeze_receipt else _root(Path(design_path))/"experiments/coder-beneficial-sensitivity-m2-4-freeze.json"
+        terminal={"schema":design["qualification"]["terminal_record_schema"],"experiment":design["experiment"],"authoritative":authoritative,"status":"FAIL","failure":f"qualification exception: {type(exc).__name__}","execution_count":len(rows),"execution_records":records,"ordered_execution_records_sha256":digest(records),"raw_root_sha256":digest(records),"freeze_sha256":sha256_file(freeze_path),"catchable_outcomes_recorded":False,"no_uncatchable_crash_durability_claim":True}
         try: terminal_sha=_publish_terminal(output/"terminal.json",terminal)
         except _TerminalPublicationError as failed: raise failed.args[0]
         bound=[{k:r[k] for k in ("task_id","state","repeat","expected_resolved","valid","resolved","mechanical","infrastructure_invalid","failed_requirements","checker_payload_sha256","passed")} for r in rows]
@@ -554,10 +557,10 @@ def _receipt(live: Path, name: str, value: dict[str,Any], prerequisites: Sequenc
     create_once(live/name,value); return value
 
 
-def create_mapping(stage: str, opaque_ids: Sequence[str], path: Path, rng: random.Random | None=None) -> dict[str,Any]:
-    values=list({"smoke":["N"],"calibration":["N"],"controls":["N1","N2","H"],"helpful":["N","P"]}[stage])
+def create_mapping(stage: str, opaque_ids: Sequence[str], path: Path, rng: random.Random | None=None, nonce: str="") -> dict[str,Any]:
+    values=list({"calibration":["N"],"controls":["N1","N2","H"],"helpful":["N","P"]}[stage])
     (rng or random.SystemRandom()).shuffle(values)
-    value={"schema":"mdseval.coder-beneficial-sensitivity-m2-sealed-mapping-v1","stage":stage,"mapping":dict(zip(opaque_ids,values))}
+    value={"schema":"mdseval.coder-beneficial-sensitivity-m2-sealed-mapping-v1","stage":stage,"nonce":nonce,"mapping":dict(zip(opaque_ids,values))}
     create_once(path,value); return value
 
 
@@ -573,50 +576,71 @@ def _default_commit_probe(root: Path, commit: str, paths: Sequence[str]) -> dict
         frozen[path]=hashlib.sha256(git("show",f"{commit}:{path}")).hexdigest()
     return {"head":commit,"clean":True,"frozen_hashes":frozen}
 
+def _service_identity(events: Sequence[dict[str,Any]]) -> dict[str,Any]:
+    allowed={"session.config","turn.started","response.completed"}; pairs=(("model","gpt-5.6-sol"),("reasoning_effort","high"))
+    found=[{"field":key,"value":source[key],"matches":source[key]==wanted} for event in events if event.get("type") in allowed for source in (event,event.get("service") if isinstance(event.get("service"),dict) else {}) for key,wanted in pairs if key in source]
+    return {"status":"not_reported" if not found else "reported_match" if all(x["matches"] for x in found) else "reported_mismatch","observations":found}
 
-def initialize(*, design_path: Path | str, instance: str, verified_commit: str, freeze_authorization: Path,
-               closure_record: Path, runs_root: Path | str=Path("runs"), checker: Any=_checker,
-               process: Any=None) -> dict[str,Any]:
-    """Create the clean-commit -> closure -> freeze -> alignment -> qualification -> manifest chain."""
+def _runtime_identity(design: dict[str,Any], design_path: Path, subject: Path=Path("<subject-repository>"), final: Path=Path("<final-message>")) -> dict[str,Any]:
+    from .runner.codex_cli import build_codex_command
+    _default_live_preflight(); executable=Path(shutil.which("codex") or "").resolve(); version=subprocess.run([str(executable),"--version"],capture_output=True,text=True,check=True).stdout.strip(); home=Path(os.path.expanduser(os.environ["MDSEVAL_CODEX_HOME"])); command=build_codex_command(runner_config(design),subject,final)
+    return {"requested":{"model":"gpt-5.6-sol","reasoning_effort":"high"},"cli":{"path":str(executable),"sha256":sha256_file(executable),"version":version},"command":command,"strict_config":[command[i+1] for i,x in enumerate(command[:-1]) if x=="--config"],"isolated_profile":{"configured":True,"exists":home.is_dir(),"auth_present":(home/"auth.json").is_file(),"instruction_free":not any((home/x).exists() for x in ("AGENTS.md","AGENTS.override.md"))},"hashes":{"config":sha256_file(design_path),"evaluator":sha256_file(Path(__file__)),"tests":design["artifacts"]["tests"]["sha256"],"wrapper":design["artifacts"]["wrapper"]["sha256"]}}
+
+def commission(*, design_path: Path | str, starting_commit: str, diagnostic_root: Path, authorization_receipt: Path, runner_factory: Any=None, runtime_probe: Any=None) -> dict[str,Any]:
+    design_path=Path(design_path).resolve(); design=load_design(design_path); root=_root(design_path); diagnostic_root=Path(diagnostic_root).resolve(); runtime=(runtime_probe or _runtime_identity)(design,design_path); auth=_json(Path(authorization_receipt))
+    if not COMMIT.fullmatch(starting_commit) or diagnostic_root==root or root in diagnostic_root.parents: raise RuntimeError("commissioning boundary invalid")
+    expected={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-authorization-v1","experiment":design["experiment"],"authorized":True,"starting_commit":starting_commit,"engineering_paths":list(ENGINEERING_PATHS),"churn_cap":350,"max_probes":3,"max_repairs":2,"diagnostic_root":str(diagnostic_root),"runtime_identity_sha256":digest(runtime)}
+    if auth!=expected: raise RuntimeError("commissioning authorization invalid")
+    def git(*args: str) -> str:
+        run=subprocess.run(["git","-C",str(root),*args],capture_output=True,text=True,check=True)
+        return run.stdout.strip()
+    current=git("rev-parse","HEAD"); changed=git("diff","--name-only",starting_commit,current).splitlines(); numstat=git("diff","--numstat",starting_commit,current,"--",*ENGINEERING_PATHS).splitlines()
+    if git("status","--porcelain","--untracked-files=no") or subprocess.run(["git","-C",str(root),"merge-base","--is-ancestor",starting_commit,current]).returncode: raise RuntimeError("clean descendant commit required")
+    if not changed or not set(changed)<=set(ENGINEERING_PATHS): raise RuntimeError("commissioning path scope invalid")
+    try: churn=sum(int(x[0])+int(x[1]) for x in (line.split("\t") for line in numstat))
+    except (ValueError,IndexError) as exc: raise RuntimeError("binary commissioning change") from exc
+    if churn>350: raise RuntimeError("commissioning churn exceeded")
+    prior=sorted(diagnostic_root.glob("*/probe-*/result.json")); previous=_json(prior[-1]) if prior else None
+    if len(prior)>=3 or previous and (previous.get("status")=="PASS" or previous.get("verified_commit")==current or not git("diff","--name-only",previous["verified_commit"],current,"--",*ENGINEERING_PATHS)): raise RuntimeError("commissioning already terminal or unchanged")
+    probe=diagnostic_root/current/f"probe-{len(prior)+1}"; temporary=Path(tempfile.mkdtemp(prefix="mdseval-commission-")); prepared=None
+    try:
+        source=temporary/"source"; (source/"fixture").mkdir(parents=True); (source/"contract.md").write_text("Make no file changes. Reply with exactly two lines: IMPLEMENTED then SMOKE_READY.\n"); candidate=temporary/"CODER.md"; candidate.write_bytes(b""); from .config import CaseConfig, VerificationEvidence; from .fixtures import audit_final_subject_tree, prepare_fixture; from .capture import Redactor, capture_git, parse_event_stream
+        case=CaseConfig(1,"commission","m2-development","IMPLEMENTED",(),(),(),VerificationEvidence(False,False,()),(),(),300,source,digest("commission"),tree_sha256(source/"fixture")); prepared=prepare_fixture(case,candidate,hashlib.sha256(b"").hexdigest())
+        runner=(runner_factory or __import__("mdseval.runner.codex_cli",fromlist=["CodexCLI"]).CodexCLI)(runner_config(design)); before=tree_sha256(prepared.repo); exact_runtime=(runtime_probe or _runtime_identity)(design,design_path,prepared.repo,probe/"final.txt")
+        probe.mkdir(parents=True,exist_ok=False); run=runner.run(prepared,probe,300,Redactor()); audit_final_subject_tree(prepared.repo); events=parse_event_stream(probe/"events.jsonl"); final=(probe/"final.txt").read_bytes(); capture=capture_git(prepared.repo,prepared.baseline_commit,Redactor()); identity=_service_identity(events.events)
+        raw={name:sha256_file(probe/name) for name in ("events.jsonl","stderr.txt","final.txt")}; unchanged=not capture.status and not capture.diff and not capture.untracked and before==tree_sha256(prepared.repo)
+        ok=events.valid and identity["status"]!="reported_mismatch" and final==EXPECTED_FINAL and unchanged and not run.timed_out and not run.interrupted and run.exit_code==0
+        result={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-result-v1","status":"PASS" if ok else "FAIL","non_authoritative":True,"verified_commit":current,"starting_commit":starting_commit,"probe":len(prior)+1,"repair_cycles":len(prior),"prior_failure_sha256":sha256_file(prior[-1]) if prior else None,"churn":churn,"changed_paths":changed,"runtime":exact_runtime,"identity":identity,"raw_sha256":raw,"expected_final_hex":EXPECTED_FINAL.hex(),"actual_final_hex":final.hex(),"tree_unchanged":unchanged,"runner":asdict(run)}
+    except Exception as exc:
+        if not probe.exists(): raise
+        result={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-result-v1","status":"FAIL","non_authoritative":True,"verified_commit":current,"probe":len(prior)+1,"error":f"{type(exc).__name__}: {exc}"}
+    finally:
+        prepared.cleanup() if prepared is not None else None; shutil.rmtree(temporary,ignore_errors=True)
+    create_once(probe/"result.json",result)
+    if result["status"]=="PASS": create_once(probe/"PASS.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-pass-v1","status":"PASS","experiment":design["experiment"],"verified_commit":current,"result_sha256":sha256_file(probe/"result.json"),"runtime":result["runtime"],"identity":result["identity"],"raw_sha256":result["raw_sha256"],"tree_unchanged":True})
+    return result
+
+
+def initialize(*, design_path: Path | str, instance: str, verified_commit: str, qualification_receipt: Path, runs_root: Path | str=Path("runs"), process: Any=None, entropy: Any=os.urandom) -> dict[str,Any]:
     design_path=Path(design_path).resolve(); design=load_design(design_path)
     if not SAFE_ID.fullmatch(instance) or not COMMIT.fullmatch(verified_commit): raise ValueError("unsafe instance or commit")
-    closure_path=Path(closure_record); expected_closure=_root(design_path)/M2_4_2_CLOSURE
-    if closure_path.is_symlink() or not closure_path.is_file() or closure_path.resolve()!=expected_closure.resolve() or sha256_file(closure_path)!=M2_4_2_CLOSURE_SHA256: raise RuntimeError("exact M2.4.2 closure PASS required")
-    closure=_json(closure_path); authorization=_json(Path(freeze_authorization))
-    if closure.get("schema")!="mdseval.coder-beneficial-sensitivity-m2-4-2-closure-v1" or closure.get("status")!="PASS" or closure.get("authoritative") is not False or closure.get("experiment")!=design["experiment"]: raise RuntimeError("exact M2.4.2 closure PASS required")
-    if authorization != {"schema":"mdseval.coder-beneficial-sensitivity-m2-freeze-authorization-v1","experiment":design["experiment"],
-                          "instance":instance,"verified_commit":verified_commit,"authorized":True}:
-        raise RuntimeError("freeze authorization invalid")
-    runs=Path(runs_root); instance_root=runs/instance; live,replay_root=instance_root/"live",instance_root/"replay"
+    receipt_path=Path(qualification_receipt).resolve(); receipt=_json(receipt_path); qdir=receipt_path.parent
+    expected={"schema":design["qualification"]["receipt_schema"],"experiment":design["experiment"],"status":"PASS","verified_commit":verified_commit,"config_sha256":sha256_file(design_path),"evaluator_sha256":sha256_file(Path(__file__)),"tests_sha256":design["artifacts"]["tests"]["sha256"],"wrapper_sha256":design["artifacts"]["wrapper"]["sha256"],"runtime":design["runtime"]}
+    if any(receipt.get(k)!=v for k,v in expected.items()) or receipt.get("execution_count")!=300 or len(receipt.get("execution_records",[]))!=300: raise RuntimeError("qualification receipt invalid")
+    bound={"commissioning-pass.json":receipt["commissioning_pass_sha256"],"freeze-record.json":receipt["freeze_record_sha256"],"terminal.json":receipt["terminal_sha256"],"qualification-results.json":receipt["qualification_results_sha256"]}
+    if receipt.get("ordered_execution_records_sha256")!=digest(receipt["execution_records"]) or any(not (p:=qdir/_safe(x["path"],"qualification record")).is_file() or sha256_file(p)!=x["sha256"] for x in receipt["execution_records"]) or any(not (qdir/name).is_file() or sha256_file(qdir/name)!=wanted for name,wanted in bound.items()): raise RuntimeError("qualification envelope invalid")
+    runs=Path(runs_root); instance_root=runs/instance; live,replay_root=instance_root/"live",instance_root/"replay"; root=_root(design_path); governed=[v["path"] for v in design["artifacts"].values()]+[design_path.relative_to(root).as_posix()]
     if live.exists() or replay_root.exists(): raise RuntimeError("live and replay roots must not preexist")
-    root=_root(design_path); governed=[v["path"] for v in design["artifacts"].values() if "sha256" in v]+[design["artifacts"]["evaluator"]["path"],design_path.relative_to(root).as_posix()]
-    probe=(process or _default_commit_probe)(root,verified_commit,governed)
-    current={p:sha256_file(root/p) for p in governed}
+    probe=(process or _default_commit_probe)(root,verified_commit,governed); current={p:sha256_file(root/p) for p in governed}
     if probe!={"head":verified_commit,"clean":True,"frozen_hashes":current}: raise RuntimeError("dirty, drifted, or incomplete commit probe")
-    live.mkdir(parents=True,exist_ok=False)
-    freeze={"schema":"mdseval.coder-beneficial-sensitivity-m2-final-freeze-v1","status":"PASS","verified_commit":verified_commit,
-        "authorization_sha256":sha256_file(Path(freeze_authorization)),"closure_sha256":sha256_file(closure_path),
-        "config_sha256":sha256_file(design_path),"evaluator_sha256":current[design["artifacts"]["evaluator"]["path"]],"governed_hashes":current}
-    create_once(live/"final-freeze-receipt.json",freeze)
-    alignment={"schema":"mdseval.coder-beneficial-sensitivity-m2-post-freeze-alignment-v1","status":"PASS","verified_commit":verified_commit,
-        "final_freeze_receipt_sha256":sha256_file(live/"final-freeze-receipt.json"),"aligned_hashes":current}
-    create_once(live/"post-freeze-alignment-receipt.json",alignment)
-    qdir=live/"qualification"
-    result=qualify(design_path,qdir,authoritative=True,final_freeze_receipt=live/"final-freeze-receipt.json",verified_commit=verified_commit,checker=checker)
-    if result["status"]!="PASS": raise RuntimeError("authoritative qualification failed")
-    shutil.copyfile(qdir/"qualification-receipt.json",live/"qualification-receipt.json")
+    live.mkdir(parents=True,exist_ok=False); shutil.copytree(qdir,live/"qualification"); shutil.copyfile(live/"qualification/qualification-receipt.json",live/"qualification-receipt.json")
     schedules=build_master_schedules(design); sealed={}
-    for index,stage in enumerate(STAGES):
-        mapping=create_mapping(stage,design["randomization"]["opaque_ids"][stage],live/"sealed-mappings"/f"{stage}.json",random.Random(design["randomization"]["schedule_seed"]+str(index)))
-        sealed[stage]=sha256_file(live/"sealed-mappings"/f"{stage}.json")
-    manifest={"schema":"mdseval.coder-beneficial-sensitivity-m2-initial-manifest-v1","experiment":design["experiment"],"instance":instance,
-        "verified_commit":verified_commit,"config_sha256":sha256_file(design_path),"evaluator_sha256":sha256_file(Path(__file__)),
-        "prerequisite_sha256":{x:sha256_file(live/x) for x in ("final-freeze-receipt.json","post-freeze-alignment-receipt.json","qualification-receipt.json")},
-        "qualification_results_sha256":sha256_file(qdir/"qualification-results.json"),"python":{"executable":str(Path(sys.executable).resolve()),"version":sys.version},
-        "runtime":design["runtime"],"governed_hashes":current,"treatment_hashes":sorted(design["artifacts"][x]["sha256"] for x in ("null","harmful","helpful")),
-        "mapping_hashes":sealed,"schedules":schedules,"schedule_sha256":digest(schedules),"randomization":design["randomization"],
-        "invalidity_table":design["evidence"]["invalidity_table"],"wrapper_sha256":design["artifacts"]["wrapper"]["sha256"],
-        "roots":{"live":str(live),"replay":str(replay_root)},"caps":{"base":297,"absolute":314}}
+    private=live/".internal-mappings"; private.mkdir(mode=0o700)
+    for stage in STAGES:
+        nonce=entropy(16).hex(); path=private/f"{stage}.json"; create_mapping(stage,design["randomization"]["opaque_ids"][stage],path,random.Random(int.from_bytes(entropy(32),"big")),nonce); path.chmod(0o600); sealed[stage]=sha256_file(path)
+    manifest={"schema":"mdseval.coder-beneficial-sensitivity-m2-initial-manifest-v1","experiment":design["experiment"],"instance":instance,"verified_commit":verified_commit,"config_sha256":sha256_file(design_path),"evaluator_sha256":sha256_file(Path(__file__)),
+        "prerequisite_sha256":{"qualification-receipt.json":sha256_file(live/"qualification-receipt.json")},"qualification_envelope_sha256":digest(governed_inventory(live/"qualification")),"python":{"executable":str(Path(sys.executable).resolve()),"version":sys.version},"runtime":design["runtime"],"runtime_identity_sha256":digest(_json(live/"qualification/commissioning-pass.json")["runtime"]),"governed_hashes":current,"treatment_hashes":sorted(design["artifacts"][x]["sha256"] for x in ("null","harmful","helpful")),
+        "mapping_hashes":sealed,"schedules":schedules,"schedule_sha256":digest(schedules),"randomization":design["randomization"],"invalidity_table":design["evidence"]["invalidity_table"],"wrapper_sha256":design["artifacts"]["wrapper"]["sha256"],"exclusions_sha256":design["artifacts"]["exclusions"]["sha256"],"roots":{"live":str(live),"replay":str(replay_root)},"caps":{"base":296,"absolute":313}}
     create_once(live/"initial-manifest.json",manifest); return manifest
 
 
@@ -631,21 +655,6 @@ def validate_resume(stage: str, slots: Sequence[dict[str,Any]], completed: int) 
     if stage=="controls": return slots[completed-1]["task_id"]!=slots[completed]["task_id"]
     if stage=="helpful": return completed%2==0
     return False
-
-
-def _event_value(events: Sequence[dict[str,Any]], names: set[str]) -> Any:
-    def visit(value: Any) -> Any:
-        if isinstance(value,dict):
-            for key,item in value.items():
-                if key in names and isinstance(item,str): return item
-                found=visit(item)
-                if found is not None: return found
-        if isinstance(value,list):
-            for item in value:
-                found=visit(item)
-                if found is not None: return found
-        return None
-    return visit(list(events))
 
 
 def _task_case(root: Path, record: dict[str,Any], task: dict[str,Any]) -> Any:
@@ -664,25 +673,16 @@ def _live_attempt(design: dict[str,Any], design_path: Path, live: Path, slot: di
     attempt=live/"attempts"/slot["stage"]/slot["slot_id"].replace(":","_"); attempt.mkdir(parents=True,exist_ok=False)
     redactor=Redactor(); prepared=run=None
     try:
-        if slot["stage"]=="smoke":
-            temporary=Path(tempfile.mkdtemp(prefix="mdseval-m2-smoke-source-")); fixture=temporary/"fixture"; fixture.mkdir()
-            (temporary/"contract.md").write_text("Make no file changes. Reply with exactly two lines: IMPLEMENTED then SMOKE_READY.\n")
-            from .config import CaseConfig, VerificationEvidence
-            case=CaseConfig(1,"smoke","m2","IMPLEMENTED",(),(),(),VerificationEvidence(False,False,()),(),(),300,temporary,digest("smoke"),tree_sha256(fixture))
-        else:
-            task=json.loads((root/record["path"]/"task.json").read_text()); case=_task_case(root,record,task)
+        task=json.loads((root/record["path"]/"task.json").read_text()); case=_task_case(root,record,task)
         treatment=root/design["artifacts"][{"N":"null","N1":"null","N2":"null","H":"harmful","P":"helpful"}[semantic]]["path"]
         prepared=prepare_fixture(case,treatment,sha256_file(treatment)); before=tree_sha256(prepared.repo)
         run=runner.run(prepared,attempt/"runner",300,redactor); audit_final_subject_tree(prepared.repo)
         events=parse_event_stream(attempt/"runner"/"events.jsonl"); final=(attempt/"runner"/"final.txt").read_bytes()
-        capture=capture_git(prepared.repo,prepared.baseline_commit,redactor); checked=({"valid":True,"mechanical":True,
-            "resolved":final==EXPECTED_FINAL and not capture.status and not capture.diff and not capture.untracked,
-            "payload":{"requirements":{},"regressions":{},"integrity":{"passed":True}}} if slot["stage"]=="smoke" else _checker(root/record["path"]/"check.py",slot["task_id"],prepared.repo))
-        model=_event_value(events.events,{"model","model_name"}); effort=_event_value(events.events,{"reasoning_effort","model_reasoning_effort"})
-        complete=not any(x.get("truncated") for x in capture.untracked); valid=events.valid and complete and model=="gpt-5.6-sol" and effort=="high"
+        capture=capture_git(prepared.repo,prepared.baseline_commit,redactor); checked=_checker(root/record["path"]/"check.py",slot["task_id"],prepared.repo); identity=_service_identity(events.events)
+        complete=not any(x.get("truncated") for x in capture.untracked); valid=events.valid and complete and identity["status"]!="reported_mismatch"
         req=checked.get("payload",{}).get("requirements",{})
-        row={**slot,"launch_index":launch_index,"requested_model":"gpt-5.6-sol","observed_model":model,"requested_reasoning_effort":"high",
-            "observed_reasoning_effort":effort,"judge_calls":0,"objective_resolved":bool(valid and checked.get("valid") and checked.get("mechanical") and checked.get("resolved") and not checked.get("infrastructure_invalid") and not run.timed_out and not run.interrupted and run.exit_code==0),
+        row={**slot,"launch_index":launch_index,"requested_model":"gpt-5.6-sol","requested_reasoning_effort":"high","identity_status":identity["status"],"identity_observations":identity["observations"],
+            "judge_calls":0,"objective_resolved":bool(valid and checked.get("valid") and checked.get("mechanical") and checked.get("resolved") and not checked.get("infrastructure_invalid") and not run.timed_out and not run.interrupted and run.exit_code==0),
             "checker_valid":checked.get("valid") is True,"mechanical_integrity":valid and checked.get("mechanical") is True and not checked.get("infrastructure_invalid"),
             "requirements_passed":sum(x.get("passed") is True for x in req.values()),"requirements_total":len(req),"runner":asdict(run),
             "events":asdict(events),"capture":asdict(capture),"final_message_hex":final.hex(),"final_bytes_sha256":hashlib.sha256(final).hexdigest(),
@@ -690,12 +690,11 @@ def _live_attempt(design: dict[str,Any], design_path: Path, live: Path, slot: di
             "final_tree_sha256":tree_sha256(prepared.repo),"status":"ACTIVE","infrastructure_invalid":checked.get("infrastructure_invalid") is True}
     except Exception as exc:
         error=str(exc); error_code={"LIVE_RUNNER_UNAVAILABLE: MDSEVAL_CODEX_HOME is not set":"AUTHENTICATION_PRE_USABLE"}.get(error,error); invalid=run is None and error_code in set(design["evidence"]["invalidity_table"])
-        row={**slot,"launch_index":launch_index,"requested_model":"gpt-5.6-sol","observed_model":None,"requested_reasoning_effort":"high",
-            "observed_reasoning_effort":None,"judge_calls":0,"objective_resolved":False,"checker_valid":False,"mechanical_integrity":False,
+        row={**slot,"launch_index":launch_index,"requested_model":"gpt-5.6-sol","requested_reasoning_effort":"high","identity_status":"not_reported","identity_observations":[],
+            "judge_calls":0,"objective_resolved":False,"checker_valid":False,"mechanical_integrity":False,
             "requirements_passed":0,"requirements_total":0,"status":"ACTIVE","infrastructure_invalid":invalid,"error":error,"error_code":error_code}
     finally:
         if prepared is not None: prepared.cleanup()
-        if slot["stage"]=="smoke" and "temporary" in locals(): shutil.rmtree(temporary,ignore_errors=True)
     create_once(attempt/"attempt.json",row); return row
 def _attempt_path(live: Path, slot: dict[str,Any]) -> Path:
     return live/"attempts"/slot["stage"]/slot["slot_id"].replace(":","_")/"attempt.json"
@@ -705,18 +704,13 @@ def _validate_row(row: Any, slot: dict[str,Any], index: int) -> dict[str,Any]:
     if not isinstance(row,dict) or any(row.get(k)!=v for k,v in slot.items()) or row.get("launch_index")!=index:
         raise RuntimeError("attempt row does not bind scheduled slot")
     required={"requested_model":"gpt-5.6-sol","requested_reasoning_effort":"high","judge_calls":0,"status":"ACTIVE"}
-    if any(row.get(k)!=v for k,v in required.items()) or type(row.get("objective_resolved")) is not bool or type(row.get("infrastructure_invalid")) is not bool:
+    if any(row.get(k)!=v for k,v in required.items()) or row.get("identity_status") not in {"not_reported","reported_match","reported_mismatch"} or type(row.get("objective_resolved")) is not bool or type(row.get("infrastructure_invalid")) is not bool or type(row.get("mechanical_integrity")) is not bool:
         raise RuntimeError("attempt evidence incomplete")
-    if not row["infrastructure_invalid"] and (row.get("observed_model")!="gpt-5.6-sol" or row.get("observed_reasoning_effort")!="high"):
-        raise RuntimeError("requested/observed identity mismatch")
-    if slot["stage"]=="smoke" and not row["infrastructure_invalid"] and (row.get("final_message_hex")!=EXPECTED_FINAL.hex()
-            or row.get("tree_unchanged") is not True or row.get("capture_complete") is not True):
-        raise RuntimeError("smoke raw bytes, tree, or capture invalid")
     return row
 def _unblind(live: Path, stage: str, locked_name: str) -> dict[str,Any]:
-    mapping=_json(live/"sealed-mappings"/f"{stage}.json")
+    mapping=_json(live/".internal-mappings"/f"{stage}.json")
     return _receipt(live,f"{stage}-unblinding-receipt.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-stage-unblinding-v1",
-        "stage":stage,"mapping_sha256":sha256_file(live/"sealed-mappings"/f"{stage}.json"),"mapping":mapping["mapping"],
+        "stage":stage,"mapping_sha256":sha256_file(live/".internal-mappings"/f"{stage}.json"),"mapping":mapping["mapping"],
         "outcomes_locked_before_unblinding":True},[locked_name])
 
 
@@ -740,7 +734,7 @@ def _derive_report(design: dict[str,Any], live: Path, verdict: str, reason: str,
         if path.is_file(): mappings[stage]=_json(path)["mapping"]
     evidence["unblinded_mapping"]=mappings
     report={"schema":"mdseval.coder-beneficial-sensitivity-m2-report-v1","experiment":design["experiment"],"verdict":verdict,
-            "terminal_reason":reason,"claim_boundary":CLAIM,"calls":{"launched":len(rows),"superseded":sum(x["status"]=="SUPERSEDED" for x in rows),"judge":0},
+            "terminal_reason":reason,"claim_boundary":CLAIM,"exclusions_sha256":design["artifacts"]["exclusions"]["sha256"],"calls":{"launched":len(rows),"superseded":sum(x["status"]=="SUPERSEDED" for x in rows),"judge":0},
             "deviations":[],"secondary":{"requirements_passed":sum(x.get("requirements_passed",0) for x in rows if x["status"]=="ACTIVE"),
             "requirements_total":sum(x.get("requirements_total",0) for x in rows if x["status"]=="ACTIVE")}}
     if "selection" in evidence: report["selection"]=evidence["selection"]
@@ -800,29 +794,30 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
     if not live.is_dir() or (Path(runs_root)/instance/"replay").exists() or (live/"locked-evidence-manifest.json").exists():
         raise RuntimeError("active initialized live root required")
     manifest=_json(live/"initial-manifest.json"); _validate_initial_bindings(live,manifest); auth=_json(Path(authorization_receipt)); manifest_hash=sha256_file(live/"initial-manifest.json")
-    if auth!={"schema":"mdseval.coder-beneficial-sensitivity-m2-stage-authorization-v1","experiment":design["experiment"],"instance":instance,
-              "stage":stage,"authorized":True,"manifest_sha256":manifest_hash}: raise RuntimeError("stage-specific authorization invalid")
-    prereq={"smoke":["qualification-receipt.json"],"calibration":["smoke-receipt.json"],
+    expected={"schema":"mdseval.coder-beneficial-sensitivity-m2-campaign-authorization-v1","experiment":design["experiment"],"instance":instance,"verified_commit":manifest["verified_commit"],"authorized":True,
+              "manifest_sha256":manifest_hash,"config_sha256":manifest["config_sha256"],"runtime_identity_sha256":manifest["runtime_identity_sha256"],"mapping_hashes":manifest["mapping_hashes"],"ordered_stages":list(STAGES),
+              "mechanical_gates":["selection","power","controls"],"fallback_by_stage":design["calls"]["fallback_by_stage"],"absolute_cap":313}
+    if auth!=expected: raise RuntimeError("campaign authorization invalid")
+    prereq={"calibration":["qualification-receipt.json"],
             "controls":["selection-receipt.json","power-receipt.json","controls-filtered-schedule-receipt.json"],
             "helpful":["controls-gates-receipt.json","helpful-filtered-schedule-receipt.json"]}[stage]
-    if any(not (live/x).is_file() for x in prereq) or any((live/f"{s}-receipt.json").exists() for s in STAGES[STAGES.index(stage)+1:]):
+    if any(not (live/x).is_file() for x in prereq) or (live/f"{stage}-receipt.json").exists() or any((live/f"{s}-receipt.json").exists() for s in STAGES[STAGES.index(stage)+1:]):
         raise RuntimeError("stage prerequisites or order invalid")
     if attempt_executor is None and runner_factory is None: _default_live_preflight()
-    _same_receipt(live/f"{stage}-authorization.json",auth)
-    mapping_path=live/"sealed-mappings"/f"{stage}.json"
+    mapping_path=live/".internal-mappings"/f"{stage}.json"
     if sha256_file(mapping_path)!=manifest["mapping_hashes"][stage]: raise RuntimeError("mapping hash drift")
     mapping=_json(mapping_path)["mapping"]; schedules=manifest["schedules"]
     if digest(schedules)!=manifest["schedule_sha256"] or schedules!=build_master_schedules(design): raise RuntimeError("schedule sentinel drift")
-    if stage=="smoke": slots=[{"slot_id":"smoke:base","stage":"smoke","round":0,"task_id":"smoke","opaque_arm_id":"S0","fallback":False}]
-    elif stage=="calibration": slots=schedules[stage]["base"]
+    if stage=="calibration": slots=schedules[stage]["base"]
     else: slots=_json(live/f"{stage}-filtered-schedule-receipt.json")["slots"]
-    if len(slots)!={"smoke":1,"calibration":120,"controls":48,"helpful":128}[stage]: raise RuntimeError("base call count drift")
+    if len(slots)!={"calibration":120,"controls":48,"helpful":128}[stage]: raise RuntimeError("base call count drift")
     runner=None
     if attempt_executor is None:
         if runner_factory is None:
             from .runner.codex_cli import CodexCLI
             runner_factory=CodexCLI
         runner=runner_factory(runner_config(design))
+    _same_receipt(live/"campaign-authorization.json",auth)
     existing=[]
     for slot in slots:
         path=_attempt_path(live,slot)
@@ -838,7 +833,7 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
         if attempt_executor: create_once(_attempt_path(live,slot),row)
         rows.append(row)
     invalid={r["task_id"] for r in rows if r["infrastructure_invalid"]}; status="PASS"
-    if stage=="smoke" and invalid or len(invalid)>1: status="INVALID"
+    if len(invalid)>1: status="INVALID"
     elif invalid:
         task=next(iter(invalid))
         for row in rows:
@@ -854,12 +849,11 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
         rows.extend(fallback_rows)
         if any(r["infrastructure_invalid"] for r in fallback_rows): status="INVALID"
     total=prior+len(rows)
-    if total>314 or (stage=="helpful" and total>297+17): status="INVALID"
+    if total>313 or (stage=="helpful" and total>296+17): status="INVALID"
     if any(not r.get("mechanical_integrity") and not r["infrastructure_invalid"] for r in rows): status="INVALID"
-    if stage=="smoke" and (len(rows)!=1 or not rows[0]["objective_resolved"]): status="INVALID"
     create_once(live/f"{stage}-attempts.json",rows)
     lock=_receipt(live,f"{stage}-outcome-lock.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-outcome-lock-v1","stage":stage,
-        "status":status,"attempts_sha256":sha256_file(live/f"{stage}-attempts.json"),"schedule_sha256":digest(slots),"launched_calls":len(rows)},prereq)
+        "status":status,"attempts_sha256":sha256_file(live/f"{stage}-attempts.json"),"schedule_sha256":digest(slots),"launched_calls":len(rows)},["campaign-authorization.json",*prereq])
     unblind=_unblind(live,stage,f"{stage}-outcome-lock.json")
     stage_receipt=_receipt(live,f"{stage}-receipt.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-stage-result-v1","stage":stage,"status":status,
         "base_calls":len(slots),"launched_calls":len(rows),"fallback_cap":design["calls"]["fallback_by_stage"][stage],
@@ -895,20 +889,20 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
     return stage_receipt
 
 def _validate_initial_bindings(live: Path, manifest: Any) -> None:
-    expected={"final-freeze-receipt.json","post-freeze-alignment-receipt.json","qualification-receipt.json"}; bindings=manifest.get("prerequisite_sha256") if isinstance(manifest,dict) else None
+    expected={"qualification-receipt.json"}; bindings=manifest.get("prerequisite_sha256") if isinstance(manifest,dict) else None
     if not isinstance(manifest,dict) or not isinstance(bindings,dict) or set(bindings)!=expected: raise ValueError("initial evidence binding drift")
-    if any(not isinstance(wanted,str) or not SHA256.fullmatch(wanted) or path.is_symlink() or not path.is_file() or sha256_file(path)!=wanted for name,wanted in {**bindings,"qualification/qualification-results.json":manifest.get("qualification_results_sha256")}.items() for path in (live/name,)): raise ValueError("initial evidence binding drift")
+    if any(not isinstance(wanted,str) or not SHA256.fullmatch(wanted) or path.is_symlink() or not path.is_file() or sha256_file(path)!=wanted for name,wanted in bindings.items() for path in (live/name,)) or manifest.get("qualification_envelope_sha256")!=digest(governed_inventory(live/"qualification")): raise ValueError("initial evidence binding drift")
 def _validate_dag(live: Path, manifest_hash: str) -> None:
     manifest=_json(live/"initial-manifest.json"); _validate_initial_bindings(live,manifest)
     if manifest["schedule_sha256"]!=digest(manifest["schedules"]): raise ValueError("schedule drift")
     for path in _walk_files(live):
-        if path.name.endswith(("receipt.json","outcome-lock.json")) and path.name not in {"final-freeze-receipt.json","qualification-receipt.json"}:
+        if path.name.endswith(("receipt.json","outcome-lock.json")) and path.name!="qualification-receipt.json":
             value=_json(path)
             if "manifest_sha256" in value and value["manifest_sha256"]!=manifest_hash: raise ValueError("receipt manifest DAG drift")
             for name,wanted in value.get("prerequisite_sha256",{}).items():
                 if not (target:=live/name).is_file() or sha256_file(target)!=wanted: raise ValueError("receipt prerequisite DAG drift")
     rows=_rows(live); launches=[x["launch_index"] for x in rows]
-    if launches!=list(range(1,len(rows)+1)) or len(rows)>314: raise ValueError("attempt order or cap drift")
+    if launches!=list(range(1,len(rows)+1)) or len(rows)>313: raise ValueError("attempt order or cap drift")
 
 def replay(design_path: Path | str, instance: str, *, runs_root: Path | str=Path("runs"), bootstrap_iterations: int=100000) -> dict[str,Any]:
     design=load_design(design_path)
@@ -934,7 +928,7 @@ def analyze(design: dict[str,Any], evidence: Any, *, bootstrap_iterations: int=1
         if not isinstance(evidence,dict) or evidence.get("schema")!="mdseval.coder-beneficial-sensitivity-m2-evidence-v1" or evidence.get("locked") is not True:
             raise ValueError("evidence envelope invalid")
         rows=evidence.get("attempts")
-        if not isinstance(rows,list) or not rows or [x.get("launch_index") for x in rows]!=list(range(1,len(rows)+1)) or len(rows)>314:
+        if not isinstance(rows,list) or not rows or [x.get("launch_index") for x in rows]!=list(range(1,len(rows)+1)) or len(rows)>313:
             raise ValueError("attempt evidence reordered, empty, or over cap")
         if evidence.get("manifest_sha256")!=evidence.get("bound_manifest_sha256"): raise ValueError("manifest lock mismatch")
         return {**base,"verdict":evidence.get("verdict","INVALID"),"terminal_reason":evidence.get("terminal_reason","compatibility")}
@@ -954,23 +948,27 @@ def simulate(design: dict[str,Any], output: Path) -> dict[str,Any]:
 
 def main(argv: Sequence[str] | None=None) -> int:
     parser=argparse.ArgumentParser(); sub=parser.add_subparsers(dest="command",required=True)
-    for name in ("validate","qualify","verify-power","simulate","initialize","run-stage","replay"):
+    for name in ("validate","qualify","verify-power","simulate","commission","initialize","run-stage","replay"):
         p=sub.add_parser(name); p.add_argument("--experiment",type=Path,required=True)
         if name in {"qualify","simulate"}: p.add_argument("--output",type=Path,required=True)
         if name in {"initialize","run-stage","replay"}: p.add_argument("--instance",required=True)
-        if name=="initialize":
-            p.add_argument("--verified-commit",required=True); p.add_argument("--freeze-authorization",type=Path,required=True); p.add_argument("--closure-record",type=Path,required=True)
+        if name in {"qualify","initialize"}: p.add_argument("--verified-commit",required=True)
+        if name=="qualify": p.add_argument("--commissioning-pass",type=Path,required=True)
+        if name=="commission":
+            p.add_argument("--starting-commit",required=True); p.add_argument("--diagnostic-root",type=Path,required=True); p.add_argument("--authorization-receipt",type=Path,required=True)
+        if name=="initialize": p.add_argument("--qualification-receipt",type=Path,required=True)
         if name=="run-stage":
             p.add_argument("--stage",choices=STAGES,required=True); p.add_argument("--authorization-receipt",type=Path,required=True)
     args=parser.parse_args(argv)
     try:
         design=load_design(args.experiment)
         if args.command=="validate": print("VALID"); return 0
-        if args.command=="qualify": result=qualify(args.experiment,args.output); print(result["status"]); return result["status"]!="PASS"
+        if args.command=="qualify": result=qualify(args.experiment,args.output,authoritative=True,commissioning_pass=args.commissioning_pass,verified_commit=args.verified_commit); print(result["status"]); return result["status"]!="PASS"
         if args.command=="verify-power": result=verify_power(design); print(json.dumps(result,sort_keys=True)); return not result["passed"]
         if args.command=="simulate": simulate(design,args.output); print("SIMULATED"); return 0
+        if args.command=="commission": result=commission(design_path=args.experiment,starting_commit=args.starting_commit,diagnostic_root=args.diagnostic_root,authorization_receipt=args.authorization_receipt); print(result["status"]); return result["status"]!="PASS"
         if args.command=="initialize": initialize(design_path=args.experiment,instance=args.instance,verified_commit=args.verified_commit,
-            freeze_authorization=args.freeze_authorization,closure_record=args.closure_record); print("INITIALIZED"); return 0
+            qualification_receipt=args.qualification_receipt); print("INITIALIZED"); return 0
         if args.command=="run-stage": run_stage(design_path=args.experiment,instance=args.instance,stage=args.stage,authorization_receipt=args.authorization_receipt); print("STAGE_COMPLETE"); return 0
         report=replay(args.experiment,args.instance); print(report["verdict"]); return report["verdict"]=="INVALID"
     except (OSError,ValueError,RuntimeError,json.JSONDecodeError) as exc: parser.error(str(exc))

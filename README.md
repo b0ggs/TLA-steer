@@ -81,7 +81,22 @@ PYTHONPATH=src python3 -m mdseval.outcome_mvp \
   runs/coder-outcomes-v2-replay
 ```
 
-## CODER beneficial-sensitivity M2 commands
+## CODER beneficial-sensitivity M2 v0.4
+
+Export `MDSEVAL_CODEX_HOME="$HOME/.codex-mdseval"` after logging that isolated profile in. There are two live authorization boundaries: one covers at most three non-authoritative commissioning probes/two repairs; the later campaign receipt covers the ordered authoritative stages and is reused byte-for-byte.
+
+```bash
+python3 -m unittest discover -s tests -v
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity validate --experiment experiments/coder-beneficial-sensitivity-m2.json
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity commission --experiment experiments/coder-beneficial-sensitivity-m2.json --starting-commit <clean-start> --diagnostic-root <external-root> --authorization-receipt <commission-auth.json>
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity qualify --experiment experiments/coder-beneficial-sensitivity-m2.json --verified-commit <commissioned-commit> --commissioning-pass <PASS.json> --output <external-empty-dir>
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity initialize --experiment experiments/coder-beneficial-sensitivity-m2.json --instance <instance-id> --verified-commit <commissioned-commit> --qualification-receipt <qualification-receipt.json>
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity run-stage --experiment experiments/coder-beneficial-sensitivity-m2.json --instance <instance-id> --stage <calibration|controls|helpful> --authorization-receipt <campaign-auth.json>
+PYTHONPATH=src python3 -m mdseval.beneficial_sensitivity replay --experiment experiments/coder-beneficial-sensitivity-m2.json --instance <instance-id>
+```
+Commissioning uses a synthetic empty instruction file outside authoritative roots. Qualification runs 300 deterministic checker cases once; initialization runs zero checkers and creates fresh concealed mappings. Mechanical gates stop or advance the campaign without further chat approval. Base/absolute authoritative ceilings are 296/313 calls.
+
+## Historical pre-v0.4 M2 commands (do not use)
 
 Run the complete offline gate in this order. Provisional output belongs in a
 temporary directory outside the repository:
