@@ -1,8 +1,8 @@
 # CODER beneficial-sensitivity Milestone 2 implementation plan
 
-Status: prospective proposed v0.4 amendment; no implementation or live call is
-authorized by this document, and prior evidence is not reinterpreted or rescued
-Scientific authority: proposed `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` v0.4
+Status: v0.4 closed `INVALID`; Section 12 is a prospective v0.4.1 remediation
+amendment and authorizes neither implementation nor live calls
+Scientific authority: `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` v0.4 unchanged
 Roadmap stage: Milestone 2 only — demonstrate beneficial measurement sensitivity
 
 ## 1. Authority, outcome, and scope
@@ -528,3 +528,149 @@ paths/caps satisfied; historical V2 and excluded diagnostic roots unchanged; and
 deterministic proof of 296/313 ceilings. Milestone 2 is administratively complete
 on one allowed verdict plus offline replay and scientifically passes only on
 `SENSITIVITY_DEMONSTRATED`.
+
+## 12. Prospective v0.4.1 capture-integrity remediation
+
+This section supersedes the active engineering and lifecycle wording above only
+where it conflicts. It does not change the scientific construct, tasks,
+treatments, schedules, outcomes, statistics, gates, or claim boundary.
+
+### 12.1 Frozen failure and diagnosis gate
+
+The authoritative instance
+`coder-beneficial-sensitivity-m2-v04-4ae8619` is permanently `INVALID`. Its 120
+calibration calls and all live evidence remain immutable, excluded from every
+future estimate, selection, power calculation, and qualification. Its existing
+replay root is equally immutable; v0.4.1 may not complete or reinterpret it.
+
+Four durably published rows had `mechanical_integrity=false` with
+`infrastructure_invalid=false`: launch indices 20, 43, 79, and 102, all
+`refactor-data-01`, rounds 1, 3, 4, and 6. In each corresponding
+`attempts/calibration/calibration_base_r{1,3,4,6}_refactor-data-01_K0/runner/events.jsonl`,
+line 8 ends immediately after `[REDACTED]` and is invalid JSON. No additional
+historical payload inspection is needed or permitted for this remediation.
+
+The historical runner did not preserve pre-redaction stdout, so the INVALID
+evidence alone cannot prove whether the process emitted a truncated line. Before
+implementation, reproduce the exact structural signature offline with a
+synthetic, valid JSON event whose string contains escaped `key="id"`. Record
+whether it parses before and after current `Redactor.text`:
+
+- valid before and invalid after, ending after `[REDACTED]`, demonstrates a
+  deterministic redactor defect capable of this signature and permits only the
+  prospective fix below; it does not establish historical causality;
+- no matching reproduction stops for a new user decision.
+
+Raw-process truncation versus redactor corruption remains unresolved for all
+four old rows. They remain irreducibly INVALID and are never laundered.
+
+### 12.2 Exact implementation envelope
+
+The engineering baseline is the future clean commit containing this accepted
+plan amendment and no engineering edits; record its exact hash before work. No
+new files are allowed. Modify at most these seven paths:
+
+- `src/mdseval/capture.py`
+- `src/mdseval/runner/codex_cli.py`
+- `src/mdseval/beneficial_sensitivity.py`
+- `tests/test_capture.py`
+- `tests/test_runner.py`
+- `tests/test_beneficial_sensitivity.py`
+- `experiments/coder-beneficial-sensitivity-m2.json`
+
+Target at most 180 and hard-cap 240 additions plus deletions from that commit.
+The existing 1,000-line evaluator and 650-line M2-test ceilings remain. These are
+ceilings, not entitlements. No authoritative task, fixture, checker, treatment,
+wrapper, prompt, protocol statistic, seed, schedule, cap, mapping, dependency,
+module, framework, dashboard, optimizer, model, historical evidence, or unrelated
+path may change.
+
+Config changes are binding-only. In
+`experiments/coder-beneficial-sensitivity-m2.json`, replace
+`protocol.implementation_plan_sha256` with the accepted Section 12 plan-file SHA
+and update the evaluator's expected binding; keep the scientific protocol SHA
+and version unchanged. Hash-bind `src/mdseval/capture.py`,
+`src/mdseval/runner/codex_cli.py`, `src/mdseval/beneficial_sensitivity.py`,
+`tests/test_capture.py`, `tests/test_runner.py`, and
+`tests/test_beneficial_sensitivity.py`. The manifest and clean commit bind the
+config itself. At every stage entry, before runner construction, require current
+config SHA to equal `manifest.config_sha256` and all six files to match both the
+config and `manifest.governed_hashes`. Add no receipt or provenance framework.
+
+If the matching reproducer confirms the prospective defect, add one event-stream
+sanitizer to existing capture code. For each raw stdout line, parse JSON first,
+apply `Redactor.object` to the parsed value, and serialize it back to JSON. A
+valid raw line must remain valid after redaction. A raw malformed line must stay
+malformed at the same line position after safe text redaction; it must never be
+converted into a usable event. Persist no unredacted stdout. `CodexCLI.run` uses
+this helper instead of applying `Redactor.text` to the complete JSONL stream.
+
+Use a distinct `fatal_evidence_defect` predicate, never
+`mechanical_integrity=false`, for fail-fast behavior. It is true only for a
+malformed event stream, structurally incomplete/noncanonical row, incomplete
+capture/publication, explicit identity contradiction, or another evidence defect
+predeclared in frozen config. Ordinary structurally valid task, checker,
+mechanical, and agent-caused failures remain `Y=0` and never stop or censor the
+schedule. The four legacy malformed streams are fatal evidence defects.
+
+At `run-stage` entry/resume and after each exclusively created row, validate every
+durable row in order before dispatch. This fatal scan precedes ordinary
+block-boundary resume validation. On any `fatal_evidence_defect`, launch no new
+call or fallback; publish the partial INVALID lock, unblinding/stage receipts,
+terminal evidence/report with the fatal reason, then support byte-identical
+JSON/Markdown replay. Infrastructure-invalid replacement semantics are unchanged.
+Operator monitoring reports completed, infrastructure-invalid, and fatal-evidence
+counts; it never treats ordinary `mechanical_integrity=false` as fatal.
+
+For v0.4.1, the Section 9 commissioning envelope is superseded: use a fresh,
+empty external diagnostic root; set `engineering_paths` to exactly the seven
+Section 12 paths, `churn_cap=240`, `max_probes=1`, and `max_repairs=0`. Never
+reuse a v0.4 diagnostic root. Validate this envelope and root before constructing
+the runner; any mismatch or second invocation is a zero-call rejection.
+
+### 12.3 Gates, validation, and stopping
+
+Proceed in this order:
+
+1. Hash and inventory the v0.4 terminal evidence and existing replay root; never
+   write beneath that instance.
+2. Pass the offline cause-reproduction gate in Section 12.1.
+3. Implement only Section 12.2 within the seven-path and 240-churn caps.
+4. Run focused tests proving valid structured redaction and malformed-line
+   detection; ordinary mechanical failures stay `Y=0`; and table-driven config/
+   six-file mutations reject before runner construction with zero dispatch. A
+   crash/resume with a durable fatal row in an incomplete controls or helpful unit must
+   terminalize before boundary validation, launch zero calls, and replay JSON/MD
+   byte-identically. Infrastructure fallback remains unchanged. Table-driven
+   commissioning tests reject `max_probes != 1`, `max_repairs != 0`, a nonempty
+   diagnostic root, and a second invocation before runner construction.
+5. Run `python -m unittest discover -s tests -v`, the existing M2 offline
+   validation/simulation commands, `git diff --check`, and path/churn checks.
+6. Complete one consolidated read-only review and only in-scope corrections;
+   focused validation precedes one full-suite rerun after each correction.
+7. Create one exact clean v0.4.1 engineering commit only after all offline gates
+   pass; its config and manifest bindings freeze the capture and runner bytes.
+8. Run exactly one predeclared non-authoritative commissioning call on that
+   commit. Only its synthetic contract may request one harmless read-only command
+   containing literal `key="id"`; every authoritative task, treatment, wrapper,
+   and prompt stays byte-frozen. PASS requires the persisted redacted event to
+   contain `[REDACTED]`, parse cleanly, retain its surrounding event fields, and
+   satisfy the existing exact final-byte, identity, and tree gates.
+9. Only that PASS freezes the new commit. Then run a new 300-case qualification
+   once, initialize a new instance ID, and obtain one new campaign authorization
+   before starting calibration from call 1. Reuse none of the v0.4 outcomes,
+   mappings, receipts, nonce material, or instance paths.
+
+Stop without another live call on diagnosis ambiguity, any offline or review
+blocker, cap/allowlist breach, the commissioned call's failure, or altered frozen
+inputs. A second live validation, design beyond the reproducer-bounded fix, any
+protocol/scientific change, added dependency/module, expanded
+paths/churn, historical replay or evidence mutation, or a new authoritative
+campaign requires a new user decision. Ordinary in-scope offline corrections do
+not. The same root cause after two targeted corrections stops under `AGENTS.md`.
+
+Acceptance evidence is the cause reproduction; exact seven-path diff and churn;
+focused and full command results; unchanged v0.4 live and replay hashes;
+review disposition; clean commit hash; and one external commissioning PASS hash.
+Qualification, fresh initialization, and campaign receipts remain separate later
+gates and cannot rescue a failed predecessor.
