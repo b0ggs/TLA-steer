@@ -32,7 +32,8 @@ TASKS = tuple(f"{kind}-{i:02d}" for kind in ("bug", "feature", "integration", "r
 STRATA = ("bug", "feature", "integration", "refactor-data")
 STAGES = ("calibration", "controls", "helpful")
 EXPECTED_FINAL = b"IMPLEMENTED\nSMOKE_READY"
-ENGINEERING_PATHS = ("src/mdseval/beneficial_sensitivity.py","tests/test_beneficial_sensitivity.py","experiments/coder-beneficial-sensitivity-m2.json","README.md","experiments/coder-beneficial-sensitivity-m2-exclusions.json")
+ENGINEERING_PATHS = ("src/mdseval/capture.py","src/mdseval/runner/codex_cli.py","src/mdseval/beneficial_sensitivity.py","tests/test_capture.py","tests/test_runner.py","tests/test_beneficial_sensitivity.py","experiments/coder-beneficial-sensitivity-m2.json")
+GOVERNED_KEYS = ("capture","runner","evaluator","test_capture","test_runner","tests")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
@@ -92,10 +93,10 @@ def load_design(path: Path | str = DEFAULT_EXPERIMENT) -> dict[str, Any]:
         "subagents_enabled", "ephemeral", "network_for_agent_commands", "timeout_seconds", "max_parallel_runs",
         "qualitative_judge_calls", "authentication_mode"}, "runtime")
     if runtime != {"adapter":"CodexCLI.run","model":"gpt-5.6-sol","reasoning_effort":"high","sandbox":"workspace-write","approval_policy":"never","subagents_enabled":False,"ephemeral":True,"network_for_agent_commands":False,"timeout_seconds":300,"max_parallel_runs":1,"qualitative_judge_calls":0,"authentication_mode":"chatgpt_oauth"}: raise ValueError("frozen Sol/high runtime mismatch")
-    expected_protocol = {"version":"0.4","protocol_sha256":"dc510763466ea7524069e2b947a17a856197cf092904f30313a265552ab82d06","implementation_plan_sha256":"5b1ef831fcedaa7a2104c77c2421ab1eceb2e7228d038475c8294bc4378db83a","measurement_base_commit":"bfda5f78e418784f6390cc4aead927bbd7b896ff"}
+    expected_protocol = {"version":"0.4","protocol_sha256":"dc510763466ea7524069e2b947a17a856197cf092904f30313a265552ab82d06","implementation_plan_sha256":"ff43ff09547222080514686f54e2d51b32faafe0128d56924cadab5256d634ae","measurement_base_commit":"bfda5f78e418784f6390cc4aead927bbd7b896ff"}
     if design["protocol"] != expected_protocol: raise ValueError("authority binding mismatch")
     root, artifacts = _root(path), design["artifacts"]
-    required = {"access","helpful","helpful_authorship","harmful","null","master","task_authorship","task_reliability_authorship","oracle","wrapper","evaluator","tests","exclusions"}
+    required = {"access","helpful","helpful_authorship","harmful","null","master","task_authorship","task_reliability_authorship","oracle","wrapper","capture","runner","evaluator","test_capture","test_runner","tests","exclusions"}
     _strict_keys(artifacts, required, "artifacts")
     paths = {k: _bound_file(root, v, k) for k, v in artifacts.items()}
     if paths["null"].read_bytes() or artifacts["null"]["sha256"] != hashlib.sha256(b"").hexdigest(): raise ValueError("null treatment must be exactly zero bytes")
@@ -587,9 +588,13 @@ def _runtime_identity(design: dict[str,Any], design_path: Path, subject: Path=Pa
     return {"requested":{"model":"gpt-5.6-sol","reasoning_effort":"high"},"cli":{"path":str(executable),"sha256":sha256_file(executable),"version":version},"command":command,"strict_config":[command[i+1] for i,x in enumerate(command[:-1]) if x=="--config"],"isolated_profile":{"configured":True,"exists":home.is_dir(),"auth_present":(home/"auth.json").is_file(),"instruction_free":not any((home/x).exists() for x in ("AGENTS.md","AGENTS.override.md"))},"hashes":{"config":sha256_file(design_path),"evaluator":sha256_file(Path(__file__)),"tests":design["artifacts"]["tests"]["sha256"],"wrapper":design["artifacts"]["wrapper"]["sha256"]}}
 
 def commission(*, design_path: Path | str, starting_commit: str, diagnostic_root: Path, authorization_receipt: Path, runner_factory: Any=None, runtime_probe: Any=None) -> dict[str,Any]:
-    design_path=Path(design_path).resolve(); design=load_design(design_path); root=_root(design_path); diagnostic_root=Path(diagnostic_root).resolve(); runtime=(runtime_probe or _runtime_identity)(design,design_path); auth=_json(Path(authorization_receipt))
+    design_path=Path(design_path).resolve(); design=load_design(design_path); root=_root(design_path); diagnostic_root=Path(diagnostic_root).resolve(); auth=_json(Path(authorization_receipt))
     if not COMMIT.fullmatch(starting_commit) or diagnostic_root==root or root in diagnostic_root.parents: raise RuntimeError("commissioning boundary invalid")
-    expected={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-authorization-v1","experiment":design["experiment"],"authorized":True,"starting_commit":starting_commit,"engineering_paths":list(ENGINEERING_PATHS),"churn_cap":350,"max_probes":3,"max_repairs":2,"diagnostic_root":str(diagnostic_root),"runtime_identity_sha256":digest(runtime)}
+    static={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-authorization-v1","experiment":design["experiment"],"authorized":True,"starting_commit":starting_commit,"engineering_paths":list(ENGINEERING_PATHS),"churn_cap":240,"max_probes":1,"max_repairs":0,"diagnostic_root":str(diagnostic_root)}
+    if any(auth.get(key)!=value for key,value in static.items()) or set(auth)!=set(static)|{"runtime_identity_sha256"}: raise RuntimeError("commissioning authorization invalid")
+    if diagnostic_root.exists() and any(diagnostic_root.iterdir()): raise RuntimeError("commissioning diagnostic root must be fresh and empty")
+    runtime=(runtime_probe or _runtime_identity)(design,design_path)
+    expected={**static,"runtime_identity_sha256":digest(runtime)}
     if auth!=expected: raise RuntimeError("commissioning authorization invalid")
     def git(*args: str) -> str:
         run=subprocess.run(["git","-C",str(root),*args],capture_output=True,text=True,check=True)
@@ -599,21 +604,19 @@ def commission(*, design_path: Path | str, starting_commit: str, diagnostic_root
     if not changed or not set(changed)<=set(ENGINEERING_PATHS): raise RuntimeError("commissioning path scope invalid")
     try: churn=sum(int(x[0])+int(x[1]) for x in (line.split("\t") for line in numstat))
     except (ValueError,IndexError) as exc: raise RuntimeError("binary commissioning change") from exc
-    if churn>350: raise RuntimeError("commissioning churn exceeded")
-    prior=sorted(diagnostic_root.glob("*/probe-*/result.json")); previous=_json(prior[-1]) if prior else None
-    if len(prior)>=3 or previous and (previous.get("status")=="PASS" or previous.get("verified_commit")==current or not git("diff","--name-only",previous["verified_commit"],current,"--",*ENGINEERING_PATHS)): raise RuntimeError("commissioning already terminal or unchanged")
-    probe=diagnostic_root/current/f"probe-{len(prior)+1}"; temporary=Path(tempfile.mkdtemp(prefix="mdseval-commission-")); prepared=None
+    if churn>240: raise RuntimeError("commissioning churn exceeded")
+    probe=diagnostic_root/current/"probe-1"; temporary=Path(tempfile.mkdtemp(prefix="mdseval-commission-")); prepared=None
     try:
-        source=temporary/"source"; (source/"fixture").mkdir(parents=True); (source/"contract.md").write_text("Make no file changes. Reply with exactly two lines: IMPLEMENTED then SMOKE_READY.\n"); candidate=temporary/"CODER.md"; candidate.write_bytes(b""); from .config import CaseConfig, VerificationEvidence; from .fixtures import audit_final_subject_tree, prepare_fixture; from .capture import Redactor, capture_git, parse_event_stream
+        source=temporary/"source"; (source/"fixture").mkdir(parents=True); (source/"contract.md").write_text("Run exactly this harmless read-only command: printf 'key=\"id\"\\n'. Make no file changes. Reply with exactly two lines: IMPLEMENTED then SMOKE_READY.\n"); candidate=temporary/"CODER.md"; candidate.write_bytes(b""); from .config import CaseConfig, VerificationEvidence; from .fixtures import audit_final_subject_tree, prepare_fixture; from .capture import Redactor, capture_git, parse_event_stream
         case=CaseConfig(1,"commission","m2-development","IMPLEMENTED",(),(),(),VerificationEvidence(False,False,()),(),(),300,source,digest("commission"),tree_sha256(source/"fixture")); prepared=prepare_fixture(case,candidate,hashlib.sha256(b"").hexdigest())
         runner=(runner_factory or __import__("mdseval.runner.codex_cli",fromlist=["CodexCLI"]).CodexCLI)(runner_config(design)); before=tree_sha256(prepared.repo); exact_runtime=(runtime_probe or _runtime_identity)(design,design_path,prepared.repo,probe/"final.txt")
         probe.mkdir(parents=True,exist_ok=False); run=runner.run(prepared,probe,300,Redactor()); audit_final_subject_tree(prepared.repo); events=parse_event_stream(probe/"events.jsonl"); final=(probe/"final.txt").read_bytes(); capture=capture_git(prepared.repo,prepared.baseline_commit,Redactor()); identity=_service_identity(events.events)
-        raw={name:sha256_file(probe/name) for name in ("events.jsonl","stderr.txt","final.txt")}; unchanged=not capture.status and not capture.diff and not capture.untracked and before==tree_sha256(prepared.repo)
-        ok=events.valid and identity["status"]!="reported_mismatch" and final==EXPECTED_FINAL and unchanged and not run.timed_out and not run.interrupted and run.exit_code==0
-        result={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-result-v1","status":"PASS" if ok else "FAIL","non_authoritative":True,"verified_commit":current,"starting_commit":starting_commit,"probe":len(prior)+1,"repair_cycles":len(prior),"prior_failure_sha256":sha256_file(prior[-1]) if prior else None,"churn":churn,"changed_paths":changed,"runtime":exact_runtime,"identity":identity,"raw_sha256":raw,"expected_final_hex":EXPECTED_FINAL.hex(),"actual_final_hex":final.hex(),"tree_unchanged":unchanged,"runner":asdict(run)}
+        raw={name:sha256_file(probe/name) for name in ("events.jsonl","stderr.txt","final.txt")}; unchanged=not capture.status and not capture.diff and not capture.untracked and before==tree_sha256(prepared.repo); redaction_ok=any("key=[REDACTED]" in item["command"] and item["output"].strip()=="key=[REDACTED]" for item in events.commands)
+        ok=events.valid and redaction_ok and identity["status"]!="reported_mismatch" and final==EXPECTED_FINAL and unchanged and not run.timed_out and not run.interrupted and run.exit_code==0
+        result={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-result-v1","status":"PASS" if ok else "FAIL","non_authoritative":True,"verified_commit":current,"starting_commit":starting_commit,"probe":1,"repair_cycles":0,"prior_failure_sha256":None,"churn":churn,"changed_paths":changed,"runtime":exact_runtime,"identity":identity,"redaction_ok":redaction_ok,"raw_sha256":raw,"expected_final_hex":EXPECTED_FINAL.hex(),"actual_final_hex":final.hex(),"tree_unchanged":unchanged,"runner":asdict(run)}
     except Exception as exc:
         if not probe.exists(): raise
-        result={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-result-v1","status":"FAIL","non_authoritative":True,"verified_commit":current,"probe":len(prior)+1,"error":f"{type(exc).__name__}: {exc}"}
+        result={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-result-v1","status":"FAIL","non_authoritative":True,"verified_commit":current,"probe":1,"error":f"{type(exc).__name__}: {exc}"}
     finally:
         prepared.cleanup() if prepared is not None else None; shutil.rmtree(temporary,ignore_errors=True)
     create_once(probe/"result.json",result)
@@ -644,6 +647,14 @@ def initialize(*, design_path: Path | str, instance: str, verified_commit: str, 
     create_once(live/"initial-manifest.json",manifest); return manifest
 
 
+def _validate_governed(design: dict[str,Any], design_path: Path, manifest: dict[str,Any]) -> None:
+    if sha256_file(design_path)!=manifest.get("config_sha256"): raise RuntimeError("governed config drift")
+    hashes=manifest.get("governed_hashes",{}); root=_root(design_path)
+    for key in GOVERNED_KEYS:
+        binding=design["artifacts"][key]; current=sha256_file(root/binding["path"])
+        if current!=binding["sha256"] or hashes.get(binding["path"])!=current: raise RuntimeError("governed implementation drift")
+
+
 def classify_attempt(result: Any, events: Any, error: str | None, invalidity_table: Sequence[str]) -> str:
     if error in invalidity_table and not getattr(events,"events",()): return "INFRASTRUCTURE_INVALID"
     return "Y0" if error or getattr(result,"timed_out",False) or getattr(result,"interrupted",False) or getattr(result,"exit_code",1)!=0 else "CHECK"
@@ -664,49 +675,58 @@ def _task_case(root: Path, record: dict[str,Any], task: dict[str,Any]) -> Any:
         ((str(Path(sys.executable).resolve()),str(directory/"check.py"),"{repo}"),),VerificationEvidence(True,True,()),(),(),300,directory,
         record["task_json_sha256"],record["fixture_sha256"])
 
+def _fatal_row(slot: dict[str,Any], index: int, error: object) -> dict[str,Any]: return {**slot,"launch_index":index,"requested_model":"gpt-5.6-sol","requested_reasoning_effort":"high","identity_status":"not_reported","identity_observations":[],"judge_calls":0,"objective_resolved":False,"checker_valid":False,"mechanical_integrity":False,"fatal_evidence_defect":True,"requirements_passed":0,"requirements_total":0,"status":"ACTIVE","infrastructure_invalid":False,"error":f"fatal evidence defect: {type(error).__name__}"}
+
 
 def _live_attempt(design: dict[str,Any], design_path: Path, live: Path, slot: dict[str,Any], semantic: str,
                   runner: Any, launch_index: int) -> dict[str,Any]:
     from .capture import Redactor, capture_git, parse_event_stream
-    from .fixtures import audit_final_subject_tree, prepare_fixture
+    from .fixtures import ConfigError, audit_final_subject_tree, prepare_fixture
     root=_root(design_path); master=json.loads((root/design["artifacts"]["master"]["path"]).read_text()); record=next((x for x in master["tasks"] if x["id"]==slot["task_id"]),None)
     attempt=live/"attempts"/slot["stage"]/slot["slot_id"].replace(":","_"); attempt.mkdir(parents=True,exist_ok=False)
-    redactor=Redactor(); prepared=run=None
+    redactor=Redactor(); prepared=run=subject_error=None
     try:
         task=json.loads((root/record["path"]/"task.json").read_text()); case=_task_case(root,record,task)
         treatment=root/design["artifacts"][{"N":"null","N1":"null","N2":"null","H":"harmful","P":"helpful"}[semantic]]["path"]
         prepared=prepare_fixture(case,treatment,sha256_file(treatment)); before=tree_sha256(prepared.repo)
-        run=runner.run(prepared,attempt/"runner",300,redactor); audit_final_subject_tree(prepared.repo)
+        run=runner.run(prepared,attempt/"runner",300,redactor)
+        try: audit_final_subject_tree(prepared.repo)
+        except ConfigError as exc: subject_error=exc
         events=parse_event_stream(attempt/"runner"/"events.jsonl"); final=(attempt/"runner"/"final.txt").read_bytes()
-        capture=capture_git(prepared.repo,prepared.baseline_commit,redactor); checked=_checker(root/record["path"]/"check.py",slot["task_id"],prepared.repo); identity=_service_identity(events.events)
-        complete=not any(x.get("truncated") for x in capture.untracked); valid=events.valid and complete and identity["status"]!="reported_mismatch"
+        capture=capture_git(prepared.repo,prepared.baseline_commit,redactor); checked={"valid":False,"resolved":False,"mechanical":False,"payload":{},"infrastructure_invalid":False} if subject_error else _checker(root/record["path"]/"check.py",slot["task_id"],prepared.repo); identity=_service_identity(events.events)
+        complete=not any(x.get("truncated") for x in capture.untracked); fatal=not events.valid or not complete or identity["status"]=="reported_mismatch"
         req=checked.get("payload",{}).get("requirements",{})
         row={**slot,"launch_index":launch_index,"requested_model":"gpt-5.6-sol","requested_reasoning_effort":"high","identity_status":identity["status"],"identity_observations":identity["observations"],
-            "judge_calls":0,"objective_resolved":bool(valid and checked.get("valid") and checked.get("mechanical") and checked.get("resolved") and not checked.get("infrastructure_invalid") and not run.timed_out and not run.interrupted and run.exit_code==0),
-            "checker_valid":checked.get("valid") is True,"mechanical_integrity":valid and checked.get("mechanical") is True and not checked.get("infrastructure_invalid"),
+            "judge_calls":0,"objective_resolved":bool(subject_error is None and not fatal and checked.get("valid") and checked.get("mechanical") and checked.get("resolved") and not checked.get("infrastructure_invalid") and not run.timed_out and not run.interrupted and run.exit_code==0),
+            "checker_valid":checked.get("valid") is True,"mechanical_integrity":subject_error is None and checked.get("mechanical") is True and not checked.get("infrastructure_invalid"),"fatal_evidence_defect":fatal,
             "requirements_passed":sum(x.get("passed") is True for x in req.values()),"requirements_total":len(req),"runner":asdict(run),
             "events":asdict(events),"capture":asdict(capture),"final_message_hex":final.hex(),"final_bytes_sha256":hashlib.sha256(final).hexdigest(),
             "tree_unchanged":not capture.status and not capture.diff and not capture.untracked,"capture_complete":complete,"baseline_tree_sha256":before,
-            "final_tree_sha256":tree_sha256(prepared.repo),"status":"ACTIVE","infrastructure_invalid":checked.get("infrastructure_invalid") is True}
+            "final_tree_sha256":None if subject_error else tree_sha256(prepared.repo),"status":"ACTIVE","infrastructure_invalid":checked.get("infrastructure_invalid") is True,"subject_tree_error":type(subject_error).__name__ if subject_error else None}
     except Exception as exc:
         error=str(exc); error_code={"LIVE_RUNNER_UNAVAILABLE: MDSEVAL_CODEX_HOME is not set":"AUTHENTICATION_PRE_USABLE"}.get(error,error); invalid=run is None and error_code in set(design["evidence"]["invalidity_table"])
         row={**slot,"launch_index":launch_index,"requested_model":"gpt-5.6-sol","requested_reasoning_effort":"high","identity_status":"not_reported","identity_observations":[],
-            "judge_calls":0,"objective_resolved":False,"checker_valid":False,"mechanical_integrity":False,
+            "judge_calls":0,"objective_resolved":False,"checker_valid":False,"mechanical_integrity":False,"fatal_evidence_defect":not invalid,
             "requirements_passed":0,"requirements_total":0,"status":"ACTIVE","infrastructure_invalid":invalid,"error":error,"error_code":error_code}
     finally:
         if prepared is not None: prepared.cleanup()
-    create_once(attempt/"attempt.json",row); return row
+    try: create_once(attempt/"attempt.json",row)
+    except Exception as exc: return _fatal_row(slot,launch_index,exc)
+    return row
 def _attempt_path(live: Path, slot: dict[str,Any]) -> Path:
     return live/"attempts"/slot["stage"]/slot["slot_id"].replace(":","_")/"attempt.json"
 
 
 def _validate_row(row: Any, slot: dict[str,Any], index: int) -> dict[str,Any]:
     if not isinstance(row,dict) or any(row.get(k)!=v for k,v in slot.items()) or row.get("launch_index")!=index:
-        raise RuntimeError("attempt row does not bind scheduled slot")
+        return _fatal_row(slot,index,RuntimeError("attempt row does not bind scheduled slot"))
     required={"requested_model":"gpt-5.6-sol","requested_reasoning_effort":"high","judge_calls":0,"status":"ACTIVE"}
-    if any(row.get(k)!=v for k,v in required.items()) or row.get("identity_status") not in {"not_reported","reported_match","reported_mismatch"} or type(row.get("objective_resolved")) is not bool or type(row.get("infrastructure_invalid")) is not bool or type(row.get("mechanical_integrity")) is not bool:
-        raise RuntimeError("attempt evidence incomplete")
+    if any(row.get(k)!=v for k,v in required.items()) or row.get("identity_status") not in {"not_reported","reported_match","reported_mismatch"} or any(type(row.get(key)) is not bool for key in ("objective_resolved","checker_valid","infrastructure_invalid","mechanical_integrity","fatal_evidence_defect")) or row.get("identity_status")=="reported_mismatch" or (not row.get("infrastructure_invalid") and (type(row.get("capture_complete")) is not bool or not isinstance(row.get("events"),dict) or type(row["events"].get("valid")) is not bool)) or row.get("capture_complete") is False or isinstance(row.get("events"),dict) and row["events"].get("valid") is False:
+        return _fatal_row(slot,index,RuntimeError("attempt evidence incomplete"))
     return row
+def _load_attempt(path: Path, slot: dict[str,Any], index: int) -> dict[str,Any]:
+    try: return _validate_row(_json(path),slot,index)
+    except Exception as exc: return _fatal_row(slot,index,exc)
 def _unblind(live: Path, stage: str, locked_name: str) -> dict[str,Any]:
     mapping=_json(live/".internal-mappings"/f"{stage}.json")
     return _receipt(live,f"{stage}-unblinding-receipt.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-stage-unblinding-v1",
@@ -734,7 +754,7 @@ def _derive_report(design: dict[str,Any], live: Path, verdict: str, reason: str,
         if path.is_file(): mappings[stage]=_json(path)["mapping"]
     evidence["unblinded_mapping"]=mappings
     report={"schema":"mdseval.coder-beneficial-sensitivity-m2-report-v1","experiment":design["experiment"],"verdict":verdict,
-            "terminal_reason":reason,"claim_boundary":CLAIM,"exclusions_sha256":design["artifacts"]["exclusions"]["sha256"],"calls":{"launched":len(rows),"superseded":sum(x["status"]=="SUPERSEDED" for x in rows),"judge":0},
+            "terminal_reason":reason,"claim_boundary":CLAIM,"exclusions_sha256":design["artifacts"]["exclusions"]["sha256"],"calls":{"launched":len(rows),"completed":sum(not x["infrastructure_invalid"] for x in rows),"infrastructure_invalid":sum(x["infrastructure_invalid"] for x in rows),"superseded":sum(x["status"]=="SUPERSEDED" for x in rows),"fatal_evidence":sum(x["fatal_evidence_defect"] for x in rows),"judge":0},
             "deviations":[],"secondary":{"requirements_passed":sum(x.get("requirements_passed",0) for x in rows if x["status"]=="ACTIVE"),
             "requirements_total":sum(x.get("requirements_total",0) for x in rows if x["status"]=="ACTIVE")}}
     if "selection" in evidence: report["selection"]=evidence["selection"]
@@ -784,6 +804,12 @@ def _default_live_preflight() -> None:
     if home is None or not home.is_dir() or auth.is_symlink() or not auth.is_file(): raise RuntimeError("AUTHENTICATION_PRE_USABLE")
     if any((home/name).exists() or (home/name).is_symlink() for name in ("AGENTS.md","AGENTS.override.md")): raise RuntimeError("EVALUATOR_PRE_USABLE")
     if any(shutil.which(name) is None for name in ("codex","git")): raise RuntimeError("MACHINE_PRE_USABLE")
+def _close_stage(design: dict[str,Any], live: Path, stage: str, slots: Sequence[dict[str,Any]], rows: list[dict[str,Any]], prereq: Sequence[str], status: str, reason: str, bootstrap_iterations: int) -> dict[str,Any]:
+    create_once(live/f"{stage}-attempts.json",rows)
+    _receipt(live,f"{stage}-outcome-lock.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-outcome-lock-v1","stage":stage,"status":status,"attempts_sha256":sha256_file(live/f"{stage}-attempts.json"),"schedule_sha256":digest(slots),"launched_calls":len(rows)},["campaign-authorization.json",*prereq])
+    _unblind(live,stage,f"{stage}-outcome-lock.json")
+    receipt=_receipt(live,f"{stage}-receipt.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-stage-result-v1","stage":stage,"status":status,"base_calls":len(slots),"launched_calls":len(rows),"fallback_cap":design["calls"]["fallback_by_stage"][stage],"schedule_sha256":digest(slots),"outcome_lock_sha256":sha256_file(live/f"{stage}-outcome-lock.json"),"unblinding_sha256":sha256_file(live/f"{stage}-unblinding-receipt.json")},[f"{stage}-outcome-lock.json",f"{stage}-unblinding-receipt.json"])
+    return _terminalize(design,live,"INVALID",reason,bootstrap_iterations) if status=="INVALID" else receipt
 def run_stage(*, design_path: Path | str, instance: str, stage: str, authorization_receipt: Path, runs_root: Path | str=Path("runs"),
               runner_factory: Any=None, attempt_executor: Any=None,
               power_iterations: int | None=None, bootstrap_iterations: int=100000) -> dict[str,Any]:
@@ -793,7 +819,7 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
     live=Path(runs_root)/instance/"live"
     if not live.is_dir() or (Path(runs_root)/instance/"replay").exists() or (live/"locked-evidence-manifest.json").exists():
         raise RuntimeError("active initialized live root required")
-    manifest=_json(live/"initial-manifest.json"); _validate_initial_bindings(live,manifest); auth=_json(Path(authorization_receipt)); manifest_hash=sha256_file(live/"initial-manifest.json")
+    manifest=_json(live/"initial-manifest.json"); _validate_initial_bindings(live,manifest); _validate_governed(design,design_path.resolve(),manifest); auth=_json(Path(authorization_receipt)); manifest_hash=sha256_file(live/"initial-manifest.json")
     expected={"schema":"mdseval.coder-beneficial-sensitivity-m2-campaign-authorization-v1","experiment":design["experiment"],"instance":instance,"verified_commit":manifest["verified_commit"],"authorized":True,
               "manifest_sha256":manifest_hash,"config_sha256":manifest["config_sha256"],"runtime_identity_sha256":manifest["runtime_identity_sha256"],"mapping_hashes":manifest["mapping_hashes"],"ordered_stages":list(STAGES),
               "mechanical_gates":["selection","power","controls"],"fallback_by_stage":design["calls"]["fallback_by_stage"],"absolute_cap":313}
@@ -803,7 +829,6 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
             "helpful":["controls-gates-receipt.json","helpful-filtered-schedule-receipt.json"]}[stage]
     if any(not (live/x).is_file() for x in prereq) or (live/f"{stage}-receipt.json").exists() or any((live/f"{s}-receipt.json").exists() for s in STAGES[STAGES.index(stage)+1:]):
         raise RuntimeError("stage prerequisites or order invalid")
-    if attempt_executor is None and runner_factory is None: _default_live_preflight()
     mapping_path=live/".internal-mappings"/f"{stage}.json"
     if sha256_file(mapping_path)!=manifest["mapping_hashes"][stage]: raise RuntimeError("mapping hash drift")
     mapping=_json(mapping_path)["mapping"]; schedules=manifest["schedules"]
@@ -811,27 +836,30 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
     if stage=="calibration": slots=schedules[stage]["base"]
     else: slots=_json(live/f"{stage}-filtered-schedule-receipt.json")["slots"]
     if len(slots)!={"calibration":120,"controls":48,"helpful":128}[stage]: raise RuntimeError("base call count drift")
+    _same_receipt(live/"campaign-authorization.json",auth)
+    prior=len(_rows(live)); existing=[]
+    for slot in slots:
+        path=_attempt_path(live,slot)
+        if path.parent.exists(): existing.append(_load_attempt(path,slot,prior+len(existing)+1))
+        else: break
+        if existing[-1]["fatal_evidence_defect"]: return _close_stage(design,live,stage,slots,existing,prereq,"INVALID",f"{stage} fatal evidence defect",bootstrap_iterations)
+    if any(_attempt_path(live,x).parent.exists() for x in slots[len(existing)+1:]) or not validate_resume(stage,slots,len(existing)):
+        raise RuntimeError("missing, reordered, or invalid resume boundary")
+    if attempt_executor is None and runner_factory is None: _default_live_preflight()
     runner=None
     if attempt_executor is None:
         if runner_factory is None:
             from .runner.codex_cli import CodexCLI
             runner_factory=CodexCLI
         runner=runner_factory(runner_config(design))
-    _same_receipt(live/"campaign-authorization.json",auth)
-    existing=[]
-    for slot in slots:
-        path=_attempt_path(live,slot)
-        if path.exists(): existing.append(_validate_row(_json(path),slot,len(_rows(live))+len(existing)+1))
-        else: break
-    if any(_attempt_path(live,x).exists() for x in slots[len(existing)+1:]) or not validate_resume(stage,slots,len(existing)):
-        raise RuntimeError("missing, reordered, or invalid resume boundary")
-    prior=len(_rows(live)); rows=list(existing)
+    rows=list(existing)
     for slot in slots[len(rows):]:
         index=prior+len(rows)+1
         row=(attempt_executor(design,slot,mapping[slot["opaque_arm_id"]],index) if attempt_executor else _live_attempt(design,design_path,live,slot,mapping[slot["opaque_arm_id"]],runner,index))
         row=_validate_row(row,slot,index)
         if attempt_executor: create_once(_attempt_path(live,slot),row)
         rows.append(row)
+        if row["fatal_evidence_defect"]: return _close_stage(design,live,stage,slots,rows,prereq,"INVALID",f"{stage} fatal evidence defect",bootstrap_iterations)
     invalid={r["task_id"] for r in rows if r["infrastructure_invalid"]}; status="PASS"
     if len(invalid)>1: status="INVALID"
     elif invalid:
@@ -846,20 +874,14 @@ def run_stage(*, design_path: Path | str, instance: str, stage: str, authorizati
             row=_validate_row(row,slot,index)
             if attempt_executor: create_once(_attempt_path(live,slot),row)
             fallback_rows.append(row)
+            if row["fatal_evidence_defect"]: return _close_stage(design,live,stage,slots,rows+fallback_rows,prereq,"INVALID",f"{stage} fatal evidence defect",bootstrap_iterations)
         rows.extend(fallback_rows)
         if any(r["infrastructure_invalid"] for r in fallback_rows): status="INVALID"
     total=prior+len(rows)
     if total>313 or (stage=="helpful" and total>296+17): status="INVALID"
-    if any(not r.get("mechanical_integrity") and not r["infrastructure_invalid"] for r in rows): status="INVALID"
-    create_once(live/f"{stage}-attempts.json",rows)
-    lock=_receipt(live,f"{stage}-outcome-lock.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-outcome-lock-v1","stage":stage,
-        "status":status,"attempts_sha256":sha256_file(live/f"{stage}-attempts.json"),"schedule_sha256":digest(slots),"launched_calls":len(rows)},["campaign-authorization.json",*prereq])
-    unblind=_unblind(live,stage,f"{stage}-outcome-lock.json")
-    stage_receipt=_receipt(live,f"{stage}-receipt.json",{"schema":"mdseval.coder-beneficial-sensitivity-m2-stage-result-v1","stage":stage,"status":status,
-        "base_calls":len(slots),"launched_calls":len(rows),"fallback_cap":design["calls"]["fallback_by_stage"][stage],
-        "schedule_sha256":digest(slots),"outcome_lock_sha256":sha256_file(live/f"{stage}-outcome-lock.json"),
-        "unblinding_sha256":sha256_file(live/f"{stage}-unblinding-receipt.json")},[f"{stage}-outcome-lock.json",f"{stage}-unblinding-receipt.json"])
-    if status=="INVALID": return _terminalize(design,live,"INVALID",f"{stage} integrity failure",bootstrap_iterations)
+    stage_receipt=_close_stage(design,live,stage,slots,rows,prereq,status,f"{stage} infrastructure failure",bootstrap_iterations)
+    if status=="INVALID": return stage_receipt
+    unblind=_json(live/f"{stage}-unblinding-receipt.json")
     active=[r for r in rows if r["status"]=="ACTIVE"]
     if stage=="calibration":
         counts={t:sum(r["objective_resolved"] for r in active if r["task_id"]==t) for t in TASKS}

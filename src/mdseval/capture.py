@@ -73,6 +73,28 @@ class Redactor:
         return value
 
 
+def redact_event_stream(value: str, redactor: Redactor) -> str:
+    """Redact JSONL without turning valid records into malformed evidence."""
+    safe: list[str] = []
+    for line in value.splitlines():
+        if not line.strip():
+            safe.append(line)
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            safe.append("!MALFORMED! " + redactor.text(line))
+        else:
+            safe.append(
+                json.dumps(
+                    redactor.object(event),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            )
+    return "\n".join(safe) + ("\n" if value.endswith(("\n", "\r")) else "")
+
+
 @dataclass(frozen=True)
 class ParsedEvents:
     valid: bool

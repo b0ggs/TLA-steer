@@ -7,7 +7,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from mdseval.capture import Redactor, capture_git, parse_event_stream
+from mdseval.capture import Redactor, capture_git, parse_event_stream, redact_event_stream
 from mdseval.fixtures import prepare_fixture
 from mdseval.hashing import sha256_file
 
@@ -137,6 +137,17 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(parsed.events[0]["type"], "unknown.future")
         self.assertEqual(parsed.usage["total_tokens"], 13)
         self.assertTrue(parsed.usage["usage_reported"])
+
+    def test_event_redaction_preserves_validity_and_malformed_line_position(self) -> None:
+        valid = '{"type":"item.completed","item":{"aggregated_output":"key=\\"id\\""}}'
+        malformed = '{"type":"item.completed","item":'
+        redacted = redact_event_stream(f"{valid}\n{malformed}\n", Redactor())
+        path = self.prepared.temporary_root / "redacted-events.jsonl"
+        path.write_text(redacted)
+        parsed = parse_event_stream(path)
+        self.assertEqual(parsed.malformed_lines, (2,))
+        self.assertEqual(parsed.events[0]["item"]["aggregated_output"], "key=[REDACTED]")
+        self.assertNotIn('key=\\"id\\"', redacted)
 
     def test_usage_is_incomplete_if_any_usage_turn_is_partial(self) -> None:
         path = self.prepared.temporary_root / "partial-events.jsonl"

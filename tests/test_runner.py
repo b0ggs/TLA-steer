@@ -13,6 +13,7 @@ from mdseval.runner.codex_cli import (
     isolated_environment,
 )
 from mdseval.capture import Redactor
+from mdseval.capture import parse_event_stream
 from mdseval.execution import evaluator_identity
 from mdseval.fixtures import prepare_fixture
 from mdseval.hashing import sha256_file
@@ -219,5 +220,6 @@ class RunnerTests(unittest.TestCase):
                 )
             self.assertTrue(raw_paths)
             self.assertTrue(all(not path.exists() for path in raw_paths))
+            self.assertTrue(parse_event_stream(artifact / "events.jsonl").valid)
         finally:
             prepared.cleanup()

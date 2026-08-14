@@ -11,7 +11,7 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from ..capture import Redactor
+from ..capture import Redactor, redact_event_stream
 from ..config import ExperimentConfig, RunnerConfig
 from ..fixtures import PreparedFixture
 from ..wrapper import WRAPPER_PROMPT
@@ -410,7 +410,7 @@ class CodexCLI:
                 final_text = ""
         duration = time.monotonic() - started
         (artifact_dir / "events.jsonl").write_text(
-            redactor.text(process.stdout), encoding="utf-8"
+            redact_event_stream(process.stdout, redactor), encoding="utf-8"
         )
         (artifact_dir / "stderr.txt").write_text(
             redactor.text(process.stderr), encoding="utf-8"

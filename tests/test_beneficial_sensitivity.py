@@ -72,7 +72,8 @@ class FakeAttempts:
                "objective_resolved": resolved, "checker_valid": not invalid, "mechanical_integrity": not invalid,
                "requirements_passed": 3 if resolved else 0, "requirements_total": 3, "status": "ACTIVE",
                "infrastructure_invalid": invalid, "final_message_hex": m2.EXPECTED_FINAL.hex() if stage == "smoke" else "",
-               "tree_unchanged": True, "capture_complete": True, "raw": {"source": "deterministic-fake"}}
+               "tree_unchanged": True, "capture_complete": True, "events":{"valid":True}, "raw": {"source": "deterministic-fake"}}
+        row["fatal_evidence_defect"] = False
         return row
 
 
@@ -103,7 +104,8 @@ def disposable_root(base: Path) -> Path:
         shutil.copytree(ROOT / source, root / source)
     for source in ("experiments/coder-beneficial-sensitivity-m2-1-access.json", "experiments/coder-beneficial-sensitivity-m2-4-2-closure.json",
                    "experiments/coder-beneficial-sensitivity-m2-3-task-reliability-authorship.json",
-                   "src/mdseval/beneficial_sensitivity.py", "src/mdseval/wrapper.py", "tests/test_beneficial_sensitivity.py",
+                   "src/mdseval/capture.py", "src/mdseval/runner/codex_cli.py", "src/mdseval/beneficial_sensitivity.py", "src/mdseval/wrapper.py",
+                   "tests/test_capture.py", "tests/test_runner.py", "tests/test_beneficial_sensitivity.py",
                    "experiments/coder-beneficial-sensitivity-m2-exclusions.json", "README.md", "experiments/coder-beneficial-sensitivity-m2.json"):
         target = root / source
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -143,7 +145,7 @@ class FrozenDesignTests(unittest.TestCase):
     def test_exact_timeout_protocol_artifacts_qualification_and_owner_payload(self):
         self.assertEqual(set(self.design["protocol"]), {"version", "protocol_sha256", "implementation_plan_sha256", "measurement_base_commit"})
         self.assertEqual(set(self.design["artifacts"]), {"access", "helpful", "helpful_authorship", "harmful", "null", "master", "task_authorship",
-            "task_reliability_authorship", "oracle", "wrapper", "evaluator", "tests", "exclusions"})
+            "task_reliability_authorship", "oracle", "wrapper", "capture", "runner", "evaluator", "test_capture", "test_runner", "tests", "exclusions"})
         self.assertTrue(all(set(value) == {"path", "sha256"} for value in self.design["artifacts"].values()))
         self.assertEqual(self.design["qualification"]["internal_timeout_seconds"], 10)
         owner = json.loads((ROOT / self.design["artifacts"]["task_reliability_authorship"]["path"]).read_text())
@@ -158,16 +160,25 @@ class FrozenDesignTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             base=Path(td); root=disposable_root(base); diagnostics=base/"diagnostics"
             for command in (["git","init"],["git","add","."],["git","-c","user.name=Test","-c","user.email=test@example.com","commit","-m","baseline"]): m2.subprocess.run(command,cwd=root,check=True,capture_output=True)
-            start=m2.subprocess.run(["git","rev-parse","HEAD"],cwd=root,check=True,capture_output=True,text=True).stdout.strip(); (root/"README.md").write_text("commissioned\n")
-            for command in (["git","add","README.md"],["git","-c","user.name=Test","-c","user.email=test@example.com","commit","-m","implementation"]): m2.subprocess.run(command,cwd=root,check=True,capture_output=True)
-            runtime={"fixture":"runtime"}; auth=base/"auth.json"; write_json(auth,{"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-authorization-v1","experiment":"coder-beneficial-sensitivity-m2-timeout-v1","authorized":True,"starting_commit":start,"engineering_paths":list(m2.ENGINEERING_PATHS),"churn_cap":350,"max_probes":3,"max_repairs":2,"diagnostic_root":str(diagnostics.resolve()),"runtime_identity_sha256":m2.digest(runtime)})
+            start=m2.subprocess.run(["git","rev-parse","HEAD"],cwd=root,check=True,capture_output=True,text=True).stdout.strip(); config=root/"experiments/coder-beneficial-sensitivity-m2.json"; config.write_bytes(config.read_bytes()+b" ")
+            for command in (["git","add",str(config.relative_to(root))],["git","-c","user.name=Test","-c","user.email=test@example.com","commit","-m","implementation"]): m2.subprocess.run(command,cwd=root,check=True,capture_output=True)
+            runtime={"fixture":"runtime"}; auth=base/"auth.json"; authorization={"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-authorization-v1","experiment":"coder-beneficial-sensitivity-m2-timeout-v1","authorized":True,"starting_commit":start,"engineering_paths":list(m2.ENGINEERING_PATHS),"churn_cap":240,"max_probes":1,"max_repairs":0,"diagnostic_root":str(diagnostics.resolve()),"runtime_identity_sha256":m2.digest(runtime)}; write_json(auth,authorization)
             Run=m2.make_dataclass("Run",[(x,object) for x in ("status","exit_code","duration_seconds","timed_out","interrupted")])
             class Runner:
-                def __init__(self,_config): pass
-                def run(self,_prepared,output,_timeout,_redactor): (output/"events.jsonl").write_text('{"type":"turn.started","model":"gpt-5.6-sol","reasoning_effort":"high"}\n'); (output/"stderr.txt").write_text(""); (output/"final.txt").write_bytes(m2.EXPECTED_FINAL); return Run("COMPLETED",0,1,False,False)
+                calls=0
+                def __init__(self,_config): Runner.calls+=1
+                def run(self,_prepared,output,_timeout,_redactor): event='{"type":"item.completed","note":"[REDACTED]"}' if Runner.calls==1 else '{"type":"item.completed","item":{"type":"command_execution","command":"printf key=[REDACTED]","aggregated_output":"key=[REDACTED]"}}'; (output/"events.jsonl").write_text('{"type":"turn.started","model":"gpt-5.6-sol","reasoning_effort":"high"}\n'+event+'\n'); (output/"stderr.txt").write_text(""); (output/"final.txt").write_bytes(m2.EXPECTED_FINAL); return Run("COMPLETED",0,1,False,False)
+            for key,bad in (("engineering_paths",[]),("churn_cap",241),("max_probes",2),("max_repairs",1)):
+                write_json(auth,{**authorization,key:bad})
+                with self.assertRaisesRegex(RuntimeError,"authorization"): m2.commission(design_path=root/"experiments/coder-beneficial-sensitivity-m2.json",starting_commit=start,diagnostic_root=diagnostics,authorization_receipt=auth,runner_factory=lambda _:(_ for _ in ()).throw(AssertionError("constructed")),runtime_probe=lambda *_:runtime)
+            dirty=base/"dirty"; dirty.mkdir(); (dirty/"prior").write_text("x"); write_json(auth,{**authorization,"diagnostic_root":str(dirty.resolve())})
+            with self.assertRaisesRegex(RuntimeError,"fresh and empty"): m2.commission(design_path=root/"experiments/coder-beneficial-sensitivity-m2.json",starting_commit=start,diagnostic_root=dirty,authorization_receipt=auth,runner_factory=lambda _:(_ for _ in ()).throw(AssertionError("constructed")),runtime_probe=lambda *_:runtime)
+            decoy=base/"decoy"; write_json(auth,{**authorization,"diagnostic_root":str(decoy.resolve())}); self.assertEqual(m2.commission(design_path=root/"experiments/coder-beneficial-sensitivity-m2.json",starting_commit=start,diagnostic_root=decoy,authorization_receipt=auth,runner_factory=Runner,runtime_probe=lambda *_:runtime)["status"],"FAIL"); write_json(auth,authorization)
             got=m2.commission(design_path=root/"experiments/coder-beneficial-sensitivity-m2.json",starting_commit=start,diagnostic_root=diagnostics,authorization_receipt=auth,runner_factory=Runner,runtime_probe=lambda *_:runtime)
             self.assertEqual((got["status"],got["identity"]["status"],len(list(diagnostics.glob("*/probe-1/PASS.json")))),("PASS","reported_match",1))
-            with self.assertRaisesRegex(RuntimeError,"terminal"): m2.commission(design_path=root/"experiments/coder-beneficial-sensitivity-m2.json",starting_commit=start,diagnostic_root=diagnostics,authorization_receipt=auth,runner_factory=Runner,runtime_probe=lambda *_:runtime)
+            calls=Runner.calls
+            with self.assertRaisesRegex(RuntimeError,"fresh and empty"): m2.commission(design_path=root/"experiments/coder-beneficial-sensitivity-m2.json",starting_commit=start,diagnostic_root=diagnostics,authorization_receipt=auth,runner_factory=Runner,runtime_probe=lambda *_:runtime)
+            self.assertEqual(Runner.calls,calls)
 
 
 class ScheduleAndStatisticsTests(unittest.TestCase):
@@ -393,6 +404,42 @@ class QualificationEvidenceTests(unittest.TestCase):
 
 
 class PublicLifecycleTests(unittest.TestCase):
+    def test_governed_mutation_matrix_rejects_before_runner_construction(self):
+        with tempfile.TemporaryDirectory() as td:
+            base=Path(td); root=disposable_root(base); config=root/"experiments/coder-beneficial-sensitivity-m2.json"; checker=FakeChecker(root); passed=base/"PASS.json"
+            write_json(passed,{"schema":"mdseval.coder-beneficial-sensitivity-m2-commission-pass-v1","status":"PASS","verified_commit":COMMIT,"runtime":{"fake":True}}); qualified=base/"qualification"
+            m2.qualify(config,qualified,authoritative=True,commissioning_pass=passed,verified_commit=COMMIT,checker=checker,process=commit_probe); runs=base/"runs"
+            m2.initialize(design_path=config,instance="case",verified_commit=COMMIT,qualification_receipt=qualified/"qualification-receipt.json",runs_root=runs,process=commit_probe,entropy=lambda n:b"x"*n)
+            design=json.loads(config.read_text()); targets=[config]+[root/design["artifacts"][key]["path"] for key in m2.GOVERNED_KEYS]
+            for target in targets:
+                original=target.read_bytes(); target.write_bytes(original+b" "); constructed=[]
+                try:
+                    with self.assertRaises((ValueError,RuntimeError)): m2.run_stage(design_path=config,instance="case",stage="calibration",authorization_receipt=authorize(base,runs,"calibration"),runs_root=runs,runner_factory=lambda _:(constructed.append(1)))
+                finally: target.write_bytes(original)
+                self.assertEqual(constructed,[])
+
+    def test_ordinary_mechanical_failure_is_y0_and_does_not_abort_stage(self):
+        with tempfile.TemporaryDirectory() as td:
+            base=Path(td); runs,_=initialize_case(base); fake=FakeAttempts()
+            def y0(design,slot,semantic,index):
+                row=fake(design,slot,semantic,index)
+                if index==1: row.update(objective_resolved=False,checker_valid=False,mechanical_integrity=False)
+                return row
+            result=m2.run_stage(design_path=CONFIG,instance="case",stage="calibration",authorization_receipt=authorize(base,runs,"calibration"),runs_root=runs,attempt_executor=y0,power_iterations=1000,bootstrap_iterations=20)
+            self.assertEqual((result["status"],fake.calls),("PASS",120))
+
+    def test_fatal_crash_resume_controls_and_helpful_are_zero_call_and_replayable(self):
+        for stage,prior_stages in (("controls",("calibration",)),("helpful",("calibration","controls"))):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as td:
+                base=Path(td); runs,_=initialize_case(base); fake=FakeAttempts(); live=runs/"case/live"
+                for prior in prior_stages: m2.run_stage(design_path=CONFIG,instance="case",stage=prior,authorization_receipt=authorize(base,runs,prior),runs_root=runs,attempt_executor=fake,power_iterations=1000,bootstrap_iterations=20)
+                slot=json.loads((live/f"{stage}-filtered-schedule-receipt.json").read_text())["slots"][0]; path=m2._attempt_path(live,slot); calls=[]
+                if stage=="controls": path.parent.mkdir(parents=True)
+                else: row=FakeAttempts()(json.loads(CONFIG.read_text()),slot,"N",len(m2._rows(live))+1); row.update(fatal_evidence_defect=False,identity_status="reported_mismatch"); write_json(path,row)
+                report=m2.run_stage(design_path=CONFIG,instance="case",stage=stage,authorization_receipt=authorize(base,runs,stage),runs_root=runs,attempt_executor=lambda *_:calls.append(1),bootstrap_iterations=20); before=(live/"reports/report.json").read_bytes()
+                self.assertEqual((report["verdict"],report["calls"]["fatal_evidence"],calls),("INVALID",1,[])); m2.replay(CONFIG,"case",runs_root=runs,bootstrap_iterations=20)
+                self.assertEqual((runs/"case/replay/report.json").read_bytes(),before)
+
     def test_actual_initialize_four_stages_terminal_and_replay_without_live_runner(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td); runs, checker = initialize_case(base); fake = FakeAttempts()
@@ -494,7 +541,7 @@ class PublicLifecycleTests(unittest.TestCase):
                 m2.replay(CONFIG, "case", runs_root=runs, bootstrap_iterations=20)
 
 class LifecycleIntegrityTests(unittest.TestCase):
-    def test_live_checker_timeout_propagates_infrastructure_invalid_without_a_live_runner(self):
+    def test_subject_tree_violation_is_ordinary_y0_through_live_attempt(self):
         Run = m2.make_dataclass("Run", [(x, object) for x in ("timed_out", "interrupted", "exit_code")])
         Events = m2.make_dataclass("Events", [("events", object), ("valid", object)])
         Capture = m2.make_dataclass("Capture", [(x, object) for x in ("status", "diff", "untracked")])
@@ -506,21 +553,22 @@ class LifecycleIntegrityTests(unittest.TestCase):
             class Runner:
                 def run(self, _prepared, output, _timeout, _redactor):
                     output.mkdir(parents=True)
+                    (_prepared.repo / "escape").symlink_to("/tmp")
                     (output / "final.txt").write_bytes(b"done")
                     return Run(False, False, 0)
             events = Events(({"model": "gpt-5.6-sol", "reasoning_effort": "high"},), True)
             capture = Capture("", "", [])
-            timeout = {"valid": False, "resolved": None, "mechanical": False, "payload": {}, "infrastructure_invalid": True}
+            timeout = {"valid": True, "resolved": True, "mechanical": True, "payload": {"requirements": {}}, "infrastructure_invalid": False}
             slot = {"slot_id": "calibration:base:r1:bug-01:K0", "stage": "calibration", "round": 1,
                     "task_id": "bug-01", "opaque_arm_id": "K0", "fallback": False}
-            with patch("mdseval.fixtures.prepare_fixture", return_value=prepared), patch("mdseval.fixtures.audit_final_subject_tree"), \
+            with patch("mdseval.fixtures.prepare_fixture", return_value=prepared), \
                  patch("mdseval.capture.parse_event_stream", return_value=events), patch("mdseval.capture.capture_git", return_value=capture), \
                  patch.object(m2, "_checker", return_value=timeout):
                 row = m2._live_attempt(json.loads(CONFIG.read_text()), CONFIG, base / "live", slot, "N", Runner(), 1)
-            self.assertTrue(row["infrastructure_invalid"])
+            self.assertFalse(row["infrastructure_invalid"])
             self.assertFalse(row["objective_resolved"])
             self.assertFalse(row["mechanical_integrity"])
-
+            self.assertFalse(row["fatal_evidence_defect"])
     @unittest.skip("covered through v0.4 envelope replay")
     def test_noncanonical_record_and_dependency_cycle_are_rejected(self):
         with tempfile.TemporaryDirectory() as td:
