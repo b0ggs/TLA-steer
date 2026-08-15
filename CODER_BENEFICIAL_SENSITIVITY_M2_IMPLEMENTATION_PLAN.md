@@ -1,8 +1,12 @@
 # CODER beneficial-sensitivity Milestone 2 implementation plan
 
-Status: v0.4 closed `INVALID`; Section 12 is a prospective v0.4.1 remediation
-amendment and authorizes neither implementation nor live calls
-Scientific authority: `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` v0.4 unchanged
+Status: v0.4 closed `INVALID`; v0.4.1 closed
+`SENSITIVITY_NOT_DEMONSTRATED` at selection. Sections 1--12 are frozen
+historical lifecycle evidence; Section 13 is the sole prospective development
+amendment and authorizes neither task creation nor live/model/API calls.
+Scientific authority: `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` v0.4 governs
+only its frozen campaigns; a future confirmatory protocol may be written only
+after Section 13 development PASS.
 Roadmap stage: Milestone 2 only — demonstrate beneficial measurement sensitivity
 
 ## 1. Authority, outcome, and scope
@@ -11,6 +15,12 @@ For every new Milestone 2 action, this plan supersedes
 `coder-outcome-evaluator-v2-implementation-plan.md`. The older plan, repairs,
 code, experiment, and raw evidence remain immutable historical evidence only.
 This is the sole active Milestone 2 implementation plan.
+
+Section 13 supersedes every prospective or active instruction in Sections
+1--12. Their imperative wording records the frozen v0.4/v0.4.1 design and
+completed lifecycle; it grants no current edit, role, commissioning,
+qualification, campaign, retry, or live-call authority. The v0.4.1 verdict and
+all raw evidence remain valid and immutable evidence about the old instrument.
 
 The one-shot manipulation check compares complete project-level files:
 
@@ -52,7 +62,8 @@ network calls. This plan authorizes no implementation, commit, push, merge, or
 live call by itself.
 
 `P`, `H`, tasks, checkers, wrapper, construct, and statistics are completed
-read-only prerequisites; only Section 3.1 engineering and lifecycle evidence remain active.
+read-only historical artifacts. No engineering or lifecycle path in Sections
+1--12 remains active.
 
 The existing `coder-beneficial-sensitivity-m2-ada7a71` and
 `coder-beneficial-sensitivity-m2-b9c3a8e` roots remain byte-for-byte preserved,
@@ -125,7 +136,7 @@ subtree may contain only `task.json`, `contract.md`, `check.py`, and `fixture/**
 - `evals/m2/coder-beneficial-sensitivity/feature-{01,02,03,04,05}/**`
 - `evals/m2/coder-beneficial-sensitivity/integration-{01,02,03,04,05}/**`
 - `evals/m2/coder-beneficial-sensitivity/refactor-data-{01,02,03,04,05}/**`
-### 3.1 Prospective v0.4 implementation delta
+### 3.1 Historical v0.4 implementation delta
 
 The current code/config baseline is clean commit `b9c3a8e`. Implementation churn
 is measured from the future clean commit containing the approved v0.4 document
@@ -145,7 +156,7 @@ artifact change is allowed. The exclusions JSON minimally records its schema,
 the two full instance IDs, diagnostic-only reason, and inference exclusion; its
 SHA-256 is bound by config, authoritative manifest, and final report. A need
 outside this delta stops for a separate user decision.
-## 4. Completed provenance and active v0.4 lifecycle
+## 4. Completed provenance and historical v0.4 lifecycle
 
 Root orchestrates only: assign packets, enforce access, record hashes/counts,
 integrate authorized local commits, and run gates. Root writes no implementation
@@ -188,7 +199,7 @@ auditor uses `gpt-5.6-sol/high`. Requested identity, available observed metadata
 call count, role, and output hashes are disclosed in separate authorship/audit
 receipts and never counted as subject calls. No cheap-model role is used.
 
-The only active sequence is: five-path delta; focused then full tests; one final
+The completed historical sequence was: five-path delta; focused then full tests; one final
 read-only reviewer; at most one bounded code correction and its focused/full
 validation; bounded commissioning; freeze the first passing clean commit;
 external 300-case qualification once; fresh initialization; one-authorized
@@ -435,10 +446,10 @@ The prior access/treatment/task/validator/engine packets, implementation
 authorization, audit, and correction are completed read-only provenance. They
 grant no current role, edit, review loop, or live authority. Root does not code.
 
-For v0.4, one final read-only reviewer checks only the five-path delta against
-this amendment; at most one bounded engineering correction may resolve its
-in-scope blockers. Then follow the sole active sequence in Section 4. An
-unresolved blocker stops; no audit loop or historical-artifact correction exists.
+For v0.4, one final read-only reviewer checked only the five-path delta against
+that amendment; at most one bounded engineering correction could resolve its
+in-scope blockers. It then followed the historical sequence in Section 4. An
+unresolved blocker stopped; no audit loop or historical-artifact correction existed.
 
 ## 10. Offline gates, live authorization, and stopping
 
@@ -458,7 +469,7 @@ git diff --check
 git status --short
 ```
 
-Active gate order: five-path delta; focused/full tests; one final review and at
+Historical gate order: five-path delta; focused/full tests; one final review and at
 most one correction; bounded commissioning; automatic freeze of its first PASS
 commit; external 300-case qualification once; fresh zero-checker initialization;
 campaign authorization; calibration; controls only after selection/power PASS;
@@ -529,11 +540,11 @@ deterministic proof of 296/313 ceilings. Milestone 2 is administratively complet
 on one allowed verdict plus offline replay and scientifically passes only on
 `SENSITIVITY_DEMONSTRATED`.
 
-## 12. Prospective v0.4.1 capture-integrity remediation
+## 12. Frozen historical v0.4.1 capture-integrity remediation
 
-This section supersedes the active engineering and lifecycle wording above only
-where it conflicts. It does not change the scientific construct, tasks,
-treatments, schedules, outcomes, statistics, gates, or claim boundary.
+This section governed the completed v0.4.1 remediation and no longer supersedes
+Section 13. It did not change the scientific construct, tasks, treatments,
+schedules, outcomes, statistics, gates, or claim boundary.
 
 ### 12.1 Frozen failure and diagnosis gate
 
@@ -630,7 +641,7 @@ the runner; any mismatch or second invocation is a zero-call rejection.
 
 ### 12.3 Gates, validation, and stopping
 
-Proceed in this order:
+The completed remediation proceeded in this order:
 
 1. Hash and inventory the v0.4 terminal evidence and existing replay root; never
    write beneath that instance.
@@ -674,3 +685,327 @@ focused and full command results; unchanged v0.4 live and replay hashes;
 review disposition; clean commit hash; and one external commissioning PASS hash.
 Qualification, fresh initialization, and campaign receipts remain separate later
 gates and cannot rescue a failed predecessor.
+
+## 13. Adaptive instrument development before any new confirmation
+
+### 13.1 Objective, authority boundary, and historical falsification
+
+The next scientific objective is to validate an omission-sensitive task-generation
+and checker-admission method cheaply before building another pool. It is not to
+test `P`, repeat v0.4.1, or obtain an M2 verdict. Deterministic contract/checker
+fidelity can be established for an exact version; stochastic task difficulty
+cannot be known with certainty. The ladder below is therefore a falsification
+sequence that bounds risk before scale.
+
+This amendment is plan-only. It creates no task or role, opens no writable path,
+and authorizes zero human/model authoring sessions, blind-solver sessions,
+subject calls, network calls, commits, pushes, or merges. Every executable phase
+requires a later bounded authorization naming exact roles, paths, churn, runtime,
+and session/call caps. No such authorization may silently include the next
+tranche.
+
+Before Task A, the first executable authorization must freeze one transfer
+binding for both development difficulty and later confirmation. It records the
+intended confirmatory subject's model identifier/configured target, reasoning
+effort, harness and wrapper bytes and hashes, timeout, tool availability,
+sandbox, network and approval settings, runtime/CLI identity, concurrency,
+subject prompt construction, zero-byte null file, repository preparation, and
+every other outcome-relevant setting. Each task's three development difficulty
+launches are labeled `D1`, `D2`, and `D3`; every such launch and every later
+confirmatory subject launch must match the binding exactly. An outcome-relevant
+change makes the earlier development rates non-transferable and requires fresh
+development evidence under a new, separately authorized binding. If the service
+does not report backend identity, record `not_reported` and bind claims to the
+configured runtime as served; missing metadata is not attestation, while a
+reported contradiction is a STOP.
+
+Before Task A is authored, apply the proposed bidirectional admission method
+offline to the six frozen defective contract/checker pairs. With zero subject
+calls it must flag all six, for these contract-absent demands:
+
+- `bug-03`: list-valued semantics for single as well as repeated keys;
+- `feature-05`: the `-+-` separator and final-column padding;
+- `integration-01`: the `total` key and compact byte serialization;
+- `integration-05`: manifest self-exclusion;
+- `refactor-data-01`: nested deep-copy isolation; and
+- `refactor-data-02`: the duplicated nested deep-copy isolation.
+
+All six remain immutable negative development evidence, never repair candidates
+or future pool members. A miss is a STOP: revise the admission specification and
+repeat only this zero-call regression under new approval. Historical defects do
+not consume prospective futility counters. The twenty old tasks, both campaigns,
+this review, and anyone exposed to their outcomes are excluded from confirmation.
+
+### 13.2 Omission-sensitive task-generation specification
+
+Each development task is an original, self-contained, standard-library Python
+repository with eight to twelve explicit, individually modest requirements.
+Requirements are dispersed across at least three clearly named subject-visible
+files or artifacts rather than collapsed into one short checklist. The packet
+has one salient primary change plus at least three easy-to-skip but explicit
+secondary deliverables in separate locations, such as a boundary behavior,
+configuration entry, documentation update, regression test, or second-module
+change. Every requirement has a mechanically separable outcome signal.
+
+Difficulty must arise from omission, not obscure algorithms, excessive code
+volume, time-pressure tricks, surprising platform behavior, or brittle syntax.
+The public text must state all behavior the checker scores. It may not rely on
+ambiguous synonyms, hidden conventions, artificial traps, unstated exact bytes,
+unstated key names, unstated copy depth, unstated exclusions, or oracle-specific
+implementation structure. If exact bytes, ordering, copy depth, or an exclusion
+is genuinely required, the subject-visible packet states it unambiguously and
+the checker accepts every other variation the packet permits.
+
+Task families differ in repository structure, domain, primary behavior, and
+secondary-deliverable placement. Task B must be from a different family than
+Task A and may not reuse its skeleton or omission pattern. The final eight must
+span at least four families. Public-task and checker authors never see exact
+`P`, `H`, treatment outcomes, sibling solutions, or development subject outcomes.
+The wrapper is held constant within the development study and may identify entry
+points, but it may not teach inventory, checklist, or complete-coverage behavior
+that duplicates `P`. Every difficulty attempt receives `N` as a present,
+zero-byte `CODER.md`, not an absent file or an informal “no MD” condition.
+
+### 13.3 Exact-version admission gate
+
+An exact task version consists of hash-locked subject-visible bytes, public
+requirement IDs, checker bytes, and an admission record. Versions are immutable;
+every correction receives a new version ID and hashes. Before any difficulty
+call, every exact version must pass all of the following:
+
+1. A bidirectional trace maps every public requirement and regression to at
+   least one checker assertion and maps every behavior-affecting assertion back
+   to exact public text. Environment and integrity checks are identified
+   separately and may not add functional requirements.
+2. The checker author declares permitted representations and behavioral
+   variations. Each declared variation is exercised by a metamorphic probe; a
+   requirement with no meaningful variation records that fact and rationale.
+3. At least one plausible negative mutation per public requirement is rejected
+   for that requirement. The union covers every requirement, regression, and
+   protected-input constraint without a qualitative judge.
+4. The public packet and checker are locked before blind outputs exist. Neither
+   author may revise them after seeing a blind solution or checker result.
+5. Two independent checker-blind solvers each submit once from only the exact
+   subject-visible packet. For a difficulty-pilot candidate, each solver is a
+   human/non-model solver or a separately authorized non-target model/runtime;
+   the transfer-bound target subject runtime is forbidden. Both first
+   submissions must mechanically resolve under Section 13.5. They receive no
+   checker, oracle, mutant, author notes, review, outcomes, sibling solution, or
+   shared authoring context, and receive no rejection feedback or resubmission.
+6. A mechanical runner executes pristine, mutations, declared variations, and
+   both blind solutions twice in fresh copies. Canonical results must be
+   identical; fixture and protected hashes must remain unchanged; no test uses
+   network or a live model.
+7. A read-only fidelity reviewer verifies the trace, public meaning, permitted
+   variations, failure localization, solver-access attestations, hashes, and
+   deterministic replay. Admission requires a recorded 100% PASS.
+
+A blind rejection immediately blocks that exact version and scaling. It is not
+automatically evidence of a bad checker: the locked Section 13.5 predicates
+mechanically distinguish an explicit-requirement violation, ambiguity/instrument
+defect, and wrongful rejection; the fidelity reviewer records their inputs and
+result without overriding them. The rejected solver is never coached or retried.
+Only a justified, targeted pre-subject correction may create a new version, which
+must use two fresh blind solvers and repeat the whole gate. A post-correction
+unchanged relevant byte or reused solver is a STOP.
+
+### 13.4 Role and information isolation
+
+Each exact version uses these distinct roles: public-task author, checker author,
+blind solver A, blind solver B, mechanical runner, and read-only fidelity
+reviewer. No person or session may combine public-task author, checker author, or
+blind solver roles for a version. Authors work in fresh isolated packets and do
+not receive sibling artifacts or reasoning. The checker author receives only the
+locked public packet plus the checker schema; the task author's private rationale
+is excluded.
+
+Blind solvers use genuinely fresh isolated working contexts and share no
+authoring or sibling-solver context. Record whether each is human/non-model or,
+for a model solver, its separately authorized requested model/runtime and
+observed identity metadata, plus packet hashes, paths read/written, and explicit
+access attestations. The transfer-bound target subject runtime is never an
+eligible blind solver or fallback. If two suitable independent non-target
+solvers are unavailable, return BLOCK before admission; do not substitute the
+target. Blind outputs and checker results remain qualification evidence only and
+never enter `s_t`, `q_t`, difficulty rates, or feasibility estimates.
+Root, present investigators, this review's author, and plan auditors are
+contaminated and may not be blind solvers or confirmatory authors, checker
+authors, validators, subjects, or judges. The mechanical runner has no discretion
+to reinterpret results, and an LLM reviewer cannot override a mechanical failure.
+
+### 13.5 The `1 -> 1 -> 2 -> 4` ladder and mechanical screens
+
+Author, admit, and expose tasks sequentially. Do not author the next task until
+the preceding exact version completes admission, and do not author beyond the
+currently authorized tranche until its checkpoint passes. Passing a checkpoint
+permits only the next separately authorized tranche:
+
+| Checkpoint | Newly exposed tasks | `N` attempts each | Cumulative subject-call cap | Advancement rule |
+| --- | ---: | ---: | ---: | --- |
+| A | 1 | 3 | 3 | Task A admission and prototype screen PASS |
+| B | 1 different family | 3 | 6 | A and B both PASS |
+| Small tranche | 2 | 3 | 12 | Four-task aggregate screen PASS |
+| Final development tranche | 4 | 3 | 24 | Eight-task development screen PASS or terminal development FAIL |
+
+Every launch counts against the cumulative cap, including timeout,
+infrastructure failure, interruption, or unusable output. There is no subject
+retry, fallback, extra attempt, replacement after exposure, or automatic “one
+more batch.” Three attempts are a mechanism screen, not a precise rate estimate.
+An unusable attempt leaves the checkpoint unpassed and stops the loop.
+
+Before the first difficulty call, each admission record freezes raw evidence
+fields, an omission predicate per public requirement, and the following ordered
+classification predicates. No label may be assigned from a narrative judgment.
+
+For each public requirement, apply this precedence:
+
+1. `INSTRUMENT_DEFECT_OR_AMBIGUITY` if its assertion does not have exactly one public
+   trace, rejects a declared permitted variation, changes across deterministic
+   replays, evaluates behavior outside the locked matrix, or an observed state
+   maps to more than one locked requirement/variation predicate.
+2. `INFRASTRUCTURE_INVALID` if an allowlisted external failure or incomplete or
+   corrupt capture leaves the frozen evidence fields unable to evaluate it.
+3. `PASS` if every mapped assertion passes.
+4. `OMITTED` if an assertion fails and its predeclared observable omission
+   predicate is true—for example, a required file or entry is absent, a required
+   path remains pristine, or the requested behavior retains its pristine result.
+5. `ATTEMPTED_INCORRECTLY` for every other assertion failure.
+
+Then assign exactly one attempt-level state in this precedence:
+
+1. `INSTRUMENT_DEFECT_OR_AMBIGUITY` if any requirement has that state or a
+   contract/checker trace, allowed-variation, checker-hash, or determinism
+   invariant fails. This blocks the exact task, invalidates its admission, and
+   supplies no rate or favorable evidence.
+2. `INFRASTRUCTURE_INVALID` if the frozen infrastructure predicate is true or
+   required evidence is incomplete/corrupt. The launch counts, the checkpoint
+   stops, and the attempt supplies no rate or favorable evidence.
+3. `REGRESSION_OR_INTEGRITY` if any declared regression or integrity constraint
+   fails after valid instrument and infrastructure gates.
+4. `ATTEMPTED_INCORRECTLY` if any public requirement has that state.
+5. `OMITTED` if at least one public requirement is omitted and all others pass
+   or are omitted.
+6. `RESOLVED` otherwise: infrastructure is valid, no instrument-defect predicate
+   fired, every public requirement passes, and every declared regression and
+   integrity constraint passes.
+
+Thus `resolved` is exactly the conjunction in item 6, and an attempt is
+omission-only exactly when its state is `OMITTED`. Any raw state that cannot map
+uniquely through these predicates is `UNCLASSIFIABLE`, stops for a plan decision,
+and supplies no favorable evidence. A reviewer may report predicate inputs but
+cannot choose, reorder, or override a state. Any mechanically triggered
+contract/checker/traceability/allowed-variation defect blocks the task and stops
+scaling. Any valid nonresolution that is not omission-only fails the mechanism
+screen before the next tranche.
+
+For task `t`, let `R_t` be its public-requirement count, `q_t` the total passed
+requirement observations divided by `3 * R_t`, and `s_t` its `RESOLVED` attempts
+among `D1`--`D3` under the frozen definition above. All three must have valid,
+classifiable instrument and infrastructure evidence or the checkpoint stops and
+neither statistic exists. A task is `mixed` exactly when `s_t` is one or two.
+Aggregate coverage after `k` tasks is the macro-average `Q_k = mean(q_t)`, so tasks with
+more requirements do not silently receive more weight.
+
+The prospective numerical engineering screens are:
+
+- Task A and Task B individually require `0.55 <= q_t <= 0.90`, `s_t` in
+  `{1, 2}`, and every nonresolution omission-only. A ceiling or floor stops
+  before scale.
+- At four tasks, require 100% exact-version fidelity, no non-omission
+  nonresolution, `0.55 <= Q_4 <= 0.90`, and at least two of four tasks mixed.
+- At eight tasks, require the same fidelity and mechanism conditions,
+  `0.55 <= Q_8 <= 0.90`, and at least four of eight tasks mixed.
+
+The `0.55--0.90`, two-of-four, and four-of-eight values are provisional
+engineering choices, not evidence-derived scientific thresholds. Before any
+subject call, a fixed-seed, standard-library-only offline simulation must report
+the exact ladder's continuation and false-stop behavior across homogeneous
+floor, ceiling, and intermediate rates; heterogeneous task-rate vectors; eight-
+to-twelve-requirement coverage; and correlated omission/beta-binomial scenarios.
+The final values, aggregation, taxonomy, seed, scenario grid, and acceptance
+logic are frozen before outcomes. If simulation does not support the provisional
+values, stop for a plan decision; do not tune them after seeing a subject result.
+
+#### 13.5.1 Activation amendment v2 (2026-08-14)
+
+This prospective v2 amendment retires AC-01 (maximum extreme Task-A pass
+probability) as an activation criterion; AC-01 remains a required reported
+diagnostic. The rationale is structural and independent of any observed AC-01
+value: allowing one degenerate Task A to pass costs at most the three subject
+calls at checkpoint A, checkpoint B prevents automatic scaling, and AC-02
+governs end-to-end degenerate risk. AC-02 through AC-08 remain activation
+criteria; failure of any activation criterion stops before Task A. This
+amendment changes none of the `1 -> 1 -> 2 -> 4` ladder, admission gate, task
+outcome rule, or contamination boundary.
+
+### 13.6 Repair, futility, and resource accounting
+
+At most one targeted pre-subject correction is allowed per candidate lineage,
+and at most two corrected/replacement exact versions may be authored across the
+entire bounded loop. Thus at most ten exact versions may be authored to obtain at
+most eight subject-exposed tasks. A version exposed to even one subject call is
+retired permanently and cannot be patched, requalified, or rerun. A later study
+may use only a genuinely new task under new approval; it may not reset these
+cumulative counters.
+
+Two prospective occurrences of the same hidden-rule, ambiguity, checker, or
+authoring root-cause pattern stop the generation specification, even if each
+could fit inside a replacement cap. A third replacement, the same root cause
+after two targeted corrections, lack of material diagnostic progress, a path or
+session cap breach, or any weakened acceptance rule is a STOP. Preserve every
+failed version, result, classification, and resource count as development
+evidence.
+
+The straight-through hard ceilings for this entire ladder are separate buckets:
+
+| Resource bucket | Hard ceiling | Counting rule |
+| --- | ---: | --- |
+| Public-task author sessions | 10 | One first submission per exact version |
+| Checker-author sessions | 10 | One first submission per exact version |
+| Blind-solver sessions | 20 | Two first submissions per exact version |
+| Mechanical-runner admission batches | 10 | One complete batch per exact version |
+| Development fidelity-review sessions | 11 | One historical regression plus one per exact version |
+| Difficulty subject calls | 24 | Three launches for each of at most eight exposed tasks |
+
+Human work counts in the corresponding role bucket just as model-assisted work
+does. Corrections consume new sessions; no bucket may borrow from another. The
+historical regression uses no author, blind-solver, or subject session. During
+development there are zero `P`, `H`, A/A, harmful-control, helpful-control,
+qualitative-judge, commissioning, qualification-campaign, or authoritative
+calls. The earlier optimistic single-author session estimate is superseded.
+
+### 13.7 Development PASS, feed-forward, and confirmation boundary
+
+Development PASS is the conjunction of the six-of-six historical regression,
+the complete task-generation specification (including family diversity), all
+eight exact-version fidelity gates, every checkpoint above, complete resource/
+provenance accounting, and no stop condition. A PASS freezes only the
+transfer binding, task-generation specification, public/checker separation,
+admission method, wrapper, null-file bytes, classification taxonomy, and measured
+development record. It does not freeze or qualify any exposed task for
+confirmation and does not demonstrate sensitivity to `P`.
+
+The next confirmatory design must consume, without smoothing them into a single
+assumed rate, all development task-level `s_t/3` values and uncertainty,
+heterogeneity, `q_t` and requirement-family coverage, omission-only prevalence,
+task-authoring/admission yield and failure causes, and resource use per admitted
+task. Those measurements are mandatory inputs to selection-feasibility
+simulation, candidate-pool redundancy, attainable effect-size assumptions,
+power, and budget. The old homogeneous `p = 0.5` and `+0.30` assumptions may not
+be reused unless the development evidence independently justifies them.
+
+Only after development PASS may fresh, unexposed confirmatory authors receive
+the frozen specification. Confirmatory candidates are authored and cheaply
+qualified one exact version at a time, with the same contract-only gate, before
+full-pool integration; a repeated fidelity defect or inadequate yield stops pool
+construction early. Development tasks and authors exposed to development
+outcomes never cross into confirmation. Scale only the validated method, never
+an exposed development task.
+
+Protocol-grade hashes, schedules, treatment mappings, blinding, receipt DAG,
+full-pool qualification (including any successor to the old 300-case pass),
+commissioning, authoritative calibration, controls, and campaign authorization
+are deferred until the rolling confirmatory pool and development-informed
+feasibility/power gates pass. A future protocol must set those details
+prospectively. No frozen historical gate, task, rate assumption, or campaign
+machinery resumes automatically.
