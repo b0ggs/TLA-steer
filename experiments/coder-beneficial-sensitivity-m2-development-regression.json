@@ -1,0 +1,330 @@
+{
+  "schema": "mdseval.coder-beneficial-sensitivity-m2-development-regression-v1",
+  "kind": "historical_admission_regression",
+  "status": "PASS",
+  "provenance": {
+    "baseline_commit": "014c6b4c11979c583594734b32c1756535b78221",
+    "hash_algorithm": "sha256",
+    "active_plan": {
+      "path": "CODER_BENEFICIAL_SENSITIVITY_M2_IMPLEMENTATION_PLAN.md",
+      "sha256": "38daa9e05510dedb9d5c08e90bf17ec549251976798da6c139b73a8320c1c561",
+      "governing_sections": [
+        "13.1",
+        "13.3"
+      ]
+    }
+  },
+  "boundary": {
+    "phase": "development",
+    "authoritative": false,
+    "live_calls": false,
+    "subject_calls": 0,
+    "purpose": "Offline falsification of the proposed bidirectional admission method against six immutable historical negative pairs.",
+    "prohibitions": [
+      "Do not repair or revise a historical pair.",
+      "Do not promote a historical pair into a future pool.",
+      "Do not create, authorize, or run Task A from this record.",
+      "Do not use this record as an M2 verdict or as authoritative campaign evidence."
+    ]
+  },
+  "expected_task_ids": [
+    "bug-03",
+    "feature-05",
+    "integration-01",
+    "integration-05",
+    "refactor-data-01",
+    "refactor-data-02"
+  ],
+  "method": {
+    "name": "exact-version static bidirectional trace",
+    "inputs": "Only the hash-locked public contract.md and check.py bytes for each expected task.",
+    "public_to_checker": "Map each public functional requirement and regression to at least one behavior-affecting checker assertion.",
+    "checker_to_public": "Map each behavior-affecting checker assertion to exact public text; an assertion may not reject a representation or behavior that the public text permits.",
+    "flag_rule": "FLAG when either mapping direction fails for any behavior-affecting assertion or public requirement.",
+    "pass_condition": "The observed task-ID set must equal the expected set and every one of the six immutable pairs must produce FLAG.",
+    "execution": "Static source inspection only; no solution, checker, model, subject, API, or network execution."
+  },
+  "tasks": [
+    {
+      "task_id": "bug-03",
+      "artifacts": {
+        "contract": {
+          "path": "evals/m2/coder-beneficial-sensitivity/bug-03/contract.md",
+          "sha256": "e55ff32087a80c310692194385c7a0ff254b89355a3a0f82e4a653da41998550"
+        },
+        "checker": {
+          "path": "evals/m2/coder-beneficial-sensitivity/bug-03/check.py",
+          "sha256": "646b41b6eb1896c2834890b64bed87c827063a60ba59a5236b37108b8b8aeb5a"
+        }
+      },
+      "checker_assertion": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/bug-03/check.py:11",
+          "evals/m2/coder-beneficial-sensitivity/bug-03/check.py:12",
+          "evals/m2/coder-beneficial-sensitivity/bug-03/check.py:14"
+        ],
+        "symbols": [
+          "r1",
+          "r2",
+          "g"
+        ],
+        "demanded_behavior": "Every decoded key maps to a list, including a key that occurs only once."
+      },
+      "public_contract": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/bug-03/contract.md:6",
+          "evals/m2/coder-beneficial-sensitivity/bug-03/contract.md:9"
+        ],
+        "relevant_text": [
+          "Collect repeated keys into lists while preserving their encounter order.",
+          "Regression constraint: Continue decoding a simple single key-value pair."
+        ],
+        "observable_omission": "The contract specifies list shape for repeated keys but never requires list shape for a single occurrence."
+      },
+      "failed_mapping_directions": [
+        "checker_to_public"
+      ],
+      "defect_classification": "unstated_single_key_list_semantics",
+      "expected": "FLAG",
+      "observed": "FLAG",
+      "replay_explanation": "Inspect the asserted expected values at checker lines 11, 12, and 14, then search the hash-locked contract for a rule that single occurrences must be lists. Only repeated keys receive that rule, so the single-key list assertion has no public source."
+    },
+    {
+      "task_id": "feature-05",
+      "artifacts": {
+        "contract": {
+          "path": "evals/m2/coder-beneficial-sensitivity/feature-05/contract.md",
+          "sha256": "31a36c42288ee070fe96f3a43fd705597592da15bccbf300dfab38572b4cf9b2"
+        },
+        "checker": {
+          "path": "evals/m2/coder-beneficial-sensitivity/feature-05/check.py",
+          "sha256": "40ce7c194d632c9014e380b658b097c02f187589e421c08904ab4b29660ef6a6"
+        }
+      },
+      "checker_assertion": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/feature-05/check.py:11",
+          "evals/m2/coder-beneficial-sensitivity/feature-05/check.py:12"
+        ],
+        "symbols": [
+          "r1",
+          "r2"
+        ],
+        "demanded_behavior": "The dash row uses plus signs at column boundaries and the emitted final column retains width-padding spaces."
+      },
+      "public_contract": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/feature-05/contract.md:5",
+          "evals/m2/coder-beneficial-sensitivity/feature-05/contract.md:6"
+        ],
+        "relevant_text": [
+          "Implement render_table(rows, columns) with a header, a dash separator row, and one row per mapping, using columns in the supplied order.",
+          "Size each column to its widest stringified value and left-align cells with ' | ' separators."
+        ],
+        "observable_omission": "The contract never defines a -+- dash-row joiner or requires terminal padding bytes after the final cell."
+      },
+      "failed_mapping_directions": [
+        "checker_to_public"
+      ],
+      "defect_classification": "unstated_exact_table_serialization",
+      "historical_change_context": {
+        "timeout_change": "The subprocess timeout changed from 4 to 10 seconds between the provisional and frozen checker revisions.",
+        "substantive_assertions_unchanged": "The r1 and r2 exact-format assertions remained unchanged.",
+        "flag_basis": "This FLAG is based only on the substantive r1 and r2 demands, not on timeout behavior."
+      },
+      "expected": "FLAG",
+      "observed": "FLAG",
+      "replay_explanation": "Compare the literal expected strings at checker lines 11 and 12 with contract lines 5 and 6. The checker rejects publicly permitted separator-row and terminal-padding representations. The unrelated historical timeout increase does not supply those missing public rules."
+    },
+    {
+      "task_id": "integration-01",
+      "artifacts": {
+        "contract": {
+          "path": "evals/m2/coder-beneficial-sensitivity/integration-01/contract.md",
+          "sha256": "090edb0aabb0989591a6587e4cdc33b08835e9a490e72d1896fd6a2ad7c49a96"
+        },
+        "checker": {
+          "path": "evals/m2/coder-beneficial-sensitivity/integration-01/check.py",
+          "sha256": "2460e2aafe006a9d972521d224bae94768f9fe9ac5eec6066538c0e505386f9c"
+        }
+      },
+      "checker_assertion": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/integration-01/check.py:9"
+        ],
+        "symbols": [
+          "r1"
+        ],
+        "demanded_behavior": "Standard input [1, 2, 3] must emit the exact bytes {\"total\":6} followed by one newline, fixing both the key name and compact separators."
+      },
+      "public_contract": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/integration-01/contract.md:5",
+          "evals/m2/coder-beneficial-sensitivity/integration-01/contract.md:9"
+        ],
+        "relevant_text": [
+          "When run, read a JSON array from standard input and write exactly one JSON object containing its numeric total.",
+          "Regression constraint: Accept surrounding whitespace and preserve integer totals as JSON integers."
+        ],
+        "observable_omission": "The contract names neither the object's key nor compact JSON separators; semantically equivalent JSON with ordinary spaces is permitted."
+      },
+      "failed_mapping_directions": [
+        "checker_to_public"
+      ],
+      "defect_classification": "unstated_json_key_and_byte_serialization",
+      "expected": "FLAG",
+      "observed": "FLAG",
+      "replay_explanation": "Read the byte equality at checker line 9 and search the contract for the literal key total or a compact-serialization rule. Neither exists, so the exact-byte assertion adds two functional requirements."
+    },
+    {
+      "task_id": "integration-05",
+      "artifacts": {
+        "contract": {
+          "path": "evals/m2/coder-beneficial-sensitivity/integration-05/contract.md",
+          "sha256": "79251de1e33cff2877d385c562c75f360ae70576e72d231578daa893d2a8a9cf"
+        },
+        "checker": {
+          "path": "evals/m2/coder-beneficial-sensitivity/integration-05/check.py",
+          "sha256": "cf92e1bec4f61534629d59bce0e8e7c5637a7185b4e59007715103378489fe21"
+        }
+      },
+      "checker_assertion": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/integration-05/check.py:11"
+        ],
+        "symbols": [
+          "r3"
+        ],
+        "demanded_behavior": "Verification succeeds after the manifest is written inside the directory being scanned, which requires silently excluding that manifest from the current scan."
+      },
+      "public_contract": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/integration-05/contract.md:5",
+          "evals/m2/coder-beneficial-sensitivity/integration-05/contract.md:6",
+          "evals/m2/coder-beneficial-sensitivity/integration-05/contract.md:7"
+        ],
+        "relevant_text": [
+          "Given a directory, emit sorted lines of lowercase SHA-256, two spaces, and each relative POSIX file path.",
+          "Include regular files recursively but exclude hidden files and anything beneath a hidden directory.",
+          "With --verify MANIFEST DIRECTORY, exit 0 only when the current manifest matches exactly, otherwise exit 1 with a concise stderr message."
+        ],
+        "observable_omission": "The manifest is a non-hidden regular file inside DIRECTORY, yet the contract states no manifest self-exclusion and otherwise says to include regular files recursively."
+      },
+      "failed_mapping_directions": [
+        "checker_to_public"
+      ],
+      "defect_classification": "unstated_manifest_self_exclusion",
+      "expected": "FLAG",
+      "observed": "FLAG",
+      "replay_explanation": "Follow checker line 11 in order: it scans the directory, writes that output to d/manifest, then verifies d/manifest against d. A literal recursive scan now includes the new file and cannot equal the earlier manifest, so passing requires an exclusion absent from contract lines 5 through 7."
+    },
+    {
+      "task_id": "refactor-data-01",
+      "artifacts": {
+        "contract": {
+          "path": "evals/m2/coder-beneficial-sensitivity/refactor-data-01/contract.md",
+          "sha256": "d5c45f281354492a7b089759e8b3831d4c8b24edbf12c19fb380337c8a566487"
+        },
+        "checker": {
+          "path": "evals/m2/coder-beneficial-sensitivity/refactor-data-01/check.py",
+          "sha256": "80de2b5502c8998b443b6b8fa9fd2788a5b8c1e7c38db6e3dab881b6465b839a"
+        }
+      },
+      "checker_assertion": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/refactor-data-01/check.py:12"
+        ],
+        "symbols": [
+          "g"
+        ],
+        "demanded_behavior": "Mutating a nested list through a returned record must not mutate the corresponding nested input object, requiring recursive copy isolation."
+      },
+      "public_contract": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/refactor-data-01/contract.md:9"
+        ],
+        "relevant_text": [
+          "Regression constraint: Return independent dictionaries and do not mutate the input sequence or its records."
+        ],
+        "observable_omission": "The contract requires new dictionary objects but does not state that nested mutable values must also be recursively copied."
+      },
+      "failed_mapping_directions": [
+        "checker_to_public"
+      ],
+      "defect_classification": "unstated_nested_deep_copy_isolation",
+      "expected": "FLAG",
+      "observed": "FLAG",
+      "replay_explanation": "Checker line 12 mutates a nested list through the output and then compares the original input. Contract line 9 names independent dictionaries but never specifies copy depth, so the checker rejects the permitted shallow dictionary-copy interpretation."
+    },
+    {
+      "task_id": "refactor-data-02",
+      "artifacts": {
+        "contract": {
+          "path": "evals/m2/coder-beneficial-sensitivity/refactor-data-02/contract.md",
+          "sha256": "1dc4e54aad9b32b8bd6e9cfceffc4ab0569b05c9ac88353ad9fb75ecd5d51dc6"
+        },
+        "checker": {
+          "path": "evals/m2/coder-beneficial-sensitivity/refactor-data-02/check.py",
+          "sha256": "4df3b3ec6a710e789254bdb06b63f532bc7511d41779cda29f067c98553e1f27"
+        }
+      },
+      "checker_assertion": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/refactor-data-02/check.py:12"
+        ],
+        "symbols": [
+          "g"
+        ],
+        "demanded_behavior": "Mutating a nested list through a grouped output record must not mutate the corresponding nested input object, requiring recursive copy isolation."
+      },
+      "public_contract": {
+        "locators": [
+          "evals/m2/coder-beneficial-sensitivity/refactor-data-02/contract.md:9"
+        ],
+        "relevant_text": [
+          "Regression constraint: Return copied record dictionaries and leave the input and its ordering unchanged."
+        ],
+        "observable_omission": "The contract requires copied dictionary objects but does not state that nested mutable values must also be recursively copied."
+      },
+      "failed_mapping_directions": [
+        "checker_to_public"
+      ],
+      "defect_classification": "unstated_nested_deep_copy_isolation_duplicate",
+      "duplicate_pattern_of": "refactor-data-01",
+      "expected": "FLAG",
+      "observed": "FLAG",
+      "replay_explanation": "Checker line 12 repeats refactor-data-01's nested-list mutation. Contract line 9 says copied record dictionaries but leaves copy depth unspecified, so the same checker-to-public mapping fails independently in this duplicated trap."
+    }
+  ],
+  "aggregate": {
+    "expected_task_count": 6,
+    "observed_task_count": 6,
+    "exact_task_set_match": true,
+    "expected_flag_count": 6,
+    "observed_flag_count": 6,
+    "missed_task_ids": [],
+    "unexpected_task_ids": [],
+    "result": "PASS"
+  },
+  "resources": {
+    "record_implementer_sessions": 1,
+    "task_author_sessions": 0,
+    "checker_author_sessions": 0,
+    "blind_solver_sessions": 0,
+    "subject_calls": 0,
+    "model_calls": 0,
+    "api_calls": 0,
+    "network_calls": 0,
+    "treatment_calls": {
+      "P": 0,
+      "H": 0,
+      "A": 0,
+      "A/A": 0
+    },
+    "authoritative_calls": 0
+  },
+  "limitations": [
+    "This deterministic regression establishes only that the proposed static admission trace flags these six exact historical pairs.",
+    "It does not estimate future checker-defect prevalence, future task difficulty, target-model success rates, treatment effects, feasibility, or power."
+  ]
+}

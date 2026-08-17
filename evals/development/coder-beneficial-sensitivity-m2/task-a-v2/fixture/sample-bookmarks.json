@@ -1,0 +1,12 @@
+[
+  {
+    "title": "Python documentation",
+    "url": "https://docs.python.org/3/",
+    "labels": ["reference", "work"]
+  },
+  {
+    "title": "City park map",
+    "url": "https://example.test/park",
+    "labels": ["personal"]
+  }
+]
