@@ -1,5 +1,9 @@
 # Repository instructions
 
+## Product definition
+
+We are building a controlled benchmark and regression system for coder.md: it runs the same LLM on a validated suite of coding tasks with no coder.md, with the current coder.md, and with a candidate replacement, then uses objective checkers to determine whether coder.md beats the bare model and whether the candidate beats the incumbent without regressions. The finished product is the reusable task suite, runner, checkers, preserved evidence, and comparison report needed to make reliable keep-or-replace decisions.
+
 This repository evaluates instruction files. It is not an instruction optimizer yet.
 
 - `coder-outcome-evaluator-v2-implementation-plan.md` governs only its historical frozen feasibility-pilot evidence; `CODER_BENEFICIAL_SENSITIVITY_M2_IMPLEMENTATION_PLAN.md` is the sole active Milestone 2 authority, and no competing active plan may be created.
