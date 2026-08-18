@@ -694,22 +694,18 @@ The objective is to discover a repeatable omission-sensitive task recipe before
 building another pool. This development is neither an M2 verdict nor an
 instruction-file comparison.
 
-This plan self-authorizes no action. One bounded user authorization may cover one
-six-task development cohort, its 18 planned usable attempts, and at most two
-eligible infrastructure-only replacement launches per author's frozen two-task
-allocation, six cohort-wide; no user checkpoint occurs inside the cohort. It
-specifies exact roles, paths/churn caps, evidence root,
-total launch cap, and one intended-confirmation target model/runtime
-configuration for the cohort: model/reasoning effort,
-harness/wrapper bytes, timeout, tools, sandbox/network, CLI/runtime, prompt
-construction, and repository preparation. Frozen mechanical rules advance the
-cohort without new chat. Any outcome-relevant configuration change needs new
-authority and returns work offline while preserving its evidence. No second
-cohort, expansion, or live treatment comparison is automatic; each needs new
-authority.
+This plan self-authorizes no action. One bounded user authorization may cover the
+rolling campaign below: at most 12 candidates, 36 planned usable attempts, and an
+explicit infrastructure-replacement launch cap. It fixes roles, writable paths
+and churn, evidence root, starting commit, runtime/model, wrapper, tools,
+sandbox/network, prompt construction, and repository preparation. Each candidate
+runs by a separate invocation, but frozen mechanical transitions need no chat
+checkpoint. Any outcome-relevant expansion or configuration change needs new
+authority and preserves all evidence.
 
-Task A v2/v3 evidence stays immutable, non-transferable, and outside any resumed
-lineage; neither reached a usable subject attempt.
+Task A v2/v3 and `scout-v1` bytes and evidence stay immutable and outside the new
+lineage. `scout-v1` is descriptive, not calibrating: post-run review verified
+shared scope-routing defects and hidden checker specificity in its tasks.
 
 ### 13.2 Phase A: repeatable engineering smoke
 
@@ -719,39 +715,24 @@ wrapper/checker invocation, capture, evidence writing, and deterministic replay.
 Repair and repeat; pre-exposure failures consume no version or attempt. Preserve
 reproducible diagnostics.
 
-### 13.3 Phase B: one six-task scout cohort
+### 13.3 Phase B: rolling discovery and replication
 
-A cohort has exactly six disposable tasks. Three isolated task authors/designers
-have distinct author IDs and are each responsible for exactly two distinct,
-different-family tasks. Design may proceed concurrently, but only one filesystem
-editor acts at a time. Each task receives fresh contract-only validation from a
-non-author who submits an implementation from its public packet before inspecting
-its checker or gates. No author or validator receives current or candidate
-`CODER.md` content or outcomes.
+Keep two read-only producer lanes and one stable gatekeeper/evaluator lane active.
+Each producer holds at most one unexposed draft and blind-solves the other's public
+packet before checker access. The gatekeeper is the sole filesystem editor and
+checker-aware evaluator. Rotate a producer identity after at most two exposed
+candidates; do not rotate the gatekeeper merely to advance the queue. Runner,
+review, permission, or governance work must not displace both producer lanes.
 
-The six-task cohort is the live decision cadence, never the production ceiling.
-While an authorized task target remains unmet, orchestration reserves two
-concurrent task-design producer lanes and one immediate integration/evaluation
-lane. The one-filesystem-editor rule still applies: designers work read-only or
-return candidate content in messages, and the editor admits completed candidates
-to an unexposed ready queue as soon as they are ready. Authors and contract-only
-validators rotate as needed so every live cohort still has three distinct authors
-with two tasks each and every task receives fresh non-author validation before
-that validator inspects its checker or gates.
-
-Permission waits, runner work, review, and governance must not displace both
-producer lanes. While one cohort freezes or runs, production continues only for
-separately authorized, unexposed candidates. Findings may inform those candidates,
-never alter exposed or frozen tasks. Missing path, churn, or live-call authority
-must be surfaced and resolved at the earliest known point, before it idles the
-pipeline; no live call or unauthorized expansion follows automatically.
-
-Before any null outcome, freeze one concise versioned generation recipe and SHA-256
-defining requirement count/dispersion, primary/secondary structure, task-family
-criteria, and subject packet/wrapper construction. All six tasks use the same
-recipe bytes/hash. All six must pass the offline gate below and freeze before any
-null attempt launches. Any recipe change returns the whole cohort offline without
-erasing evidence.
+Admit, freeze, and test each ready task immediately; never wait for a cohort. A
+task has 8--12 requirements and a hashed task-independent abstract recipe. Before
+exposure, capture the non-author blind submission, then record checker-aware
+semantic clearance establishing that (a) every scored requirement is in
+`.issue-contract.md` or unambiguously incorporated by it, (b) every checker
+input, value, path, literal, and score-affecting constraint derives from public
+text, and (c) neither hidden specificity nor scope-routing contradiction exists.
+Absent or failed clearance rejects admission; code validates the reviewed record's
+fields and hashes but does not claim to infer semantic equivalence.
 
 Before the first target launch, freeze each requirement's mapped assertions,
 PASS predicate, and observable-omission predicate, plus regression/integrity pass
@@ -771,27 +752,24 @@ offline gate:
 4. Two fresh-copy replays produce identical canonical results and leave all
    protected inputs unchanged.
 
+Gate failures are retryable before target exposure. Freeze each task's public
+packet and checker together after it passes; do not patch or rerun a revised
+version within the campaign.
+
+Run exactly three consecutive usable null attempts per admitted task in fresh
+workspaces with zero-byte `CODER.md`. Attempt-one/two feedback is provisional and
+may affect only later unexposed drafts. After attempt three, the gatekeeper records
+a create-once, launch-hash-bound semantic/fidelity disposition. The three-attempt
+label and that disposition together control transition; no next launch or pass is
+allowed before it is consumed. Scoreable poor outcomes, failures, and timeouts are
+usable and never retried. Only the frozen infrastructure predicate permits
+replacement within the authorized cap. Preserve every denominator and raw record.
+
 A requirement is PASS iff all mapped assertions pass. An attempt is RESOLVED iff
-all requirements and regression/integrity checks pass. A valid nonresolution is
-omission-only iff every failed requirement fires its frozen omission predicate
-and no regression/integrity failure occurs; every other valid failure is
-wrong-failure-mode.
-
-Gate failures are retryable before target exposure. Freeze every task's public
-packet and checker together after all six pass; do not patch or rerun a revised
-version within the cohort.
-
-Run three usable null-treatment target attempts per task in fresh workspaces,
-each with a present zero-byte `CODER.md`: exactly 18 for the cohort. Usable means
-captured subject output and checker evidence suffice for frozen classification.
-At most two replacement launches per author's frozen two-task allocation, six
-cohort-wide, are allowed only when the frozen infrastructure predicate fires
-before usable output. These allocations affect replacement capacity only, not
-`SCOUT_PASS`. Preserve raw evidence and reason. A timeout is usable only when
-frozen evidence mechanically scores it; an
-unscoreable timeout is replaceable only under that preceding rule. Poor solutions,
-failed checks, and other scoreable outcomes are usable and never selectively
-retried.
+all requirements plus regression, integrity, and environment checks pass. A valid
+nonresolution is omission-only iff every failed requirement fires its frozen
+omission predicate and no regression/integrity failure occurs; every other valid
+failure is wrong-failure-mode.
 
 For R requirements, q is passed requirement observations divided by 3R, and s is
 the RESOLVED count across three usable attempts. Apply labels in order:
@@ -804,30 +782,29 @@ the RESOLVED count across three usable attempts. Apply labels in order:
 4. ceiling: s is 3, or s is 1 or 2 and q > 0.90;
 5. floor: s is 0, or s is 1 or 2 and q < 0.55.
 
-A single isolated invalid task is excluded from the witness set and preserved; it
-does not erase valid neighbors, permit changes to an exposed version, or erase
-evidence.
-
-`SCOUT_PASS` holds iff, after all 18 usable attempts, there exists a pair of
-promising tasks with different author IDs and different family IDs, neither
-witness has a checker, traceability, determinism, integrity, or evidence defect,
-and no checker-fidelity root cause repeats in two or more cohort tasks or
-implicates the shared recipe or admission process. Every other outcome is
-`SCOUT_NO_PASS` and returns work offline. `SCOUT_PASS` proves replicated existence
-only: it is not a yield, power, final-suite-readiness, treatment-effect, or M2
-sensitivity verdict, and it authorizes no automatic second cohort or scaling.
+Exploration tests at most six candidates. A later unexposed candidate may use a
+new hashed recipe; the first checker-clean promising task freezes its abstract
+recipe and starts replication. Replication mechanically applies that recipe and
+admission gate to at most six fresh tasks. Replica producers receive only the
+recipe, not winner content or diagnostics. `ROLLING_PASS` requires a promising
+replica differing from the winner in both author and family. Six failures in
+either phase, any shared admission/recipe defect, or one fidelity root cause in
+two tasks yields `ROLLING_NO_PASS`; both outcomes stop automatically. Thus the
+campaign has at most 12 candidates and 36 planned usable attempts. A pass proves
+replicated existence only, not yield, power, suite readiness, treatment effect,
+or M2 sensitivity, and authorizes no scaling.
 
 ### 13.4 Evidence and confirmation boundary
 
-The cohort preserves one compact manifest covering authorization, roles,
-families, hashes, runtime, launches, and replacement reasons; raw subject/checker
-evidence; and one short summary. Create no per-role authorization or receipt
-forest.
+The compact manifest plus its hash-bound candidate records collectively cover
+authorization, roles, families, hashes, runtime, launches, and replacement
+reasons; preserve raw subject/checker evidence and one short summary. Create no
+per-role authorization or receipt forest.
 
 All exposed or outcome-informed prototypes and authors are development-only.
 Discovery uses only null/no-coder; current and candidate files stay hidden and
-untested. `SCOUT_PASS` may inform separately authorized fresh development using
-measured admission/promising evidence; it never authorizes another cohort or
+untested. `ROLLING_PASS` may inform separately authorized fresh development using
+measured admission/promising evidence; it never authorizes another campaign or
 final scaling. Base final pool size, feasibility, and power on measured task-level
 evidence, not inherited rate assumptions.
 

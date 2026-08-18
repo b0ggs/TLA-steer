@@ -39,6 +39,16 @@ LIVE_LAUNCH_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-live-launch-v1"
 SCOUT_REPORT_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-scout-report-v1"
 FIDELITY_CLEARANCE_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-fidelity-clearance-v1"
 LAUNCH_FIDELITY_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-launch-fidelity-v1"
+ROLLING_CANDIDATE_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-candidate-v1"
+ROLLING_CLEARANCE_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-semantic-clearance-v1"
+ROLLING_AUTHORIZATION_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-authorization-v1"
+ROLLING_STATE_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-state-v1"
+ROLLING_TASK_REPORT_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-task-report-v1"
+ROLLING_RECORD_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-record-v1"
+ROLLING_MANIFEST_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-manifest-v1"
+ROLLING_HEADER_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-header-v1"
+ROLLING_DISPOSITION_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-disposition-v1"
+ROLLING_SUMMARY_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-rolling-summary-v1"
 
 FAKE_SUBJECT_SOURCE = '''\
 from __future__ import annotations
@@ -1244,6 +1254,533 @@ def classify_scout(
     }
 
 
+_ROLLING_BINDING_KEYS = {"id", "author_id", "family_id", "requirements", "recipe_sha256",
+    "task_sha256", "public_tree_sha256", "checker_sha256", "admission_sha256", "reference_sha256", "issue_contract_sha256", "blind_submission_sha256"}
+def _rolling_binding(value: Any) -> dict[str, Any]:
+    binding = _strict(value, _ROLLING_BINDING_KEYS, "rolling task binding")
+    for key in ("id", "author_id", "family_id"):
+        if not isinstance(binding[key], str) or not binding[key]:
+            raise ScoutError(f"invalid rolling {key}")
+    requirements = binding["requirements"]
+    if (
+        not isinstance(requirements, list) or not 8 <= len(requirements) <= 12
+        or any(not isinstance(item, str) or not item for item in requirements)
+        or len(set(requirements)) != len(requirements)
+    ):
+        raise ScoutError("rolling tasks require 8 through 12 unique requirements")
+    for key in _ROLLING_BINDING_KEYS - {"id", "author_id", "family_id", "requirements"}:
+        _require_sha(binding[key], key)
+    return binding
+def validate_rolling_semantic_clearance(binding: dict[str, Any], clearance: dict[str, Any] | None, *, phase: str) -> dict[str, Any]:
+    """Mechanically bind a checker-aware human clearance; never infer semantics."""
+    binding = _rolling_binding(binding)
+    keys = {"schema", "status", "task_id", "author_id", "phase", "blind_validator_id", "semantic_reviewer_id", "clearance_stage", "task_sha256",
+        "public_tree_sha256", "checker_sha256", "admission_sha256", "issue_contract_sha256", "blind_submission_sha256", "recipe_sha256",
+        "scored_requirement_ids", "all_scored_requirements_in_scope", "all_checker_constraints_public", "hidden_specificity_absent",
+        "scope_routing_contradictions_absent", "recipe_task_independent", "mechanical_admission_only", "producer_received_only_frozen_recipe"}
+    if not isinstance(clearance, dict):
+        raise ScoutError("rolling semantic clearance is required")
+    _strict(clearance, keys, "rolling semantic clearance")
+    bound = {"task_sha256", "public_tree_sha256", "checker_sha256", "admission_sha256", "issue_contract_sha256", "blind_submission_sha256", "recipe_sha256"}
+    booleans = {"all_scored_requirements_in_scope", "all_checker_constraints_public", "hidden_specificity_absent", "scope_routing_contradictions_absent",
+        "recipe_task_independent", "mechanical_admission_only", "producer_received_only_frozen_recipe"}
+    if (
+        clearance["schema"] != ROLLING_CLEARANCE_SCHEMA
+        or clearance["status"] != "PASS"
+        or clearance["task_id"] != binding["id"]
+        or clearance["author_id"] != binding["author_id"]
+        or clearance["phase"] != phase
+        or clearance["blind_validator_id"] == binding["author_id"]
+        or clearance["semantic_reviewer_id"] == binding["author_id"]
+        or not all(isinstance(clearance[key], str) and clearance[key] for key in (
+            "blind_validator_id", "semantic_reviewer_id"
+        ))
+        or clearance["clearance_stage"] != "after-blind-submission-before-subject-exposure"
+        or any(clearance[key] != binding[key] for key in bound)
+        or clearance["scored_requirement_ids"] != binding["requirements"]
+        or any(type(clearance[key]) is not bool for key in booleans)
+        or not all(clearance[key] for key in booleans - {
+            "mechanical_admission_only", "producer_received_only_frozen_recipe"
+        })
+        or (phase == "replication" and not (
+            clearance["mechanical_admission_only"]
+            and clearance["producer_received_only_frozen_recipe"]
+        ))
+    ):
+        raise ScoutError("rolling semantic clearance failed or drifted")
+    return clearance
+def _rolling_launch_clearance(attempt: dict[str, Any]) -> dict[str, Any]:
+    clearance = attempt.get("fidelity_clearance")
+    keys = {"schema", "static_clearance_sha256", "static_status", "task_id", "checker_binding_passed", "checker_workspace_unchanged",
+        "protected_workspace_passed", "task_fidelity_passed", "root_cause", "shared_recipe_or_admission_defect"}
+    if not isinstance(clearance, dict) or set(clearance) != keys:
+        raise ScoutError("missing or malformed rolling launch fidelity clearance")
+    digest = clearance["static_clearance_sha256"]
+    passed = clearance["task_fidelity_passed"]
+    if (
+        clearance["schema"] != LAUNCH_FIDELITY_SCHEMA
+        or clearance["static_status"] != "PASS"
+        or clearance["task_id"] != attempt.get("task_id")
+        or not isinstance(digest, str) or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+        or any(type(clearance[key]) is not bool for key in (
+            "checker_binding_passed", "checker_workspace_unchanged",
+            "protected_workspace_passed", "task_fidelity_passed",
+            "shared_recipe_or_admission_defect",
+        ))
+        or passed != all(clearance[key] for key in (
+            "checker_binding_passed", "checker_workspace_unchanged",
+            "protected_workspace_passed",
+        ))
+        or (clearance["root_cause"] is None) != passed
+        or (not passed and (not isinstance(clearance["root_cause"], str) or not clearance["root_cause"]))
+    ):
+        raise ScoutError("invalid rolling launch fidelity clearance")
+    return clearance
+def classify_rolling_task(binding: dict[str, Any], attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Classify one task only after its three consecutive usable attempts."""
+    binding = _rolling_binding(binding)
+    if (
+        len(attempts) != 3
+        or [item.get("task_id") for item in attempts] != [binding["id"]] * 3
+        or any(item.get("usable") is not True for item in attempts)
+    ):
+        raise ScoutError("rolling classification requires exactly three contiguous usable attempts")
+    clearances = [_rolling_launch_clearance(item) for item in attempts]
+    if len({item["static_clearance_sha256"] for item in clearances}) != 1:
+        raise ScoutError("rolling attempts do not share one static clearance")
+    results = [item.get("checker_result") for item in attempts]
+    if any(not isinstance(result, dict) for result in results):
+        raise ScoutError("rolling usable attempt lacks checker evidence")
+    for result in results:
+        requirements, regressions = _checker_sections(result)
+        if list(requirements) != binding["requirements"]:
+            raise ScoutError("rolling checker requirement identity drift")
+        resolved = all(item["passed"] for item in (*requirements.values(), *regressions.values())) and result["integrity"]["passed"] and result["environment"]["passed"]
+        if result["resolved"] != resolved:
+            raise ScoutError("rolling RESOLVED is not the checker conjunction")
+    resolved = sum(bool(result["resolved"]) for result in results)
+    passed = sum(item["passed"] for result in results for item in result["requirements"].values())
+    total = 3 * len(binding["requirements"])
+    q = passed / total
+    wrong = any(not result["resolved"] and not _omission_only(result) for result in results)
+    invalid = any(item.get("valid") is not True for item in attempts) or any(
+        not item["task_fidelity_passed"] or item["shared_recipe_or_admission_defect"]
+        for item in clearances
+    )
+    if invalid:
+        label = "invalid"
+    elif wrong:
+        label = "wrong-failure-mode"
+    elif resolved in (1, 2) and 0.55 <= q <= 0.90:
+        label = "promising"
+    elif resolved == 3 or (resolved in (1, 2) and q > 0.90):
+        label = "ceiling"
+    else:
+        label = "floor"
+    roots = sorted({item["root_cause"] for item in clearances if item["root_cause"]})
+    return {
+        "schema": ROLLING_TASK_REPORT_SCHEMA, "task_id": binding["id"],
+        "label": label, "q": q, "resolved_count": resolved,
+        "passed_requirement_observations": passed,
+        "total_requirement_observations": total, "usable_attempts": 3,
+        "all_nonresolutions_omission_only": not wrong,
+        "fidelity_defect": invalid, "fidelity_root_causes": roots,
+        "shared_recipe_or_admission_defect": any(
+            item["shared_recipe_or_admission_defect"] for item in clearances
+        ),
+    }
+def new_rolling_state(campaign_id: str) -> dict[str, Any]:
+    if not isinstance(campaign_id, str) or not campaign_id:
+        raise ScoutError("rolling campaign id is required")
+    return {
+        "schema": ROLLING_STATE_SCHEMA, "campaign_id": campaign_id,
+        "status": "EXPLORATION", "candidates": [], "exploration_count": 0,
+        "replication_count": 0, "planned_usable_attempts": 0,
+        "usable_attempts": 0, "winner_task_id": None,
+        "winning_recipe_sha256": None, "witness_task_ids": [],
+        "fidelity_root_causes": {},
+    }
+def advance_rolling_campaign(state: dict[str, Any], binding: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """Pure bounded exploration/replication transition; preserves the denominator."""
+    binding = _rolling_binding(binding)
+    required_state = set(new_rolling_state("shape"))
+    if not isinstance(state, dict) or set(state) != required_state or state.get("schema") != ROLLING_STATE_SCHEMA:
+        raise ScoutError("malformed rolling campaign state")
+    if state["status"] not in {"EXPLORATION", "REPLICATION"}:
+        raise ScoutError("rolling campaign is terminal")
+    if report.get("schema") != ROLLING_TASK_REPORT_SCHEMA or report.get("task_id") != binding["id"] or report.get("usable_attempts") != 3:
+        raise ScoutError("rolling task report does not bind the candidate")
+    if binding["id"] in {item["task_id"] for item in state["candidates"]}:
+        raise ScoutError("duplicate or already exposed rolling candidate")
+    if sum(item["author_id"] == binding["author_id"] for item in state["candidates"]) >= 2:
+        raise ScoutError("producer identity exceeded two exposed candidates")
+    phase = "exploration" if state["status"] == "EXPLORATION" else "replication"
+    winner = next((item for item in state["candidates"] if item["task_id"] == state["winner_task_id"]), None)
+    if phase == "replication" and (
+        binding["recipe_sha256"] != state["winning_recipe_sha256"]
+        or winner is None
+        or binding["author_id"] == winner["author_id"]
+        or binding["family_id"] == winner["family_id"]
+    ):
+        raise ScoutError("replica must use the frozen recipe and differ in author and family")
+    candidates = list(state["candidates"])
+    diagnosis = {
+        "task_id": binding["id"], "phase": phase, "author_id": binding["author_id"],
+        "family_id": binding["family_id"], "recipe_sha256": binding["recipe_sha256"],
+        "label": report["label"], "q": report["q"],
+        "resolved_count": report["resolved_count"],
+        "fidelity_defect": report["fidelity_defect"],
+        "fidelity_root_causes": report["fidelity_root_causes"],
+        "shared_recipe_or_admission_defect": report["shared_recipe_or_admission_defect"],
+    }
+    candidates.append(diagnosis)
+    roots = dict(state["fidelity_root_causes"])
+    for root in report["fidelity_root_causes"]:
+        roots[root] = int(roots.get(root, 0)) + 1
+    result = {
+        **state, "candidates": candidates,
+        "exploration_count": state["exploration_count"] + (phase == "exploration"),
+        "replication_count": state["replication_count"] + (phase == "replication"),
+        "planned_usable_attempts": state["planned_usable_attempts"] + 3,
+        "usable_attempts": state["usable_attempts"] + 3,
+        "fidelity_root_causes": roots,
+    }
+    if len(candidates) > 12 or result["planned_usable_attempts"] > 36:
+        raise ScoutError("rolling campaign cap exceeded")
+    shared = report["shared_recipe_or_admission_defect"] or any(count >= 2 for count in roots.values())
+    clean_promising = report["label"] == "promising" and not report["fidelity_defect"]
+    if shared:
+        result["status"] = "ROLLING_NO_PASS"
+    elif phase == "exploration" and clean_promising:
+        result["status"] = "REPLICATION"
+        result["winner_task_id"] = binding["id"]
+        result["winning_recipe_sha256"] = binding["recipe_sha256"]
+    elif phase == "exploration" and result["exploration_count"] == 6:
+        result["status"] = "ROLLING_NO_PASS"
+    elif phase == "replication" and clean_promising:
+        result["status"] = "ROLLING_PASS"
+        result["witness_task_ids"] = [state["winner_task_id"], binding["id"]]
+    elif phase == "replication" and result["replication_count"] == 6:
+        result["status"] = "ROLLING_NO_PASS"
+    return result
+def _rolling_manifest(authorization: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": ROLLING_MANIFEST_SCHEMA, "campaign_id": authorization["campaign_id"],
+        "authorization_sha256": authorization["authorization_sha256"],
+        "gatekeeper_id": authorization["gatekeeper_id"],
+        "role_schedule": authorization["role_schedule"],
+    }
+def _rolling_attempt(record: dict[str, Any], header: dict[str, Any]) -> dict[str, Any]:
+    binding = header["binding"]
+    static_base = {"schema": FIDELITY_CLEARANCE_SCHEMA, "status": "PASS", "qualification": {"sha256": header["qualification_sha256"]}, "admission": {"semantic_clearance_sha256": header["clearance"]["sha256"]}, "shared_recipe_or_admission_defect": False}
+    static = {**static_base, "clearance_sha256": sha256_bytes(canonical(static_base))}
+    if (
+        record.get("schema") != LIVE_LAUNCH_SCHEMA or record.get("task_id") != binding["id"]
+        or record.get("author_id") != binding["author_id"] or record.get("family_id") != binding["family_id"]
+        or record.get("authorization_start_commit") != header["freeze"]["authorization_start_commit"]
+        or record.get("freeze_commit") != header["freeze"]["freeze_commit"]
+        or record.get("runtime") != header["execution"]["runtime"]
+        or record.get("sandbox") != header["execution"]["sandbox"]
+        or record.get("wrapper_sha256") != header["execution"]["wrapper"]["prompt_sha256"]
+        or record.get("fidelity", {}).get("static") != static
+        or record.get("fidelity", {}).get("launch", {}).get("static_clearance_sha256") != static["clearance_sha256"]
+    ):
+        raise ScoutError("rolling raw launch binding drift")
+    raw, hashes = record.get("raw"), record.get("raw_evidence_sha256")
+    checker = record.get("checker")
+    if not isinstance(raw, dict) or not isinstance(hashes, dict) or not isinstance(checker, dict) or any(hashes.get(key) != sha256_text(value) for key, value in raw.items()) or hashes.get("checker") != sha256_bytes(canonical(checker)):
+        raise ScoutError("rolling raw launch evidence hash drift")
+    infrastructure = classify_infrastructure_failure(
+        spawn_error=record["subject"]["spawn_error"], timed_out=record["subject"]["timed_out"],
+        returncode=record["subject"]["returncode"], events_jsonl=raw["events_jsonl"],
+        stderr=raw["stderr"], final_text=raw["final"],
+        changed_paths=record["git"]["changed_paths"], untracked=record["git"]["untracked"],
+    )
+    if infrastructure != record.get("infrastructure_failure") or record.get("usable") == infrastructure:
+        raise ScoutError("rolling launch usability/replacement drift")
+    fidelity = record.get("fidelity", {}).get("launch")
+    return {
+        "task_id": binding["id"], "usable": record["usable"],
+        "valid": record["usable"] and fidelity.get("task_fidelity_passed") is True,
+        "checker_result": checker.get("result"), "fidelity_clearance": fidelity,
+    }
+def _rolling_disposition(path: Path, header: dict[str, Any], launches: list[dict[str, Any]], evidence_directory: Path | None = None) -> dict[str, Any]:
+    value = _canonical_json_file(path, "rolling disposition")
+    _strict(value, {
+        "schema", "status", "task_id", "gatekeeper_id", "header_sha256",
+        "qualification_sha256", "launches", "semantic_fidelity_passed",
+        "root_cause", "shared_recipe_or_admission_defect",
+    }, "rolling disposition")
+    directory = evidence_directory or path.parent
+    expected = [{"path": f"launch-{index:03d}.json", "sha256": sha256_file(directory / f"launch-{index:03d}.json")} for index in range(1, len(launches) + 1)]
+    passed = value["semantic_fidelity_passed"]
+    if (
+        value["schema"] != ROLLING_DISPOSITION_SCHEMA or value["status"] != "PASS"
+        or value["task_id"] != header["binding"]["id"] or value["gatekeeper_id"] != header["roles"]["gatekeeper_id"]
+        or value["header_sha256"] != sha256_file(directory / "header.json")
+        or value["qualification_sha256"] != header["qualification_sha256"] or value["launches"] != expected
+        or type(passed) is not bool or type(value["shared_recipe_or_admission_defect"]) is not bool
+        or (passed and value["shared_recipe_or_admission_defect"])
+        or (value["root_cause"] is None) != passed or (not passed and (not isinstance(value["root_cause"], str) or not value["root_cause"]))
+    ):
+        raise ScoutError("rolling post-exposure disposition failed or drifted")
+    return value
+def verify_rolling_evidence(evidence_root: Path | str, authorization: dict[str, Any], repository_root: Path | None = None) -> dict[str, Any]:
+    root = Path(evidence_root)
+    if _canonical_json_file(root / "manifest.json", "rolling manifest") != _rolling_manifest(authorization) or any(path.is_symlink() for path in root.rglob("*")):
+        raise ScoutError("rolling manifest, path, or authorization drift")
+    directories = sorted(path for path in root.glob("candidate-*") if path.is_dir())
+    state, pending, replacements = new_rolling_state(authorization["campaign_id"]), None, 0
+    allowed_root = {"manifest.json", *(path.name for path in directories)}
+    if (root / "summary.json").exists():
+        allowed_root.add("summary.json")
+    if {path.name for path in root.iterdir()} != allowed_root:
+        raise ScoutError("rolling evidence contains missing, extra, or orphan paths")
+    for ordinal, directory in enumerate(directories, 1):
+        if directory.name != f"candidate-{ordinal:02d}" or pending is not None:
+            raise ScoutError("rolling candidate evidence is not contiguous")
+        header = _canonical_json_file(directory / "header.json", "rolling header")
+        qualification = directory / "qualification.json"
+        _strict(header, {"schema", "ordinal", "campaign_id", "phase", "binding", "candidate", "clearance", "qualification_sha256", "freeze", "roles", "execution", "authorization_sha256", "artifacts", "public"}, "rolling header")
+        freeze = _strict(header["freeze"], {"authorization_start_commit", "freeze_commit"}, "rolling freeze")
+        if freeze["authorization_start_commit"] != authorization["start_commit"] or not isinstance(freeze["freeze_commit"], str) or len(freeze["freeze_commit"]) != 40 or any(character not in "0123456789abcdef" for character in freeze["freeze_commit"]):
+            raise ScoutError("rolling freeze drift")
+        role = authorization["role_schedule"][ordinal - 1]
+        qualification_value = _canonical_json_file(qualification, "rolling qualification")
+        if (
+            header["schema"] != ROLLING_HEADER_SCHEMA or header["ordinal"] != ordinal
+            or header["campaign_id"] != authorization["campaign_id"] or header["authorization_sha256"] != authorization["authorization_sha256"]
+            or header["qualification_sha256"] != sha256_file(qualification) or qualification_value.get("status") != "PASS"
+            or header["roles"] != {**role, "gatekeeper_id": authorization["gatekeeper_id"]}
+            or sha256_bytes(canonical(header["execution"])) != authorization["execution_sha256"]
+            or header["binding"]["author_id"] != role["author_id"]
+            or header["phase"] != ("exploration" if state["status"] == "EXPLORATION" else "replication")
+            or header["candidate"] != {"path": header["candidate"].get("path"), "sha256": header["artifacts"].get(header["candidate"].get("path"))}
+            or header["clearance"] != {"path": header["clearance"].get("path"), "sha256": header["artifacts"].get(header["clearance"].get("path"))}
+        ):
+            raise ScoutError("rolling pre-exposure header drift")
+        _rolling_binding(header["binding"])
+        if repository_root is not None:
+            for relative, digest in header["artifacts"].items():
+                artifact = repository_root / _safe_relative(relative, "rolling artifact")
+                _reject_symlink_chain(artifact, repository_root)
+                if artifact.is_symlink() or not artifact.is_file() or sha256_file(artifact) != digest:
+                    raise ScoutError("prior exposed rolling artifact drift")
+            public = repository_root / _safe_relative(header["public"]["path"], "rolling public")
+            _reject_symlink_chain(public, repository_root)
+            if public.is_symlink() or any(path.is_symlink() for path in public.rglob("*")) or tree_sha256(public) != header["public"]["tree_sha256"]:
+                raise ScoutError("prior exposed rolling public packet drift")
+        launch_paths = sorted(directory.glob("launch-*.json"))
+        launches, attempts, inventory = [], [], []
+        for launch_ordinal, launch_path in enumerate(launch_paths, 1):
+            if launch_path.name != f"launch-{launch_ordinal:03d}.json":
+                raise ScoutError("rolling launch inventory is not contiguous")
+            launch = _canonical_json_file(launch_path, "rolling raw launch")
+            if launch.get("launch_ordinal") != launch_ordinal or len(attempts) == 3:
+                raise ScoutError("rolling launch ordinal or task-contiguity drift")
+            attempt = _rolling_attempt(launch, header)
+            launches.append(launch)
+            reason = None if attempt["usable"] else (launch["subject"]["spawn_error"] or {"type": "frozen-pre-output-infrastructure"})
+            inventory.append({"path": launch_path.name, "sha256": sha256_file(launch_path), "usable": attempt["usable"], "replacement_reason": reason})
+            if attempt["usable"]:
+                attempts.append(attempt)
+            else:
+                replacements += 1
+        if replacements > authorization["replacement_launch_cap"]:
+            raise ScoutError("rolling replacement launch cap exceeded")
+        disposition_path, result_path = directory / "disposition.json", directory / "result.json"
+        allowed = {"header.json", "qualification.json", *(path.name for path in launch_paths)} | ({"disposition.json"} if disposition_path.exists() else set()) | ({"result.json"} if result_path.exists() else set())
+        if {path.name for path in directory.iterdir()} != allowed or result_path.exists() != disposition_path.exists():
+            raise ScoutError("rolling candidate evidence set is incomplete or unexpected")
+        if not disposition_path.exists():
+            if len(attempts) == 3:
+                classify_rolling_task(header["binding"], attempts)
+            pending = {"directory": directory, "header": header, "attempts": attempts, "inventory": inventory}
+            continue
+        if len(attempts) != 3:
+            raise ScoutError("rolling disposition requires exactly three usable attempts")
+        disposition = _rolling_disposition(disposition_path, header, launches)
+        report = classify_rolling_task(header["binding"], attempts)
+        if not disposition["semantic_fidelity_passed"]:
+            report = {**report, "label": "invalid", "fidelity_defect": True,
+                      "fidelity_root_causes": sorted(set(report["fidelity_root_causes"] + [disposition["root_cause"]])),
+                      "shared_recipe_or_admission_defect": disposition["shared_recipe_or_admission_defect"]}
+        state = advance_rolling_campaign(state, header["binding"], report)
+        result = _canonical_json_file(result_path, "rolling result")
+        expected = {"schema": ROLLING_RECORD_SCHEMA, "ordinal": ordinal, "inventory": inventory, "report": report, "state_after": state, "disposition_sha256": sha256_file(disposition_path)}
+        if result != expected:
+            raise ScoutError("rolling result replay drift")
+    terminal = state["status"] in {"ROLLING_PASS", "ROLLING_NO_PASS"}
+    summary_path = root / "summary.json"
+    if terminal:
+        expected = {"schema": ROLLING_SUMMARY_SCHEMA, "manifest_sha256": sha256_file(root / "manifest.json"), "state": state}
+        if pending is not None or _canonical_json_file(summary_path, "rolling terminal summary") != expected:
+            raise ScoutError("rolling terminal summary drift")
+    elif summary_path.exists():
+        raise ScoutError("nonterminal rolling campaign has a summary")
+    return {"state": state, "pending": pending, "replacements": replacements}
+def _reject_symlink_chain(path: Path, root: Path) -> None:
+    try:
+        relative = path.absolute().relative_to(root.absolute())
+    except ValueError as exc:
+        raise ScoutError("rolling path escapes its repository") from exc
+    current = root.absolute()
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            raise ScoutError("symlinked rolling path or ancestor")
+def _paths_overlap(left: Path, right: Path) -> bool:
+    left, right = left.resolve(), right.resolve()
+    return left == right or left in right.parents or right in left.parents
+def _rolling_authorization(path: Path, candidate: dict[str, Any], root: Path, evidence: Path) -> dict[str, Any]:
+    authorization = _canonical_json_file(path, "rolling authorization")
+    _strict(authorization, {
+        "schema", "campaign_id", "start_commit", "task_root", "evidence_root",
+        "execution_sha256", "candidate_cap", "planned_usable_attempt_cap",
+        "replacement_launch_cap", "gatekeeper_id", "role_schedule",
+    }, "rolling authorization")
+    execution = {
+        "wrapper": candidate["wrapper"], "runtime": candidate["runtime"],
+        "sandbox": candidate["sandbox"],
+    }
+    roles = authorization["role_schedule"]
+    role_values = [item.get(key) for item in roles for key in ("author_id", "blind_validator_id")] if isinstance(roles, list) and all(isinstance(item, dict) and set(item) == {"author_id", "blind_validator_id"} for item in roles) else []
+    authors = [item["author_id"] for item in roles] if role_values else []
+    if (
+        authorization["schema"] != ROLLING_AUTHORIZATION_SCHEMA
+        or authorization["campaign_id"] != candidate["campaign_id"]
+        or authorization["start_commit"] != candidate["start_commit"]
+        or authorization["task_root"] != candidate["task_root"]
+        or authorization["evidence_root"] != evidence.relative_to(root).as_posix()
+        or authorization["execution_sha256"] != sha256_bytes(canonical(execution))
+        or authorization["candidate_cap"] != 12
+        or authorization["planned_usable_attempt_cap"] != 36
+        or type(authorization["replacement_launch_cap"]) is not int
+        or not 0 <= authorization["replacement_launch_cap"] <= 12
+        or not isinstance(authorization["gatekeeper_id"], str) or not authorization["gatekeeper_id"]
+        or authorization["gatekeeper_id"] in role_values
+        or not isinstance(roles, list) or len(roles) != 12 or len(role_values) != 24 or any(not isinstance(value, str) or not value for value in role_values)
+        or any(item["author_id"] == item["blind_validator_id"] for item in roles)
+        or any(item["blind_validator_id"] not in set(authors) for item in roles)
+        or any(authors.count(author) > 2 for author in set(authors))
+    ):
+        raise ScoutError("rolling authorization is missing, expanded, or drifted")
+    return {**authorization, "authorization_sha256": sha256_file(path)}
+def load_rolling_candidate(candidate_path: Path | str, clearance_path: Path | str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Bind one unexposed task and its externally reviewed semantic clearance."""
+    unresolved = Path(candidate_path).absolute()
+    root = _repository_root(unresolved)
+    _reject_symlink_chain(unresolved, root)
+    _reject_symlink_chain(Path(clearance_path).absolute(), root)
+    path = unresolved.resolve()
+    candidate = _canonical_json_file(path, "rolling candidate")
+    _strict(candidate, {
+        "schema", "campaign_id", "phase", "start_commit", "task_root", "recipe",
+        "wrapper", "runtime", "sandbox", "authorization_sha256",
+        "semantic_clearance_sha256", "task",
+    }, "rolling candidate")
+    if candidate["schema"] != ROLLING_CANDIDATE_SCHEMA or candidate["phase"] not in {"exploration", "replication"}:
+        raise ScoutError("wrong rolling candidate identity or phase")
+    binding = _rolling_binding(candidate["task"])
+    recipe = _strict(candidate["recipe"], {"path", "sha256"}, "rolling recipe")
+    recipe_path = _bound_file(root, recipe["path"], binding["recipe_sha256"], "rolling recipe")
+    if recipe["sha256"] != binding["recipe_sha256"] or _canonical_json_file(recipe_path, "rolling recipe").get("task_independent") is not True:
+        raise ScoutError("rolling recipe is not task-independent or bound")
+    wrapper = _strict(candidate["wrapper"], {"prompt_sha256", "source_path", "source_sha256"}, "rolling wrapper")
+    if wrapper["prompt_sha256"] != sha256_text(WRAPPER_PROMPT):
+        raise ScoutError("rolling wrapper drifted")
+    _bound_file(root, wrapper["source_path"], wrapper["source_sha256"], "rolling wrapper source")
+    if candidate["runtime"] != {
+        "type": "codex-cli", "model": "gpt-5.6-sol", "reasoning_effort": "high",
+        "timeout_seconds": 300, "approval_policy": "never", "ephemeral": True,
+        "max_parallel_runs": 1, "variant": "null-only",
+    } or candidate["sandbox"] != {
+        "mode": "workspace-write", "network_access": False, "subagents_enabled": False,
+        "ignore_user_config": True, "ignore_rules": True,
+    }:
+        raise ScoutError("rolling runtime or sandbox drifted")
+    task_root = root / _safe_relative(candidate["task_root"], "rolling task root")
+    task_dir = task_root / _safe_relative(binding["id"], "rolling task id")
+    task = _canonical_json_file(_bound_file(task_dir, "task.json", binding["task_sha256"], "rolling task"), "rolling task")
+    requirements = task.get("requirements")
+    if (
+        not isinstance(requirements, list) or
+        task.get("schema") != "mdseval.scout-task-v1" or
+        task.get("id") != binding["id"] or task.get("author_id") != binding["author_id"]
+        or task.get("family_id") != binding["family_id"]
+        or [item.get("id") for item in requirements] != binding["requirements"]
+        or task.get("recipe", {}).get("sha256") != binding["recipe_sha256"]
+        or task.get("checker_path") != "check.py" or task.get("admission_path") != "admission.json"
+        or task.get("reference_path") != "reference.json" or task.get("network_allowed") is not False
+        or task.get("standard_library_only") is not True or task.get("dependencies") != []
+        or task.get("timeout_seconds") != 300 or not isinstance(task.get("protected_paths"), list)
+        or not {"CODER.md", ".issue-contract.md"}.issubset(task["protected_paths"])
+    ):
+        raise ScoutError("rolling task metadata or requirements drifted")
+    public = task_dir / "public"
+    issue = public / ".issue-contract.md"
+    if (
+        public.is_symlink() or any(item.is_symlink() for item in public.rglob("*"))
+        or not issue.is_file() or
+        tree_sha256(public) != binding["public_tree_sha256"]
+        or (public / "CODER.md").read_bytes() != b""
+        or sha256_file(issue) != binding["issue_contract_sha256"]
+        or any(item.name in {"task.json", "admission.json", "reference.json", "blind-submission.json", "check.py", ".git", ".codex", ".agents", "AGENTS.md", "AGENTS.override.md"} for item in public.rglob("*"))
+    ):
+        raise ScoutError("rolling public packet drifted")
+    checker = _bound_file(task_dir, task["checker_path"], binding["checker_sha256"], "rolling checker")
+    admission = _canonical_json_file(_bound_file(task_dir, task["admission_path"], binding["admission_sha256"], "rolling admission"), "rolling admission")
+    _bound_file(task_dir, task["reference_path"], binding["reference_sha256"], "rolling reference")
+    blind = _canonical_json_file(_bound_file(task_dir, "blind-submission.json", binding["blind_submission_sha256"], "blind submission"), "blind submission")
+    trace = admission.get("trace")
+    mutants = admission.get("mutants")
+    if (
+        not isinstance(trace, list) or not isinstance(mutants, list) or
+        [item.get("requirement_id") for item in trace] != binding["requirements"]
+        or [item.get("requirement_id") for item in mutants] != binding["requirements"]
+        or admission.get("protected_inputs") != [
+            {"path": item, "sha256": sha256_file(public / item)} for item in task["protected_paths"]
+        ]
+        or not isinstance(blind, dict) or not blind
+    ):
+        raise ScoutError("rolling admission, mutant, or blind submission drifted")
+    for item in trace:
+        traced = _bound_file(public, item["public_path"], item["public_text_sha256"], "rolling public trace")
+        requirement_id = item["requirement_id"]
+        if (
+            item["public_locator"] not in traced.read_text(encoding="utf-8")
+            or item["pass_predicate"] != f"$.requirements.{requirement_id}.passed == true"
+            or item["omission_predicate"] != f"$.requirements.{requirement_id}.passed == false"
+        ):
+            raise ScoutError("rolling public trace locator drifted")
+    clearance = _canonical_json_file(Path(clearance_path).resolve(), "rolling semantic clearance")
+    if sha256_file(Path(clearance_path)) != candidate["semantic_clearance_sha256"]:
+        raise ScoutError("rolling semantic clearance hash drift")
+    validate_rolling_semantic_clearance(binding, clearance, phase=candidate["phase"])
+    artifacts = [path, Path(clearance_path).resolve(), recipe_path, root / wrapper["source_path"], task_dir / "task.json", checker, task_dir / "admission.json", task_dir / "reference.json", task_dir / "blind-submission.json"]
+    for artifact in artifacts:
+        _reject_symlink_chain(artifact, root)
+    return {**candidate, "tasks": [binding], "_root": root, "_blind": blind, "_checker": checker, "_artifacts": {item.relative_to(root).as_posix(): sha256_file(item) for item in artifacts}}, clearance
+def _qualify_rolling_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    root, binding = candidate["_root"], candidate["task"]
+    qualification = _qualify_task(root, candidate, binding)
+    task_dir = root / candidate["task_root"] / binding["id"]
+    task = _canonical_json_file(task_dir / "task.json", "rolling task")
+    signatures: list[str] = []
+    protected_expected = _protected_hashes(task_dir / "public", task["protected_paths"])
+    with tempfile.TemporaryDirectory(prefix="mdseval-rolling-blind-") as temporary:
+        for replay in (1, 2):
+            workspace = Path(temporary) / str(replay)
+            _copy_public(task_dir / "public", workspace)
+            _replace_text_files(workspace, candidate["_blind"])
+            checked = _run_objective_checker(candidate["_checker"], workspace)
+            if not checked["result"]["resolved"] or _protected_hashes(workspace, task["protected_paths"]) != protected_expected:
+                raise ScoutError("blind contract-only submission failed")
+            signatures.append(checked["stdout_sha256"])
+    if len(set(signatures)) != 1:
+        raise ScoutError("blind contract-only submission is nondeterministic")
+    return {"status": "PASS", "qualification": qualification, "blind_replay_sha256": signatures}
 def _runner_config(cohort: dict[str, Any]) -> RunnerConfig:
     runtime, sandbox = cohort["runtime"], cohort["sandbox"]
     return RunnerConfig(
@@ -1648,3 +2185,150 @@ def run_live_scout(
     report["qualification_status"] = qualification["status"]
     _write_json_once(evidence / "report.json", report)
     return report
+def run_live_rolling_candidate(
+    candidate_path: Path | str, clearance_path: Path | str,
+    authorization_path: Path | str, output: Path | str, *, freeze_commit: str,
+    process_runner: Any = run_process_group, redactor: Redactor | None = None,
+) -> dict[str, Any]:
+    """Expose one qualified task; a separate semantic disposition advances state."""
+    candidate_input, clearance_input = Path(candidate_path), Path(clearance_path)
+    candidate, clearance = load_rolling_candidate(candidate_input, clearance_input)
+    candidate_path, clearance_path = candidate_input.resolve(), clearance_input.resolve()
+    root = candidate["_root"]
+    evidence_input = Path(output).absolute()
+    _reject_symlink_chain(evidence_input, root)
+    evidence = evidence_input.resolve()
+    try:
+        evidence.relative_to(root)
+    except ValueError as exc:
+        raise ScoutError("rolling evidence must remain inside the repository") from exc
+    authorization_input = Path(authorization_path).absolute()
+    _reject_symlink_chain(authorization_input, root)
+    authorization_path = authorization_input.resolve()
+    for path in (evidence, authorization_path):
+        _reject_symlink_chain(path, root)
+    task_root = root / candidate["task_root"]
+    if _paths_overlap(evidence, task_root) or _paths_overlap(evidence, authorization_path) or any(_paths_overlap(evidence, root / relative) for relative in candidate["_artifacts"]):
+        raise ScoutError("rolling evidence, task, and artifact roots overlap")
+    authorization = _rolling_authorization(authorization_path, candidate, root, evidence)
+    if candidate["authorization_sha256"] != authorization["authorization_sha256"]:
+        raise ScoutError("rolling candidate authorization hash drift")
+    freeze = validate_live_freeze(root, authorization["start_commit"], freeze_commit)
+    replay = verify_rolling_evidence(evidence, authorization, root) if evidence.exists() else {
+        "state": new_rolling_state(authorization["campaign_id"]), "pending": None, "replacements": 0,
+    }
+    if replay["pending"] is not None:
+        raise ScoutError("post-exposure disposition is required before another candidate")
+    state = replay["state"]
+    if state["status"] not in {"EXPLORATION", "REPLICATION"}:
+        raise ScoutError("rolling campaign is terminal")
+    ordinal, binding = len(state["candidates"]) + 1, candidate["task"]
+    role = authorization["role_schedule"][ordinal - 1]
+    if binding["author_id"] != role["author_id"] or clearance["blind_validator_id"] != role["blind_validator_id"] or clearance["semantic_reviewer_id"] != authorization["gatekeeper_id"]:
+        raise ScoutError("rolling candidate roles do not match authorization")
+    expected_phase = "exploration" if state["status"] == "EXPLORATION" else "replication"
+    if candidate["phase"] != expected_phase or state["status"] not in {"EXPLORATION", "REPLICATION"} or binding["id"] in {item["task_id"] for item in state["candidates"]}:
+        raise ScoutError("rolling candidate phase, terminal state, or exposure identity is invalid")
+    if expected_phase == "replication":
+        winner = next(item for item in state["candidates"] if item["task_id"] == state["winner_task_id"])
+        if binding["recipe_sha256"] != state["winning_recipe_sha256"] or binding["author_id"] == winner["author_id"] or binding["family_id"] == winner["family_id"]:
+            raise ScoutError("rolling replica violates frozen recipe/independence")
+    qualification = _qualify_rolling_candidate(candidate)
+    runner = _runner_config(candidate)
+    judge = JudgeConfig(type="codex-cli", model=runner.model, reasoning_effort=runner.reasoning_effort, sandbox="read-only", timeout_seconds=300)
+    preflight = doctor(SimpleNamespace(runner=runner, judge=judge))
+    home_value = os.environ.get("MDSEVAL_CODEX_HOME")
+    auth = Path(home_value).expanduser() / "auth.json" if home_value else None
+    if not preflight.available or not auth or not auth.is_file() or auth.is_symlink() or auth.stat().st_size == 0:
+        raise ScoutError("exact rolling live runtime or isolated auth unavailable")
+    if not evidence.exists():
+        evidence.mkdir(parents=True)
+        _write_json_once(evidence / "manifest.json", _rolling_manifest(authorization))
+    live_root = evidence / f"candidate-{ordinal:02d}"
+    live_root.mkdir()
+    qualification_sha256 = _write_json_once(live_root / "qualification.json", qualification)
+    execution = {"wrapper": candidate["wrapper"], "runtime": candidate["runtime"], "sandbox": candidate["sandbox"]}
+    _write_json_once(live_root / "header.json", {
+        "schema": ROLLING_HEADER_SCHEMA, "ordinal": ordinal, "campaign_id": authorization["campaign_id"],
+        "phase": candidate["phase"], "binding": binding,
+        "candidate": {"path": candidate_path.relative_to(root).as_posix(), "sha256": sha256_file(candidate_path)},
+        "clearance": {"path": clearance_path.relative_to(root).as_posix(), "sha256": sha256_file(clearance_path)},
+        "qualification_sha256": qualification_sha256, "freeze": freeze,
+        "roles": {**role, "gatekeeper_id": authorization["gatekeeper_id"]}, "execution": execution,
+        "authorization_sha256": authorization["authorization_sha256"], "artifacts": candidate["_artifacts"],
+        "public": {"path": f"{candidate['task_root']}/{binding['id']}/public", "tree_sha256": binding["public_tree_sha256"]},
+    })
+    static_base = {
+        "schema": FIDELITY_CLEARANCE_SCHEMA, "status": "PASS",
+        "qualification": {"sha256": sha256_bytes(canonical(qualification))},
+        "admission": {"semantic_clearance_sha256": sha256_file(Path(clearance_path))},
+        "shared_recipe_or_admission_defect": False,
+    }
+    static = {**static_base, "clearance_sha256": sha256_bytes(canonical(static_base))}
+    prior_replacements = replay["replacements"]
+    attempts: list[dict[str, Any]] = []
+    launches = 0
+    redactor = redactor or Redactor()
+    while len(attempts) < 3:
+        launches += 1
+        attempt = _live_launch(
+            root, candidate, binding["id"], launches, live_root, freeze=freeze,
+            static_fidelity=static, process_runner=process_runner, redactor=redactor,
+        )
+        if attempt["infrastructure_failure"]:
+            prior_replacements += 1
+            if prior_replacements > authorization["replacement_launch_cap"]:
+                raise ScoutError("rolling replacement launch cap exceeded")
+        elif not attempt["usable"]:
+            raise ScoutError("unscoreable rolling launch cannot be replaced")
+        else:
+            attempts.append(attempt)
+    pending = verify_rolling_evidence(evidence, authorization, root)["pending"]
+    if pending is None or len(pending["attempts"]) != 3:
+        raise ScoutError("rolling exposure evidence is incomplete")
+    return {"status": "AWAITING_DISPOSITION", "candidate": binding["id"], "launches": launches}
+def _authorization_from_evidence(path: Path, evidence: Path) -> tuple[Path, dict[str, Any]]:
+    root = _repository_root(path)
+    _reject_symlink_chain(path.absolute(), root)
+    _reject_symlink_chain(evidence.absolute(), root)
+    path, evidence = path.resolve(), evidence.resolve()
+    directories = sorted(item for item in evidence.glob("candidate-*") if item.is_dir())
+    if not directories:
+        raise ScoutError("rolling evidence has no candidate header")
+    header, raw = _canonical_json_file(directories[0] / "header.json", "rolling header"), _canonical_json_file(path, "rolling authorization")
+    context = {"campaign_id": raw.get("campaign_id"), "start_commit": raw.get("start_commit"), "task_root": raw.get("task_root"), **header["execution"]}
+    return root, _rolling_authorization(path, context, root, evidence)
+def finalize_rolling_candidate(
+    authorization_path: Path | str, output: Path | str, disposition_path: Path | str
+) -> dict[str, Any]:
+    """Consume the gatekeeper's post-exposure disposition, then transition."""
+    authorization_path, evidence = Path(authorization_path), Path(output)
+    root, authorization = _authorization_from_evidence(authorization_path, evidence)
+    replay = verify_rolling_evidence(evidence, authorization, root)
+    pending = replay["pending"]
+    if pending is None or len(pending["attempts"]) != 3:
+        raise ScoutError("one complete pending candidate is required")
+    directory, header = pending["directory"], pending["header"]
+    launches = [_canonical_json_file(path, "rolling raw launch") for path in sorted(directory.glob("launch-*.json"))]
+    disposition = _rolling_disposition(Path(disposition_path).resolve(), header, launches, directory)
+    _write_json_once(directory / "disposition.json", disposition)
+    report = classify_rolling_task(header["binding"], pending["attempts"])
+    if not disposition["semantic_fidelity_passed"]:
+        report.update({"label": "invalid", "fidelity_defect": True,
+                       "fidelity_root_causes": sorted(set(report["fidelity_root_causes"] + [disposition["root_cause"]])),
+                       "shared_recipe_or_admission_defect": disposition["shared_recipe_or_admission_defect"]})
+    state = advance_rolling_campaign(replay["state"], header["binding"], report)
+    _write_json_once(directory / "result.json", {
+        "schema": ROLLING_RECORD_SCHEMA, "ordinal": header["ordinal"], "inventory": pending["inventory"],
+        "report": report, "state_after": state, "disposition_sha256": sha256_file(directory / "disposition.json"),
+    })
+    if state["status"] in {"ROLLING_PASS", "ROLLING_NO_PASS"}:
+        _write_json_once(evidence / "summary.json", {"schema": ROLLING_SUMMARY_SCHEMA, "manifest_sha256": sha256_file(evidence / "manifest.json"), "state": state})
+    return verify_rolling_evidence(evidence, authorization, root)["state"]
+
+def verify_live_rolling(authorization_path: Path | str, output: Path | str) -> dict[str, Any]:
+    authorization_path, evidence = Path(authorization_path), Path(output)
+    root, authorization = _authorization_from_evidence(authorization_path, evidence)
+    replay = verify_rolling_evidence(evidence, authorization, root)
+    pending = replay["pending"]
+    return {"state": replay["state"], "replacements": replay["replacements"], "pending_task_id": pending["header"]["binding"]["id"] if pending else None}

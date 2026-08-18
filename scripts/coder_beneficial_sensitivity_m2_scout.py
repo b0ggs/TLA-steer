@@ -15,11 +15,14 @@ if str(ROOT) not in sys.path:
 
 from mdseval.scout import (  # noqa: E402
     ScoutError,
+    finalize_rolling_candidate,
     load_config,
     preflight_live_scout,
     qualify_cohort,
     run_live_scout,
+    run_live_rolling_candidate,
     run_smoke,
+    verify_live_rolling,
     verify_qualification,
 )
 
@@ -28,7 +31,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "action",
-        choices=("smoke", "qualify", "verify-qualification", "preflight", "run"),
+        choices=("smoke", "qualify", "verify-qualification", "preflight", "run", "rolling-run", "rolling-finalize", "rolling-verify"),
         nargs="?",
         default="smoke",
     )
@@ -49,6 +52,10 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--freeze-commit")
+    parser.add_argument("--candidate", type=Path)
+    parser.add_argument("--semantic-clearance", type=Path)
+    parser.add_argument("--authorization", type=Path)
+    parser.add_argument("--disposition", type=Path)
     arguments = parser.parse_args()
     try:
         if arguments.action == "smoke":
@@ -61,13 +68,35 @@ def main() -> int:
             result = verify_qualification(arguments.cohort, arguments.output or arguments.qualification)
         elif arguments.action == "preflight":
             result = preflight_live_scout(arguments.cohort)
-        else:
+        elif arguments.action == "run":
             if arguments.output is None or arguments.freeze_commit is None:
                 raise ScoutError("run requires explicit --output and --freeze-commit")
             result = run_live_scout(
                 arguments.cohort, arguments.qualification, arguments.output,
                 freeze_commit=arguments.freeze_commit,
             )
+        elif arguments.action == "rolling-run":
+            if any(value is None for value in (
+                arguments.candidate, arguments.semantic_clearance,
+                arguments.authorization, arguments.output, arguments.freeze_commit,
+            )):
+                raise ScoutError(
+                    "rolling-run requires explicit --candidate, --semantic-clearance, "
+                    "--authorization, --output, and --freeze-commit"
+                )
+            result = run_live_rolling_candidate(
+                arguments.candidate, arguments.semantic_clearance,
+                arguments.authorization, arguments.output,
+                freeze_commit=arguments.freeze_commit,
+            )
+        elif arguments.action == "rolling-finalize":
+            if None in (arguments.authorization, arguments.output, arguments.disposition):
+                raise ScoutError("rolling-finalize requires --authorization, --output, and --disposition")
+            result = finalize_rolling_candidate(arguments.authorization, arguments.output, arguments.disposition)
+        else:
+            if None in (arguments.authorization, arguments.output):
+                raise ScoutError("rolling-verify requires --authorization and --output")
+            result = verify_live_rolling(arguments.authorization, arguments.output)
     except ScoutError as exc:
         print(json.dumps({"status": "FAIL", "error": str(exc)}, sort_keys=True))
         return 1

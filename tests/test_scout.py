@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import subprocess
 import tempfile
@@ -8,20 +9,31 @@ import unittest
 from pathlib import Path
 
 from mdseval.capture import Redactor
+from mdseval.hashing import tree_sha256
 from mdseval.scout import (
     CHECKER_SOURCE,
     FAKE_SUBJECT_SOURCE,
     ScoutError,
     _capture_subject_launch,
     _write_live_launch_record,
+    advance_rolling_campaign,
+    _rolling_manifest,
+    _rolling_disposition,
+    _rolling_authorization,
+    _write_json_once,
     build_fidelity_clearance,
     classify_infrastructure_failure,
+    classify_rolling_task,
+    canonical,
     classify_scout,
     load_cohort,
     load_config,
     record_launch,
     run_smoke,
+    new_rolling_state,
+    validate_rolling_semantic_clearance,
     validate_live_freeze,
+    verify_rolling_evidence,
     verify_smoke,
 )
 
@@ -438,6 +450,221 @@ class ScoutPhaseBTests(unittest.TestCase):
         live_maximum = cohort["replacements"]["absolute_launch_max"] + 2
         self.assertLessEqual(existing + live_maximum, 200)
 
+
+class RollingScoutTests(unittest.TestCase):
+    @staticmethod
+    def roles() -> list[dict[str, str]]:
+        return [{"author_id": f"a{index // 2}", "blind_validator_id": f"a{(index // 2 + 1) % 6}"} for index in range(12)]
+    @staticmethod
+    def binding(task_id: str, author: str = "author-a", family: str = "bug", recipe: str = "1" * 64, count: int = 8) -> dict[str, object]:
+        return {
+            "id": task_id, "author_id": author, "family_id": family,
+            "requirements": [f"R{number}" for number in range(1, count + 1)],
+            "recipe_sha256": recipe, "task_sha256": "2" * 64,
+            "public_tree_sha256": "3" * 64, "checker_sha256": "4" * 64,
+            "admission_sha256": "5" * 64, "reference_sha256": "6" * 64,
+            "issue_contract_sha256": "7" * 64, "blind_submission_sha256": "8" * 64,
+        }
+
+    @staticmethod
+    def attempts(binding: dict[str, object], kind: str = "promising", root: str | None = None, shared: bool = False) -> list[dict[str, object]]:
+        requirements = binding["requirements"]
+        passed_by_kind = {"promising": (len(requirements), 5, 5), "floor": (4, 4, 4), "ceiling": (len(requirements),) * 3}
+        resolved_by_kind = {"promising": (True, False, False), "floor": (False,) * 3, "ceiling": (True,) * 3}
+        attempts = []
+        for passed, resolved in zip(passed_by_kind[kind], resolved_by_kind[kind]):
+            fidelity_passed = root is None
+            attempts.append({
+                "task_id": binding["id"], "usable": True, "valid": fidelity_passed,
+                "checker_result": ScoutPhaseBTests.checker_result(requirements, passed, resolved),
+                "fidelity_clearance": ScoutPhaseBTests.fidelity(binding["id"], passed=fidelity_passed,
+                    root_cause=root, shared=shared, digest="9" * 64),
+            })
+        return attempts
+    @staticmethod
+    def clearance(binding: dict[str, object], phase: str = "exploration") -> dict[str, object]:
+        return {
+            "schema": "mdseval.coder-beneficial-sensitivity-m2-rolling-semantic-clearance-v1",
+            "status": "PASS", "task_id": binding["id"], "author_id": binding["author_id"],
+            "phase": phase, "blind_validator_id": "validator", "semantic_reviewer_id": "gatekeeper-c",
+            "clearance_stage": "after-blind-submission-before-subject-exposure",
+            **{key: binding[key] for key in ("task_sha256", "public_tree_sha256", "checker_sha256",
+                "admission_sha256", "issue_contract_sha256", "blind_submission_sha256", "recipe_sha256")},
+            "scored_requirement_ids": binding["requirements"],
+            "all_scored_requirements_in_scope": True, "all_checker_constraints_public": True,
+            "hidden_specificity_absent": True, "scope_routing_contradictions_absent": True,
+            "recipe_task_independent": True, "mechanical_admission_only": phase == "replication",
+            "producer_received_only_frozen_recipe": phase == "replication",
+        }
+    @staticmethod
+    def raw_launch(binding: dict[str, object], ordinal: int, header: dict[str, object], *, replacement: bool = False) -> dict[str, object]:
+        result = ScoutPhaseBTests.checker_result(binding["requirements"], 4, False)
+        checker = {"scoreable": True, "result": result}
+        raw = {"events_jsonl": "", "stderr": "", "final": "" if replacement else "done", "checker_stdout": "", "checker_stderr": ""}
+        static_base = {"schema": "mdseval.coder-beneficial-sensitivity-m2-fidelity-clearance-v1", "status": "PASS", "qualification": {"sha256": header["qualification_sha256"]}, "admission": {"semantic_clearance_sha256": header["clearance"]["sha256"]}, "shared_recipe_or_admission_defect": False}
+        static = {**static_base, "clearance_sha256": hashlib.sha256(canonical(static_base)).hexdigest()}
+        fidelity = ScoutPhaseBTests.fidelity(binding["id"], digest=static["clearance_sha256"])
+        return {
+            "schema": "mdseval.coder-beneficial-sensitivity-m2-live-launch-v1", "launch_ordinal": ordinal,
+            "task_id": binding["id"], "author_id": binding["author_id"], "family_id": binding["family_id"],
+            **header["freeze"], "runtime": header["execution"]["runtime"], "sandbox": header["execution"]["sandbox"],
+            "wrapper_sha256": header["execution"]["wrapper"]["prompt_sha256"],
+            "subject": {"spawn_error": {"type": "FileNotFoundError", "message": "missing", "errno": errno.ENOENT} if replacement else None, "timed_out": False, "returncode": None if replacement else 0},
+            "git": {"changed_paths": [], "untracked": []}, "raw": raw, "checker": checker,
+            "fidelity": {"static": static, "launch": fidelity}, "usable": not replacement, "infrastructure_failure": replacement,
+            "raw_evidence_sha256": {**{key: hashlib.sha256(value.encode()).hexdigest() for key, value in raw.items()}, "checker": hashlib.sha256(canonical(checker)).hexdigest()},
+        }
+    def test_semantic_clearance_rejects_absent_scope_and_hidden_specificity(self) -> None:
+        binding = self.binding("task-a", count=12)
+        with self.assertRaisesRegex(ScoutError, "required"):
+            validate_rolling_semantic_clearance(binding, None, phase="exploration")
+        for field in ("all_scored_requirements_in_scope", "all_checker_constraints_public", "hidden_specificity_absent", "scope_routing_contradictions_absent"):
+            clearance = self.clearance(binding)
+            clearance[field] = False
+            with self.assertRaisesRegex(ScoutError, "failed or drifted"):
+                validate_rolling_semantic_clearance(binding, clearance, phase="exploration")
+        self.assertEqual(validate_rolling_semantic_clearance(binding, self.clearance(binding), phase="exploration")["status"], "PASS")
+        with self.assertRaisesRegex(ScoutError, "8 through 12"):
+            validate_rolling_semantic_clearance(self.binding("short", count=7), None, phase="exploration")
+        roles = self.roles(); execution = {"wrapper": {}, "runtime": {}, "sandbox": {}}
+        candidate = {"campaign_id": "auth", "start_commit": "1" * 40, "task_root": "tasks", **execution}
+        authorization = {"schema": "mdseval.coder-beneficial-sensitivity-m2-rolling-authorization-v1", "campaign_id": "auth", "start_commit": "1" * 40, "task_root": "tasks", "evidence_root": "evidence", "execution_sha256": hashlib.sha256(canonical(execution)).hexdigest(), "candidate_cap": 12, "planned_usable_attempt_cap": 36, "replacement_launch_cap": 1, "gatekeeper_id": "gatekeeper", "role_schedule": roles}
+        bad_schedules = [{**authorization, "gatekeeper_id": "a0"}, {**authorization, "role_schedule": [*roles[:2], {**roles[2], "author_id": "a0"}, *roles[3:]]}, {**authorization, "role_schedule": [{**roles[0], "blind_validator_id": "outsider"}, *roles[1:]]}]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); evidence = root / "evidence"; evidence.mkdir(); path = root / "authorization.json"
+            for bad in bad_schedules:
+                path.write_bytes(canonical(bad))
+                with self.assertRaisesRegex(ScoutError, "authorization"): _rolling_authorization(path, candidate, root, evidence)
+        cli = subprocess.run(["python3", str(ROOT / "scripts/coder_beneficial_sensitivity_m2_scout.py"), "rolling-run"], capture_output=True, text=True)
+        self.assertEqual((cli.returncode, json.loads(cli.stdout)["status"]), (1, "FAIL")); self.assertIn("requires explicit", cli.stdout)
+    def test_task_classification_requires_three_contiguous_usable_attempts(self) -> None:
+        binding = self.binding("task-a")
+        attempts = self.attempts(binding)
+        with self.assertRaisesRegex(ScoutError, "three contiguous"):
+            classify_rolling_task(binding, attempts[:2])
+        report = classify_rolling_task(binding, attempts)
+        self.assertEqual((report["label"], report["q"], report["resolved_count"]), ("promising", 0.75, 1))
+        attempts[1]["task_id"] = "other"
+        with self.assertRaisesRegex(ScoutError, "three contiguous"):
+            classify_rolling_task(binding, attempts)
+        contradictory = self.attempts(binding)
+        contradictory[0]["checker_result"]["resolved"] = False
+        with self.assertRaisesRegex(ScoutError, "conjunction"):
+            classify_rolling_task(binding, contradictory)
+        empty_root = self.attempts(binding, root="x")
+        empty_root[0]["fidelity_clearance"]["root_cause"] = ""
+        with self.assertRaisesRegex(ScoutError, "fidelity"):
+            classify_rolling_task(binding, empty_root)
+    def test_campaign_explores_then_requires_independent_frozen_recipe_replica(self) -> None:
+        state = new_rolling_state("campaign")
+        floor = self.binding("floor", recipe="a" * 64)
+        state = advance_rolling_campaign(state, floor, classify_rolling_task(floor, self.attempts(floor, "floor")))
+        winner = self.binding("winner", "author-b", "integration", "b" * 64)
+        state = advance_rolling_campaign(state, winner, classify_rolling_task(winner, self.attempts(winner)))
+        self.assertEqual((state["status"], state["winner_task_id"]), ("REPLICATION", "winner"))
+        for bad in (
+            self.binding("wrong-recipe", "author-c", "feature", "c" * 64),
+            self.binding("same-author", "author-b", "feature", "b" * 64),
+            self.binding("same-family", "author-c", "integration", "b" * 64),
+        ):
+            with self.assertRaisesRegex(ScoutError, "replica"):
+                advance_rolling_campaign(state, bad, classify_rolling_task(bad, self.attempts(bad)))
+        replica = self.binding("replica", "author-c", "feature", "b" * 64)
+        state = advance_rolling_campaign(state, replica, classify_rolling_task(replica, self.attempts(replica)))
+        self.assertEqual((state["status"], state["witness_task_ids"]), ("ROLLING_PASS", ["winner", "replica"]))
+        with self.assertRaisesRegex(ScoutError, "terminal"):
+            advance_rolling_campaign(state, replica, classify_rolling_task(replica, self.attempts(replica)))
+    def test_caps_rotation_and_repeated_fidelity_fail_closed(self) -> None:
+        state = new_rolling_state("cap")
+        for number in range(5):
+            task = self.binding(f"floor-{number}", f"author-{number}", f"family-{number}", f"{number + 1:x}" * 64)
+            state = advance_rolling_campaign(state, task, classify_rolling_task(task, self.attempts(task, "floor")))
+        winner = self.binding("winner", "author-5", "family-5", "f" * 64)
+        state = advance_rolling_campaign(state, winner, classify_rolling_task(winner, self.attempts(winner)))
+        for number in range(6, 12):
+            task = self.binding(f"rep-{number}", f"author-{number}", f"family-{number}", "f" * 64)
+            state = advance_rolling_campaign(state, task, classify_rolling_task(task, self.attempts(task, "floor")))
+        self.assertEqual((state["status"], len(state["candidates"]), state["planned_usable_attempts"]), ("ROLLING_NO_PASS", 12, 36))
+        repeated = new_rolling_state("fidelity")
+        for number in range(2):
+            task = self.binding(f"bad-{number}", f"writer-{number}", f"kind-{number}")
+            report = classify_rolling_task(task, self.attempts(task, root="checker-binding")); repeated = advance_rolling_campaign(repeated, task, report)
+        self.assertEqual(repeated["status"], "ROLLING_NO_PASS")
+        failed = new_rolling_state("six-floors")
+        for number in range(6):
+            task = self.binding(f"only-floor-{number}", f"new-{number}", f"new-kind-{number}")
+            failed = advance_rolling_campaign(failed, task, classify_rolling_task(task, self.attempts(task, "floor")))
+        self.assertEqual(failed["status"], "ROLLING_NO_PASS")
+        rotated = new_rolling_state("rotation")
+        for number in range(2):
+            task = self.binding(f"twice-{number}", "same-author", f"family-{number}")
+            rotated = advance_rolling_campaign(rotated, task, classify_rolling_task(task, self.attempts(task, "floor")))
+        third = self.binding("third", "same-author", "family-3")
+        with self.assertRaisesRegex(ScoutError, "two exposed"):
+            advance_rolling_campaign(rotated, third, classify_rolling_task(third, self.attempts(third, "floor")))
+    def test_exact_evidence_reconstructs_replacement_and_rejects_tampering(self) -> None:
+        roles = self.roles()
+        execution = {"wrapper": {"prompt_sha256": "f" * 64}, "runtime": {}, "sandbox": {}}
+        authorization = {"campaign_id": "evidence", "start_commit": "3" * 40, "authorization_sha256": "a" * 64,
+                         "gatekeeper_id": "gatekeeper", "role_schedule": roles,
+                         "execution_sha256": hashlib.sha256(canonical(execution)).hexdigest(), "replacement_launch_cap": 1}
+        with tempfile.TemporaryDirectory() as temporary:
+            root, candidate = Path(temporary) / "rolling", Path(temporary) / "rolling/candidate-01"
+            candidate.mkdir(parents=True)
+            artifact, clearance_file, public = Path(temporary) / "candidate.json", Path(temporary) / "clearance.json", Path(temporary) / "public"
+            artifact.write_text("candidate\n", encoding="utf-8"); clearance_file.write_text("clearance\n", encoding="utf-8")
+            public.mkdir()
+            binding = self.binding("first", "a0")
+            _write_json_once(root / "manifest.json", _rolling_manifest(authorization))
+            qualification_sha = _write_json_once(candidate / "qualification.json", {"status": "PASS"})
+            header = {"schema": "mdseval.coder-beneficial-sensitivity-m2-rolling-header-v1", "ordinal": 1,
+                      "campaign_id": "evidence", "phase": "exploration", "binding": binding,
+                      "candidate": {"path": "candidate.json", "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest()},
+                      "clearance": {"path": "clearance.json", "sha256": hashlib.sha256(clearance_file.read_bytes()).hexdigest()},
+                      "qualification_sha256": qualification_sha, "freeze": {"authorization_start_commit": "3" * 40, "freeze_commit": "4" * 40},
+                      "roles": {**roles[0], "gatekeeper_id": "gatekeeper"}, "execution": execution,
+                      "authorization_sha256": "a" * 64, "artifacts": {"candidate.json": hashlib.sha256(artifact.read_bytes()).hexdigest(), "clearance.json": hashlib.sha256(clearance_file.read_bytes()).hexdigest()},
+                      "public": {"path": "public", "tree_sha256": tree_sha256(public)}}
+            _write_json_once(candidate / "header.json", header)
+            launches = [self.raw_launch(binding, index, header, replacement=index == 1) for index in range(1, 5)]
+            for index, launch in enumerate(launches, 1): _write_json_once(candidate / f"launch-{index:03d}.json", launch)
+            replay = verify_rolling_evidence(root, authorization, Path(temporary))
+            self.assertEqual((len(replay["pending"]["attempts"]), replay["replacements"]), (3, 1))
+            for bad_freeze in ({"authorization_start_commit": "2" * 40, "freeze_commit": "4" * 40}, {**header["freeze"], "extra": True}, {"authorization_start_commit": "3" * 40, "freeze_commit": "A" * 40}):
+                (candidate / "header.json").write_bytes(canonical({**header, "freeze": bad_freeze}))
+                with self.assertRaisesRegex(ScoutError, "freeze"): verify_rolling_evidence(root, authorization, Path(temporary))
+            (candidate / "header.json").write_bytes(canonical(header))
+            second = candidate / "launch-002.json"; original_second = second.read_bytes(); second.rename(candidate / "launch-005.json")
+            with self.assertRaisesRegex(ScoutError, "contiguous"): verify_rolling_evidence(root, authorization, Path(temporary))
+            (candidate / "launch-005.json").rename(second); second.write_bytes(canonical(self.raw_launch(binding, 2, header, replacement=True)))
+            with self.assertRaisesRegex(ScoutError, "replacement launch cap"): verify_rolling_evidence(root, authorization, Path(temporary))
+            second.write_bytes(original_second)
+            (candidate / "header.json").write_bytes(canonical({**header, "roles": {**roles[2], "gatekeeper_id": "gatekeeper"}}))
+            with self.assertRaisesRegex(ScoutError, "header drift"):
+                verify_rolling_evidence(root, authorization, Path(temporary))
+            (candidate / "header.json").write_bytes(canonical(header))
+            artifact.write_text("drift\n", encoding="utf-8")
+            with self.assertRaisesRegex(ScoutError, "prior exposed"):
+                verify_rolling_evidence(root, authorization, Path(temporary))
+            artifact.write_text("candidate\n", encoding="utf-8")
+            (public / "link").symlink_to(artifact)
+            with self.assertRaisesRegex(ScoutError, "public packet"):
+                verify_rolling_evidence(root, authorization, Path(temporary))
+            (public / "link").unlink()
+            disposition = {"schema": "mdseval.coder-beneficial-sensitivity-m2-rolling-disposition-v1", "status": "PASS",
+                           "task_id": "first", "gatekeeper_id": "gatekeeper", "header_sha256": hashlib.sha256((candidate / "header.json").read_bytes()).hexdigest(),
+                           "qualification_sha256": qualification_sha, "launches": [{"path": f"launch-{i:03d}.json", "sha256": hashlib.sha256((candidate / f"launch-{i:03d}.json").read_bytes()).hexdigest()} for i in range(1, 5)],
+                           "semantic_fidelity_passed": True, "root_cause": None, "shared_recipe_or_admission_defect": False}
+            disposition_path = Path(temporary) / "disposition.json"; _write_json_once(disposition_path, disposition)
+            self.assertTrue(_rolling_disposition(disposition_path, header, launches, candidate)["semantic_fidelity_passed"])
+            disposition.update({"semantic_fidelity_passed": False, "root_cause": "shared-checker", "shared_recipe_or_admission_defect": True}); disposition_path.write_bytes(canonical(disposition))
+            accepted = _rolling_disposition(disposition_path, header, launches, candidate)
+            self.assertEqual((accepted["semantic_fidelity_passed"], accepted["shared_recipe_or_admission_defect"]), (False, True))
+            disposition.update({"semantic_fidelity_passed": True, "root_cause": None}); disposition_path.write_bytes(canonical(disposition))
+            with self.assertRaisesRegex(ScoutError, "disposition"): _rolling_disposition(disposition_path, header, launches, candidate)
+            (candidate / "extra.json").write_text("{}\n", encoding="utf-8")
+            with self.assertRaisesRegex(ScoutError, "incomplete or unexpected"):
+                verify_rolling_evidence(root, authorization)
 
 if __name__ == "__main__":
     unittest.main()
