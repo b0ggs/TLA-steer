@@ -1,0 +1,1 @@
+SCOUT-C-BUG-R8: Replace this file with exactly the two lines 0 -> N and 90 -> E, in that order, ending with one newline.
