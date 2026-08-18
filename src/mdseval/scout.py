@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import errno
 import os
 import shutil
 import sys
@@ -36,6 +37,8 @@ QUALIFICATION_MANIFEST_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-qualifi
 QUALIFICATION_SUMMARY_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-qualification-summary-v1"
 LIVE_LAUNCH_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-live-launch-v1"
 SCOUT_REPORT_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-scout-report-v1"
+FIDELITY_CLEARANCE_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-fidelity-clearance-v1"
+LAUNCH_FIDELITY_SCHEMA = "mdseval.coder-beneficial-sensitivity-m2-launch-fidelity-v1"
 
 FAKE_SUBJECT_SOURCE = '''\
 from __future__ import annotations
@@ -1092,17 +1095,97 @@ def _omission_only(result: dict[str, Any]) -> bool:
     )
 
 
-def classify_scout(cohort: dict[str, Any], attempts: list[dict[str, Any]]) -> dict[str, Any]:
+def classify_scout(
+    cohort: dict[str, Any], attempts: list[dict[str, Any]],
+    static_fidelity: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Apply Section 13 R2 only after the exact 18 usable observations exist."""
     if len(attempts) != 18 or [item.get("task_id") for item in attempts] != cohort["schedule"] or any(item.get("usable") is not True for item in attempts):
         raise ScoutError("classification requires the exact frozen 18-usable schedule")
+    static_keys = {
+        "schema", "status", "qualification", "admission",
+        "shared_recipe_or_admission_defect", "clearance_sha256",
+    }
+    if not isinstance(static_fidelity, dict) or set(static_fidelity) != static_keys:
+        raise ScoutError("missing or malformed static fidelity clearance")
+    static_base = {
+        key: value for key, value in static_fidelity.items()
+        if key != "clearance_sha256"
+    }
+    qualification_binding = static_fidelity.get("qualification")
+    admission_binding = static_fidelity.get("admission")
+    expected_task_records = {
+        f"tasks/{task['id']}.json" for task in cohort["tasks"]
+    }
+    if (
+        static_fidelity["schema"] != FIDELITY_CLEARANCE_SCHEMA
+        or static_fidelity["status"] != "PASS"
+        or static_fidelity["clearance_sha256"] != sha256_bytes(canonical(static_base))
+        or not isinstance(qualification_binding, dict)
+        or set(qualification_binding) != {"manifest_sha256", "summary_sha256", "task_records"}
+        or set(qualification_binding["task_records"]) != expected_task_records
+        or any(len(value) != 64 for value in (
+            qualification_binding["manifest_sha256"],
+            qualification_binding["summary_sha256"],
+            *qualification_binding["task_records"].values(),
+        ))
+        or admission_binding != {
+            "status": cohort["admission_evidence"]["status"],
+            "files": cohort["admission_evidence"]["files"],
+        }
+        or type(static_fidelity["shared_recipe_or_admission_defect"]) is not bool
+    ):
+        raise ScoutError("invalid or drifted static fidelity clearance")
+    clearances: list[dict[str, Any]] = []
+    clearance_keys = {
+        "schema", "static_clearance_sha256", "static_status", "task_id",
+        "checker_binding_passed", "checker_workspace_unchanged",
+        "protected_workspace_passed", "task_fidelity_passed", "root_cause",
+        "shared_recipe_or_admission_defect",
+    }
+    for attempt in attempts:
+        clearance = attempt.get("fidelity_clearance")
+        if not isinstance(clearance, dict) or set(clearance) != clearance_keys:
+            raise ScoutError("missing or malformed launch fidelity clearance")
+        digest = clearance.get("static_clearance_sha256")
+        if (
+            clearance["schema"] != LAUNCH_FIDELITY_SCHEMA
+            or clearance["static_status"] != "PASS"
+            or clearance["task_id"] != attempt["task_id"]
+            or not isinstance(digest, str) or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            or any(type(clearance[key]) is not bool for key in (
+                "checker_binding_passed", "checker_workspace_unchanged",
+                "protected_workspace_passed", "task_fidelity_passed",
+                "shared_recipe_or_admission_defect",
+            ))
+            or (clearance["task_fidelity_passed"] != (
+                clearance["checker_binding_passed"]
+                and clearance["checker_workspace_unchanged"]
+                and clearance["protected_workspace_passed"]
+            ))
+            or (clearance["root_cause"] is None) != clearance["task_fidelity_passed"]
+            or (not clearance["task_fidelity_passed"] and (
+                not isinstance(clearance["root_cause"], str)
+                or not clearance["root_cause"]
+            ))
+        ):
+            raise ScoutError("invalid or drifted launch fidelity clearance")
+        clearances.append(clearance)
+    if {item["static_clearance_sha256"] for item in clearances} != {
+        static_fidelity["clearance_sha256"]
+    }:
+        raise ScoutError("static fidelity clearance hash drift")
     bindings = {item["id"]: item for item in cohort["tasks"]}
     tasks: dict[str, dict[str, Any]] = {}
     for task_id, binding in bindings.items():
         task_attempts = [item for item in attempts if item["task_id"] == task_id]
         if len(task_attempts) != 3:
             raise ScoutError("classification requires three usable attempts per task")
-        invalid = any(item.get("valid") is not True for item in task_attempts)
+        task_clearances = [item["fidelity_clearance"] for item in task_attempts]
+        invalid = any(item.get("valid") is not True for item in task_attempts) or any(
+            not item["task_fidelity_passed"] for item in task_clearances
+        )
         results = [item.get("checker_result") for item in task_attempts]
         if any(not isinstance(item, dict) for item in results):
             raise ScoutError("usable attempt lacks checker evidence")
@@ -1132,15 +1215,16 @@ def classify_scout(cohort: dict[str, Any], attempts: list[dict[str, Any]]) -> di
             "label": label, "q": q, "passed_requirement_observations": passed,
             "total_requirement_observations": total, "resolved_count": resolved,
             "all_nonresolutions_omission_only": not wrong_failure,
-            "fidelity_defect": any(bool(item.get("fidelity_defect")) for item in task_attempts),
+            "fidelity_defect": any(not item["task_fidelity_passed"] for item in task_clearances),
         }
-    roots: dict[str, int] = {}
-    for attempt in attempts:
-        root_cause = attempt.get("checker_fidelity_root_cause")
+    root_tasks: dict[str, set[str]] = {}
+    for clearance in clearances:
+        root_cause = clearance["root_cause"]
         if root_cause:
-            roots[str(root_cause)] = roots.get(str(root_cause), 0) + 1
+            root_tasks.setdefault(root_cause, set()).add(clearance["task_id"])
+    roots = {root_cause: len(task_ids) for root_cause, task_ids in root_tasks.items()}
     shared_fidelity = any(count >= 2 for count in roots.values()) or any(
-        bool(item.get("shared_recipe_or_admission_fidelity_defect")) for item in attempts
+        item["shared_recipe_or_admission_defect"] for item in clearances
     )
     promising = [task_id for task_id, item in tasks.items() if item["label"] == "promising" and not item["fidelity_defect"]]
     witnesses: list[str] = []
@@ -1188,6 +1272,97 @@ def preflight_live_scout(cohort_path: Path | str) -> dict[str, Any]:
     return {"status": "PASS", "code": result.code, "isolated_auth": True, "command": expected, "checks": result.checks}
 
 
+def validate_live_freeze(
+    repository: Path, authorization_start_commit: str, freeze_commit: str
+) -> dict[str, str]:
+    """Fail closed unless the tracked repository is exactly the operator freeze."""
+    if not isinstance(freeze_commit, str) or len(freeze_commit) != 40 or any(
+        character not in "0123456789abcdef" for character in freeze_commit
+    ):
+        raise ScoutError("freeze commit must be a full lowercase Git object id")
+    try:
+        run_git(repository, "cat-file", "-e", f"{freeze_commit}^{{commit}}")
+        head = str(run_git(repository, "rev-parse", "HEAD")).strip()
+        tracked_status = str(
+            run_git(repository, "status", "--porcelain", "--untracked-files=no")
+        )
+        run_git(
+            repository, "merge-base", "--is-ancestor",
+            authorization_start_commit, freeze_commit,
+        )
+    except RuntimeError as exc:
+        raise ScoutError("freeze commit is absent or not authorization-descended") from exc
+    if head != freeze_commit:
+        raise ScoutError("repository HEAD does not equal the operator freeze commit")
+    if tracked_status:
+        raise ScoutError("tracked index or worktree is dirty")
+    return {
+        "authorization_start_commit": authorization_start_commit,
+        "freeze_commit": freeze_commit,
+    }
+
+
+def build_fidelity_clearance(
+    cohort: dict[str, Any], qualification_root: Path
+) -> dict[str, Any]:
+    """Bind PASS clearance to all canonical offline qualification/admission bytes."""
+    manifest_path = qualification_root / "manifest.json"
+    summary_path = qualification_root / "summary.json"
+    manifest = _canonical_json_file(manifest_path, "qualification manifest")
+    summary = _canonical_json_file(summary_path, "qualification summary")
+    if summary.get("status") != "PASS" or manifest.get("task_records") != summary.get("task_records"):
+        raise ScoutError("qualification cannot provide fidelity clearance")
+    base = {
+        "schema": FIDELITY_CLEARANCE_SCHEMA,
+        "status": "PASS",
+        "qualification": {
+            "manifest_sha256": sha256_file(manifest_path),
+            "summary_sha256": sha256_file(summary_path),
+            "task_records": summary["task_records"],
+        },
+        "admission": {
+            "status": cohort["admission_evidence"]["status"],
+            "files": cohort["admission_evidence"]["files"],
+        },
+        "shared_recipe_or_admission_defect": False,
+    }
+    return {**base, "clearance_sha256": sha256_bytes(canonical(base))}
+
+
+_SPAWN_INFRASTRUCTURE_ERRNOS = frozenset(
+    {errno.EACCES, errno.EAGAIN, errno.EMFILE, errno.ENFILE, errno.ENOENT,
+     errno.ENOEXEC, errno.ENOMEM}
+)
+
+
+def _structured_spawn_error(exc: OSError, redactor: Redactor) -> dict[str, Any]:
+    return {
+        "type": type(exc).__name__,
+        "message": redactor.text(str(exc)),
+        "errno": exc.errno,
+    }
+
+
+def _capture_subject_launch(call: Any, redactor: Redactor) -> tuple[ProcessOutcome, dict[str, Any] | None]:
+    try:
+        return call(), None
+    except OSError as exc:
+        return (
+            ProcessOutcome(None, "", "", False, True),
+            _structured_spawn_error(exc, redactor),
+        )
+
+
+def _protected_workspace_matches(
+    workspace: Path, protected_inputs: list[dict[str, str]]
+) -> bool:
+    for item in protected_inputs:
+        path = workspace / _safe_relative(item["path"], "protected path")
+        if path.is_symlink() or not path.is_file() or sha256_file(path) != item["sha256"]:
+            return False
+    return True
+
+
 _INFRASTRUCTURE_ERROR_MARKERS = (
     "authentication failed",
     "not authenticated",
@@ -1213,7 +1388,7 @@ _INFRASTRUCTURE_ERROR_MARKERS = (
 
 def classify_infrastructure_failure(
     *,
-    launch_exception: str,
+    spawn_error: dict[str, Any] | None,
     timed_out: bool,
     returncode: int | None,
     events_jsonl: str,
@@ -1223,9 +1398,17 @@ def classify_infrastructure_failure(
     untracked: tuple[dict[str, Any], ...] | list[dict[str, Any]],
 ) -> bool:
     """Narrow, pure pre-output infrastructure classification for replacements."""
-    if launch_exception:
-        return True
-    if timed_out or returncode in (0, None) or final_text or changed_paths or untracked:
+    if timed_out or final_text or changed_paths or untracked:
+        return False
+    if spawn_error is not None:
+        return (
+            set(spawn_error) == {"type", "message", "errno"}
+            and spawn_error["type"] in {"FileNotFoundError", "PermissionError", "OSError"}
+            and isinstance(spawn_error["message"], str)
+            and spawn_error["errno"] in _SPAWN_INFRASTRUCTURE_ERRNOS
+            and not events_jsonl and not stderr
+        )
+    if returncode in (0, None):
         return False
     structured_errors: list[str] = []
     saw_agent_output = False
@@ -1271,11 +1454,13 @@ def _write_live_launch_record(
 
 def _live_launch(
     root: Path, cohort: dict[str, Any], task_id: str, launch_ordinal: int,
-    evidence_root: Path, *, process_runner: Any, redactor: Redactor,
+    evidence_root: Path, *, freeze: dict[str, str], static_fidelity: dict[str, Any],
+    process_runner: Any, redactor: Redactor,
 ) -> dict[str, Any]:
     binding = next(item for item in cohort["tasks"] if item["id"] == task_id)
     task_dir = root / cohort["task_root"] / task_id
     task = _canonical_json_file(task_dir / "task.json", "task")
+    admission = _canonical_json_file(task_dir / "admission.json", "admission")
     checker = task_dir / "check.py"
     with tempfile.TemporaryDirectory(prefix=f"mdseval-live-{task_id}-") as temporary:
         workspace = Path(temporary) / "subject"
@@ -1291,17 +1476,15 @@ def _live_launch(
         runner = _runner_config(cohort)
         final_path = Path(temporary) / "final.txt"
         command = build_codex_command(runner, workspace, final_path)
-        subject_error = ""
         started = time.monotonic()
-        try:
-            subject = process_runner(
+        subject, subject_error = _capture_subject_launch(
+            lambda: process_runner(
                 command, cwd=workspace, input_text=WRAPPER_PROMPT,
                 timeout=runner.timeout_seconds,
                 environment=isolated_environment(os.environ["MDSEVAL_CODEX_HOME"]),
-            )
-        except (OSError, RuntimeError) as exc:
-            subject_error = type(exc).__name__
-            subject = ProcessOutcome(None, "", "", False, True)
+            ),
+            redactor,
+        )
         duration = time.monotonic() - started
         final_text = final_path.read_text(encoding="utf-8", errors="replace") if final_path.is_file() else ""
         audit_final_subject_tree(workspace)
@@ -1316,7 +1499,7 @@ def _live_launch(
                 [sys.executable, str(checker), str(workspace)], cwd=checker.parent,
                 input_text=None, timeout=60, environment=checker_environment,
             )
-        except (OSError, RuntimeError) as exc:
+        except OSError as exc:
             checker_error = type(exc).__name__
             checked = ProcessOutcome(None, "", "", False, True)
         checker_unchanged = checker_before_tree == tree_sha256(workspace) and checker_before_sha == sha256_file(checker)
@@ -1331,7 +1514,7 @@ def _live_launch(
             except (json.JSONDecodeError, ScoutError):
                 checker_result = None
         infrastructure_failure = classify_infrastructure_failure(
-            launch_exception=subject_error,
+            spawn_error=subject_error,
             timed_out=subject.timed_out,
             returncode=subject.returncode,
             events_jsonl=subject.stdout,
@@ -1354,6 +1537,33 @@ def _live_launch(
             "returncode": checked.returncode, "timed_out": checked.timed_out,
             "interrupted": checked.interrupted,
         }
+        checker_binding_passed = (
+            checker_before_sha == binding["checker_sha256"]
+            and sha256_file(checker) == binding["checker_sha256"]
+        )
+        protected_workspace_passed = _protected_workspace_matches(
+            workspace, admission["protected_inputs"]
+        )
+        task_fidelity_passed = (
+            checker_binding_passed and checker_unchanged and protected_workspace_passed
+        )
+        root_cause = (
+            None if task_fidelity_passed
+            else "checker-binding" if not checker_binding_passed
+            else "checker-workspace" if not checker_unchanged
+            else "protected-workspace"
+        )
+        launch_fidelity = {
+            "schema": LAUNCH_FIDELITY_SCHEMA,
+            "static_clearance_sha256": static_fidelity["clearance_sha256"],
+            "static_status": static_fidelity["status"], "task_id": task_id,
+            "checker_binding_passed": checker_binding_passed,
+            "checker_workspace_unchanged": checker_unchanged,
+            "protected_workspace_passed": protected_workspace_passed,
+            "task_fidelity_passed": task_fidelity_passed,
+            "root_cause": root_cause,
+            "shared_recipe_or_admission_defect": static_fidelity["shared_recipe_or_admission_defect"],
+        }
         raw = {
             "events_jsonl": subject_stdout,
             "stderr": subject_stderr,
@@ -1368,31 +1578,38 @@ def _live_launch(
         record = {
             "schema": LIVE_LAUNCH_SCHEMA, "launch_ordinal": launch_ordinal,
             "task_id": task_id, "author_id": binding["author_id"], "family_id": binding["family_id"],
-            "cohort_start_commit": cohort["start_commit"], "wrapper_sha256": cohort["wrapper"]["prompt_sha256"],
+            "authorization_start_commit": freeze["authorization_start_commit"],
+            "freeze_commit": freeze["freeze_commit"],
+            "wrapper_sha256": cohort["wrapper"]["prompt_sha256"],
             "runtime": cohort["runtime"], "sandbox": cohort["sandbox"], "command": command,
-            "subject": {"returncode": subject.returncode, "timed_out": subject.timed_out, "interrupted": subject.interrupted, "duration_seconds": duration, "error": subject_error},
+            "subject": {"returncode": subject.returncode, "timed_out": subject.timed_out, "interrupted": subject.interrupted, "duration_seconds": duration, "spawn_error": subject_error},
             "git": asdict(git_capture), "raw": raw, "checker": checker_evidence,
+            "fidelity": {"static": static_fidelity, "launch": launch_fidelity},
             "raw_evidence_sha256": raw_hashes,
             "usable": usable, "infrastructure_failure": infrastructure_failure,
         }
         _write_live_launch_record(evidence_root, launch_ordinal, record)
     return {
         "task_id": task_id, "usable": usable,
-        "infrastructure_failure": infrastructure_failure, "valid": usable,
-        "checker_result": checker_result, "fidelity_defect": False,
+        "infrastructure_failure": infrastructure_failure,
+        "valid": usable and task_fidelity_passed,
+        "checker_result": checker_result, "fidelity_clearance": launch_fidelity,
     }
 
 
 def run_live_scout(
     cohort_path: Path | str, qualification_root: Path | str, output: Path | str,
-    *, process_runner: Any = run_process_group, redactor: Redactor | None = None,
+    *, freeze_commit: str, process_runner: Any = run_process_group,
+    redactor: Redactor | None = None,
 ) -> dict[str, Any]:
     """Run only the frozen serial null scout; this function is never used by tests."""
     cohort_path = Path(cohort_path).resolve()
     cohort = load_cohort(cohort_path)
-    qualification = verify_qualification(cohort_path, qualification_root)
-    preflight = preflight_live_scout(cohort_path)
     root = _repository_root(cohort_path)
+    freeze = validate_live_freeze(root, cohort["start_commit"], freeze_commit)
+    qualification = verify_qualification(cohort_path, qualification_root)
+    static_fidelity = build_fidelity_clearance(cohort, Path(qualification_root))
+    preflight = preflight_live_scout(cohort_path)
     evidence = Path(output).resolve()
     if evidence.exists():
         raise ScoutError("live scout evidence is create-once")
@@ -1404,7 +1621,10 @@ def run_live_scout(
             "cohort_sha256": sha256_file(cohort_path),
             "qualification_summary_sha256": sha256_file(Path(qualification_root) / "summary.json"),
             "runtime_preflight_code": preflight["code"], "variant": "null-only",
-            "schedule": cohort["schedule"], "start_commit": cohort["start_commit"],
+            "schedule": cohort["schedule"],
+            "authorization_start_commit": freeze["authorization_start_commit"],
+            "freeze_commit": freeze["freeze_commit"],
+            "fidelity_clearance": static_fidelity,
         },
     )
     state: dict[str, Any] = {"launches": 0, "usable": 0, "replacements": 0, "replacements_by_author": {}}
@@ -1412,13 +1632,17 @@ def run_live_scout(
     redactor = redactor or Redactor()
     while state["usable"] < 18:
         task_id = cohort["schedule"][state["usable"]]
-        attempt = _live_launch(root, cohort, task_id, state["launches"] + 1, evidence, process_runner=process_runner, redactor=redactor)
+        attempt = _live_launch(
+            root, cohort, task_id, state["launches"] + 1, evidence,
+            freeze=freeze, static_fidelity=static_fidelity,
+            process_runner=process_runner, redactor=redactor,
+        )
         if not attempt["usable"] and not attempt["infrastructure_failure"]:
             raise ScoutError("unscoreable non-infrastructure launch cannot be replaced")
         state = record_launch(cohort, state, task_id, usable=attempt["usable"], infrastructure_failure=attempt["infrastructure_failure"])
         if attempt["usable"]:
             attempts.append(attempt)
-    report = classify_scout(cohort, attempts)
+    report = classify_scout(cohort, attempts, static_fidelity)
     report["launches"] = state["launches"]
     report["replacements"] = state["replacements"]
     report["qualification_status"] = qualification["status"]

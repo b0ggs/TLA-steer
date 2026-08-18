@@ -48,6 +48,7 @@ def main() -> int:
         default=ROOT / "runs/development/coder-beneficial-sensitivity-m2/scout-v1/qualification",
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--freeze-commit")
     arguments = parser.parse_args()
     try:
         if arguments.action == "smoke":
@@ -61,9 +62,12 @@ def main() -> int:
         elif arguments.action == "preflight":
             result = preflight_live_scout(arguments.cohort)
         else:
-            if arguments.output is None:
-                raise ScoutError("run requires an explicit create-once --output")
-            result = run_live_scout(arguments.cohort, arguments.qualification, arguments.output)
+            if arguments.output is None or arguments.freeze_commit is None:
+                raise ScoutError("run requires explicit --output and --freeze-commit")
+            result = run_live_scout(
+                arguments.cohort, arguments.qualification, arguments.output,
+                freeze_commit=arguments.freeze_commit,
+            )
     except ScoutError as exc:
         print(json.dumps({"status": "FAIL", "error": str(exc)}, sort_keys=True))
         return 1

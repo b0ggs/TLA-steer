@@ -1,21 +1,27 @@
 from __future__ import annotations
 
+import errno
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+from mdseval.capture import Redactor
 from mdseval.scout import (
     CHECKER_SOURCE,
     FAKE_SUBJECT_SOURCE,
     ScoutError,
+    _capture_subject_launch,
     _write_live_launch_record,
+    build_fidelity_clearance,
     classify_infrastructure_failure,
     classify_scout,
     load_cohort,
     load_config,
     record_launch,
     run_smoke,
+    validate_live_freeze,
     verify_smoke,
 )
 
@@ -94,6 +100,27 @@ class ScoutPhaseBTests(unittest.TestCase):
             "resolved": resolved,
         }
 
+    @staticmethod
+    def fidelity(
+        task_id: str, *, passed: bool = True, root_cause: str | None = None,
+        shared: bool = False, digest: str = "a" * 64,
+    ) -> dict[str, object]:
+        return {
+            "schema": "mdseval.coder-beneficial-sensitivity-m2-launch-fidelity-v1",
+            "static_clearance_sha256": digest, "static_status": "PASS",
+            "task_id": task_id, "checker_binding_passed": True,
+            "checker_workspace_unchanged": True,
+            "protected_workspace_passed": passed,
+            "task_fidelity_passed": passed,
+            "root_cause": None if passed else (root_cause or f"protected:{task_id}"),
+            "shared_recipe_or_admission_defect": shared,
+        }
+
+    @staticmethod
+    def static_fidelity(cohort: dict[str, object]) -> dict[str, object]:
+        qualification = ROOT / "runs/development/coder-beneficial-sensitivity-m2/scout-v1/qualification"
+        return build_fidelity_clearance(cohort, qualification)
+
     def test_frozen_cohort_binds_six_tasks_and_exact_runtime(self) -> None:
         cohort = load_cohort(COHORT)
         self.assertEqual(len(cohort["tasks"]), 6)
@@ -128,6 +155,7 @@ class ScoutPhaseBTests(unittest.TestCase):
 
     def test_section_13_classification_requires_exact_18_and_finds_witness(self) -> None:
         cohort = load_cohort(COHORT)
+        static_fidelity = self.static_fidelity(cohort)
         bindings = {item["id"]: item for item in cohort["tasks"]}
         witnesses = {"scout-a-bug-01", "scout-b-integration-01"}
         seen: dict[str, int] = {}
@@ -150,18 +178,61 @@ class ScoutPhaseBTests(unittest.TestCase):
                     "checker_result": self.checker_result(
                         requirement_ids, passed, resolved
                     ),
-                    "fidelity_defect": False,
+                    "fidelity_clearance": self.fidelity(
+                        task_id, digest=static_fidelity["clearance_sha256"]
+                    ),
                 }
             )
         with self.assertRaisesRegex(ScoutError, "exact frozen 18"):
-            classify_scout(cohort, attempts[:-1])
-        report = classify_scout(cohort, attempts)
+            classify_scout(cohort, attempts[:-1], static_fidelity)
+        with self.assertRaisesRegex(ScoutError, "static fidelity clearance"):
+            classify_scout(cohort, attempts)
+        clearance = attempts[0].pop("fidelity_clearance")
+        with self.assertRaisesRegex(ScoutError, "fidelity clearance"):
+            classify_scout(cohort, attempts, static_fidelity)
+        attempts[0]["fidelity_clearance"] = clearance
+        report = classify_scout(cohort, attempts, static_fidelity)
         self.assertEqual(report["decision"], "SCOUT_PASS")
         self.assertEqual(set(report["witness_task_ids"]), witnesses)
         self.assertEqual(report["tasks"]["scout-a-bug-01"]["label"], "promising")
+        attempts[0]["fidelity_clearance"] = self.fidelity(
+            attempts[0]["task_id"], passed=False, root_cause="task-specific",
+            digest=static_fidelity["clearance_sha256"],
+        )
+        failed = classify_scout(cohort, attempts, static_fidelity)
+        self.assertEqual(failed["decision"], "SCOUT_NO_PASS")
+        self.assertEqual(failed["tasks"][attempts[0]["task_id"]]["label"], "invalid")
+
+        first_task = attempts[0]["task_id"]
+        for attempt in attempts:
+            attempt["fidelity_clearance"] = self.fidelity(
+                attempt["task_id"],
+                passed=attempt["task_id"] != first_task,
+                root_cause="protected-workspace",
+                digest=static_fidelity["clearance_sha256"],
+            )
+        isolated = classify_scout(cohort, attempts, static_fidelity)
+        self.assertEqual(isolated["checker_fidelity_root_causes"], {"protected-workspace": 1})
+        self.assertFalse(isolated["shared_fidelity_defect"])
+
+        for attempt in attempts:
+            attempt["fidelity_clearance"] = self.fidelity(
+                attempt["task_id"], digest=static_fidelity["clearance_sha256"]
+            )
+        for task_id in ("scout-c-bug-01", "scout-c-integration-01"):
+            attempt = next(item for item in attempts if item["task_id"] == task_id)
+            attempt["fidelity_clearance"] = self.fidelity(
+                task_id, passed=False, root_cause="checker-workspace",
+                digest=static_fidelity["clearance_sha256"],
+            )
+        repeated = classify_scout(cohort, attempts, static_fidelity)
+        self.assertEqual(repeated["checker_fidelity_root_causes"], {"checker-workspace": 2})
+        self.assertTrue(repeated["shared_fidelity_defect"])
+        self.assertEqual(repeated["decision"], "SCOUT_NO_PASS")
 
     def test_non_omission_failure_is_wrong_failure_mode(self) -> None:
         cohort = load_cohort(COHORT)
+        static_fidelity = self.static_fidelity(cohort)
         bindings = {item["id"]: item for item in cohort["tasks"]}
         attempts = []
         for task_id in cohort["schedule"]:
@@ -170,9 +241,11 @@ class ScoutPhaseBTests(unittest.TestCase):
                 result["integrity"] = {"passed": False}
             attempts.append(
                 {"task_id": task_id, "usable": True, "valid": True,
-                 "checker_result": result, "fidelity_defect": False}
+                 "checker_result": result,
+                 "fidelity_clearance": self.fidelity(
+                     task_id, digest=static_fidelity["clearance_sha256"])}
             )
-        report = classify_scout(cohort, attempts)
+        report = classify_scout(cohort, attempts, static_fidelity)
         self.assertEqual(
             report["tasks"]["scout-a-bug-01"]["label"], "wrong-failure-mode"
         )
@@ -180,7 +253,7 @@ class ScoutPhaseBTests(unittest.TestCase):
 
     def test_generic_nonzero_with_scoreable_checker_is_usable(self) -> None:
         infrastructure = classify_infrastructure_failure(
-            launch_exception="",
+            spawn_error=None,
             timed_out=False,
             returncode=7,
             events_jsonl="",
@@ -198,7 +271,7 @@ class ScoutPhaseBTests(unittest.TestCase):
             {"type": "error", "message": "Authentication failed: login required"}
         ) + "\n"
         infrastructure = classify_infrastructure_failure(
-            launch_exception="",
+            spawn_error=None,
             timed_out=False,
             returncode=1,
             events_jsonl=event,
@@ -222,7 +295,7 @@ class ScoutPhaseBTests(unittest.TestCase):
 
     def test_scoreable_timeout_is_usable(self) -> None:
         infrastructure = classify_infrastructure_failure(
-            launch_exception="",
+            spawn_error=None,
             timed_out=True,
             returncode=None,
             events_jsonl="",
@@ -234,6 +307,80 @@ class ScoutPhaseBTests(unittest.TestCase):
         checker_scoreable = True
         self.assertFalse(infrastructure)
         self.assertTrue(checker_scoreable and not infrastructure)
+
+    def test_spawn_oserror_is_structured_narrow_and_runtime_error_propagates(self) -> None:
+        def missing() -> object:
+            raise FileNotFoundError(errno.ENOENT, "spawn TOKEN=secret")
+
+        outcome, reason = _capture_subject_launch(missing, Redactor())
+        self.assertIsNone(outcome.returncode)
+        self.assertEqual(
+            reason,
+            {"type": "FileNotFoundError", "message": "[Errno 2] spawn TOKEN=[REDACTED]",
+             "errno": errno.ENOENT},
+        )
+        self.assertTrue(classify_infrastructure_failure(
+            spawn_error=reason, timed_out=False, returncode=None,
+            events_jsonl="", stderr="", final_text="", changed_paths=(), untracked=(),
+        ))
+
+        def unknown() -> object:
+            raise OSError(999, "unknown spawn failure")
+
+        _, unknown_reason = _capture_subject_launch(unknown, Redactor())
+        self.assertFalse(classify_infrastructure_failure(
+            spawn_error=unknown_reason, timed_out=False, returncode=None,
+            events_jsonl="", stderr="", final_text="", changed_paths=(), untracked=(),
+        ))
+        with self.assertRaisesRegex(RuntimeError, "internal"):
+            _capture_subject_launch(
+                lambda: (_ for _ in ()).throw(RuntimeError("internal")), Redactor()
+            )
+
+    def test_freeze_validation_requires_exact_clean_descended_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+
+            def git(*arguments: str) -> str:
+                result = subprocess.run(
+                    ["git", *arguments], cwd=repo, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                return result.stdout.strip()
+
+            git("init", "-q", "--template=")
+            git("config", "user.name", "Scout Test")
+            git("config", "user.email", "scout@invalid.local")
+            tracked = repo / "tracked.txt"
+            tracked.write_text("one\n", encoding="utf-8")
+            git("add", "tracked.txt")
+            git("commit", "-q", "-m", "one")
+            start = git("rev-parse", "HEAD")
+            self.assertEqual(validate_live_freeze(repo, start, start)["freeze_commit"], start)
+            with self.assertRaisesRegex(ScoutError, "full lowercase"):
+                validate_live_freeze(repo, start, "short")
+            tracked.write_text("dirty\n", encoding="utf-8")
+            with self.assertRaisesRegex(ScoutError, "dirty"):
+                validate_live_freeze(repo, start, start)
+            tracked.write_text("two\n", encoding="utf-8")
+            git("add", "tracked.txt")
+            git("commit", "-q", "-m", "two")
+            freeze = git("rev-parse", "HEAD")
+            self.assertEqual(
+                validate_live_freeze(repo, start, freeze)["authorization_start_commit"],
+                start,
+            )
+            with self.assertRaisesRegex(ScoutError, "HEAD"):
+                validate_live_freeze(repo, start, start)
+
+    def test_static_fidelity_clearance_binds_all_offline_evidence(self) -> None:
+        cohort = load_cohort(COHORT)
+        qualification = ROOT / "runs/development/coder-beneficial-sensitivity-m2/scout-v1/qualification"
+        clearance = build_fidelity_clearance(cohort, qualification)
+        self.assertEqual(clearance["status"], "PASS")
+        self.assertEqual(len(clearance["qualification"]["task_records"]), 6)
+        self.assertEqual(clearance["admission"]["files"], cohort["admission_evidence"]["files"])
+        self.assertEqual(len(clearance["clearance_sha256"]), 64)
 
     def test_live_launch_evidence_is_one_canonical_create_once_file(self) -> None:
         record = {
