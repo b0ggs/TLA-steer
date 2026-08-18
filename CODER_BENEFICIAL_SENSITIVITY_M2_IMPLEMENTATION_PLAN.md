@@ -729,6 +729,23 @@ non-author who submits an implementation from its public packet before inspectin
 its checker or gates. No author or validator receives current or candidate
 `CODER.md` content or outcomes.
 
+The six-task cohort is the live decision cadence, never the production ceiling.
+While an authorized task target remains unmet, orchestration reserves two
+concurrent task-design producer lanes and one immediate integration/evaluation
+lane. The one-filesystem-editor rule still applies: designers work read-only or
+return candidate content in messages, and the editor admits completed candidates
+to an unexposed ready queue as soon as they are ready. Authors and contract-only
+validators rotate as needed so every live cohort still has three distinct authors
+with two tasks each and every task receives fresh non-author validation before
+that validator inspects its checker or gates.
+
+Permission waits, runner work, review, and governance must not displace both
+producer lanes. While one cohort freezes or runs, production continues only for
+separately authorized, unexposed candidates. Findings may inform those candidates,
+never alter exposed or frozen tasks. Missing path, churn, or live-call authority
+must be surfaced and resolved at the earliest known point, before it idles the
+pipeline; no live call or unauthorized expansion follows automatically.
+
 Before any null outcome, freeze one concise versioned generation recipe and SHA-256
 defining requirement count/dispersion, primary/secondary structure, task-family
 criteria, and subject packet/wrapper construction. All six tasks use the same
