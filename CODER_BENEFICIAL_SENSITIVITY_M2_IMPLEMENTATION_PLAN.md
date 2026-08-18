@@ -694,17 +694,19 @@ The objective is to discover a repeatable omission-sensitive task recipe before
 building another pool. This development is neither an M2 verdict nor an
 instruction-file comparison.
 
-This plan self-authorizes no action. One bounded user authorization may cover the
-full lab: three batches, 18 planned usable attempts, and at most two eligible
-replacement launches per batch. It specifies exact roles, paths/churn caps,
-evidence root, total launch cap, and one intended-confirmation target
-model/runtime configuration across the lab: model/reasoning effort,
+This plan self-authorizes no action. One bounded user authorization may cover one
+six-task development cohort, its 18 planned usable attempts, and at most two
+eligible infrastructure-only replacement launches per author's frozen two-task
+allocation, six cohort-wide; no user checkpoint occurs inside the cohort. It
+specifies exact roles, paths/churn caps, evidence root,
+total launch cap, and one intended-confirmation target model/runtime
+configuration for the cohort: model/reasoning effort,
 harness/wrapper bytes, timeout, tools, sandbox/network, CLI/runtime, prompt
-construction, and repository preparation. Frozen mechanical rules advance
-batches without new chat. Any outcome-relevant configuration change needs new
-authority, restarts the consecutive-batch sequence, and makes prior batches
-non-transferable to PASS while preserving their evidence. Expansion or a live
-treatment comparison also needs new authority.
+construction, and repository preparation. Frozen mechanical rules advance the
+cohort without new chat. Any outcome-relevant configuration change needs new
+authority and returns work offline while preserving its evidence. No second
+cohort, expansion, or live treatment comparison is automatic; each needs new
+authority.
 
 Task A v2/v3 evidence stays immutable, non-transferable, and outside any resumed
 lineage; neither reached a usable subject attempt.
@@ -717,19 +719,22 @@ wrapper/checker invocation, capture, evidence writing, and deterministic replay.
 Repair and repeat; pre-exposure failures consume no version or attempt. Preserve
 reproducible diagnostics.
 
-### 13.3 Phase B: disposable two-task microbatches
+### 13.3 Phase B: one six-task scout cohort
 
-A batch has exactly two disposable, different-family tasks, one task/checker
-implementer, and one fresh independent contract-only solver/reviewer. The latter
-submits implementations from public packets before inspecting checkers and
-gates. Neither role receives current or candidate `CODER.md` content or outcomes.
+A cohort has exactly six disposable tasks. Three isolated task authors/designers
+have distinct author IDs and are each responsible for exactly two distinct,
+different-family tasks. Design may proceed concurrently, but only one filesystem
+editor acts at a time. Each task receives fresh contract-only validation from a
+non-author who submits an implementation from its public packet before inspecting
+its checker or gates. No author or validator receives current or candidate
+`CODER.md` content or outcomes.
 
-Before each batch, freeze a concise versioned generation recipe and SHA-256
+Before any null outcome, freeze one concise versioned generation recipe and SHA-256
 defining requirement count/dispersion, primary/secondary structure, task-family
-criteria, and subject packet/wrapper construction. The two consecutive batches
-used for recipe freeze must use byte-identical recipe bytes/hash. Any recipe
-change starts a new consecutive-batch sequence and makes earlier batches
-non-transferable to PASS without erasing evidence.
+criteria, and subject packet/wrapper construction. All six tasks use the same
+recipe bytes/hash. All six must pass the offline gate below and freeze before any
+null attempt launches. Any recipe change returns the whole cohort offline without
+erasing evidence.
 
 Before the first target launch, freeze each requirement's mapped assertions,
 PASS predicate, and observable-omission predicate, plus regression/integrity pass
@@ -755,16 +760,18 @@ omission-only iff every failed requirement fires its frozen omission predicate
 and no regression/integrity failure occurs; every other valid failure is
 wrong-failure-mode.
 
-Gate failures are retryable before target exposure. Freeze each task's public
-packet and checker at its first target launch; do not patch or rerun it as a
-revised version within the batch.
+Gate failures are retryable before target exposure. Freeze every task's public
+packet and checker together after all six pass; do not patch or rerun a revised
+version within the cohort.
 
 Run three usable null-treatment target attempts per task in fresh workspaces,
-each with a present zero-byte `CODER.md`: six per batch. Usable means captured
-subject output and checker evidence suffice for frozen classification. At most
-two replacement launches per batch are allowed, only when the frozen
-infrastructure predicate fires before usable output. Preserve raw evidence and
-reason. A timeout is usable only when frozen evidence mechanically scores it; an
+each with a present zero-byte `CODER.md`: exactly 18 for the cohort. Usable means
+captured subject output and checker evidence suffice for frozen classification.
+At most two replacement launches per author's frozen two-task allocation, six
+cohort-wide, are allowed only when the frozen infrastructure predicate fires
+before usable output. These allocations affect replacement capacity only, not
+`SCOUT_PASS`. Preserve raw evidence and reason. A timeout is usable only when
+frozen evidence mechanically scores it; an
 unscoreable timeout is replaceable only under that preceding rule. Poor solutions,
 failed checks, and other scoreable outcomes are usable and never selectively
 retried.
@@ -780,29 +787,32 @@ the RESOLVED count across three usable attempts. Apply labels in order:
 4. ceiling: s is 3, or s is 1 or 2 and q > 0.90;
 5. floor: s is 0, or s is 1 or 2 and q < 0.55.
 
-A bad task ends only itself; it does not stop development, permit changes to an
-exposed version, or erase evidence.
+A single isolated invalid task is excluded from the witness set and preserved; it
+does not erase valid neighbors, permit changes to an exposed version, or erase
+evidence.
 
-Recipe freeze requires two consecutive completed batches, each with at least one
-promising task, at least two families across those tasks, and no checker defect.
-Complete compact evidence/accounting for both makes Section 13 development PASS,
-not an M2 sensitivity verdict. Without that replicated signal after three
-batches and 18 planned usable attempts, stop live discovery and return offline.
-Three batches are the ceiling; an incomplete batch authorizes no extra live work.
+`SCOUT_PASS` holds iff, after all 18 usable attempts, there exists a pair of
+promising tasks with different author IDs and different family IDs, neither
+witness has a checker, traceability, determinism, integrity, or evidence defect,
+and no checker-fidelity root cause repeats in two or more cohort tasks or
+implicates the shared recipe or admission process. Every other outcome is
+`SCOUT_NO_PASS` and returns work offline. `SCOUT_PASS` proves replicated existence
+only: it is not a yield, power, final-suite-readiness, treatment-effect, or M2
+sensitivity verdict, and it authorizes no automatic second cohort or scaling.
 
 ### 13.4 Evidence and confirmation boundary
 
-Each batch preserves one compact manifest covering authorization, roles,
+The cohort preserves one compact manifest covering authorization, roles,
 families, hashes, runtime, launches, and replacement reasons; raw subject/checker
 evidence; and one short summary. Create no per-role authorization or receipt
 forest.
 
 All exposed or outcome-informed prototypes and authors are development-only.
 Discovery uses only null/no-coder; current and candidate files stay hidden and
-untested. After recipe freeze, scale fresh development tasks only in pairs and
-use measured admission/promising yield to plan fresh confirmatory inventory.
-Base final pool size, feasibility, and power on measured task-level evidence,
-not inherited rate assumptions.
+untested. `SCOUT_PASS` may inform separately authorized fresh development using
+measured admission/promising evidence; it never authorizes another cohort or
+final scaling. Base final pool size, feasibility, and power on measured task-level
+evidence, not inherited rate assumptions.
 
 Only then may fresh confirmatory authors create fresh tasks under a new bounded
 authorization. Apply full two-blind-solver admission, immutable hashes, frozen
