@@ -1,0 +1,9 @@
+INFO server started
+INFO user login alice
+WARNING disk usage high
+ERROR connection lost
+INFO user login alice
+DEBUG cache warm
+ERROR connection lost
+not a log line
+INFO heartbeat
