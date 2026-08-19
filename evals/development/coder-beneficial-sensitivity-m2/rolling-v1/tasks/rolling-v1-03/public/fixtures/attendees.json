@@ -1,0 +1,30 @@
+[
+  {
+    "id": "V-104",
+    "name": "Mina Lee",
+    "role": "setup",
+    "active": true,
+    "late_shift": true
+  },
+  {
+    "id": "V-099",
+    "name": "Omar Diaz",
+    "role": "checkin",
+    "active": true,
+    "late_shift": false
+  },
+  {
+    "id": "V-120",
+    "name": "Priya Shah",
+    "role": "runner",
+    "active": false,
+    "late_shift": true
+  },
+  {
+    "id": "V-101",
+    "name": "Eli Brown",
+    "role": "runner",
+    "active": true,
+    "late_shift": true
+  }
+]

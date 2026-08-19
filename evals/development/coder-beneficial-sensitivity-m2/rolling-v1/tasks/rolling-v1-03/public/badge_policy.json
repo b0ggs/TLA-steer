@@ -1,0 +1,9 @@
+{
+  "common_area": "lobby",
+  "late_shift_area": "staff-exit",
+  "role_area": {
+    "checkin": "welcome-desk",
+    "runner": "supply-room",
+    "setup": "main-hall"
+  }
+}
