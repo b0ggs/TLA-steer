@@ -1,0 +1,1 @@
+{"environment":{"checks":["workspace","expected path","protected paths"],"passed":true},"integrity":{"detail":"protected inputs unchanged","passed":true},"regressions":{},"requirements":{"R1":{"detail":"expected bytes present","passed":true}},"resolved":true,"schema":"mdseval.coder-beneficial-sensitivity-m2-scout-check-v1","task_id":"synthetic-scout-smoke"}
