@@ -1,0 +1,6 @@
+[project]
+name = "triageboard"
+version = "0.1.0"
+description = "Deterministic support-ticket routing cards"
+requires-python = ">=3.11"
+dependencies = []

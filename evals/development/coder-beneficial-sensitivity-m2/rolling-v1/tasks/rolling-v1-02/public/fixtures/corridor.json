@@ -1,0 +1,77 @@
+{
+  "policy": {
+    "aliases": {
+      "invoice": "billing",
+      "ios": "mobile"
+    },
+    "default_queue": "general",
+    "product_queues": {
+      "billing": "accounts",
+      "mobile": "apps"
+    },
+    "priority_by_severity": {
+      "high": 1,
+      "low": 3,
+      "normal": 2
+    },
+    "vip_tag": "vip"
+  },
+  "tickets": [
+    {
+      "id": "T-20",
+      "product": " IOS ",
+      "severity": "normal",
+      "tags": [
+        " Beta ",
+        "VIP",
+        "beta"
+      ]
+    },
+    {
+      "id": "T-03",
+      "product": "invoice",
+      "severity": " HIGH ",
+      "tags": []
+    },
+    {
+      "id": "T-11",
+      "product": " Other ",
+      "severity": "low",
+      "tags": [
+        "Docs",
+        ""
+      ]
+    }
+  ],
+  "expected": [
+    {
+      "id": "T-03",
+      "product": "billing",
+      "queue": "accounts",
+      "priority": 1,
+      "escalated": true,
+      "tags": []
+    },
+    {
+      "id": "T-20",
+      "product": "mobile",
+      "queue": "apps",
+      "priority": 1,
+      "escalated": true,
+      "tags": [
+        "beta",
+        "vip"
+      ]
+    },
+    {
+      "id": "T-11",
+      "product": "other",
+      "queue": "general",
+      "priority": 3,
+      "escalated": false,
+      "tags": [
+        "docs"
+      ]
+    }
+  ]
+}
