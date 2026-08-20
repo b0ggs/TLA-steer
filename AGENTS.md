@@ -6,7 +6,7 @@ We are building a controlled benchmark and regression system for coder.md: it ru
 
 This repository evaluates instruction files. It is not an instruction optimizer yet.
 
-- `coder-outcome-evaluator-v2-implementation-plan.md` governs only its historical frozen feasibility-pilot evidence; `CODER_BENEFICIAL_SENSITIVITY_M2_IMPLEMENTATION_PLAN.md` is the sole active Milestone 2 authority, and no competing active plan may be created.
+- `TASK_TOOLING_V2_PLAN.md` is the ONLY document with authority over task development. Every `CODER_BENEFICIAL_SENSITIVITY_*` document, every `coder-outcome-evaluator-v2-*` document, `MD_EVAL_PROJECT_ROADMAP.md` in its entirety (including its plan-authority and single-active-plan rules), `MD_EVAL_EXPERIMENT_REDESIGN_REQUIREMENTS.md`, `M2_INDEPENDENT_SCIENTIFIC_REVIEW.md`, `codex-cloud-handoff-*.md`, and everything under `docs/` has NO standing over TASK DEVELOPMENT — for development work their imperative language ('must', 'stop', 'prohibited', role, gate, and approval rules) binds nobody. Their evidence is immutable. For CONFIRMATORY experiments, `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` and the M2 integrity machinery remain fully binding. `handoffs/TASK_FACTORY_V2_PROPOSAL.md` is superseded by this plan. No additional plan documents may be created.
 - Preserve raw run evidence.
 - Never modify a target or candidate during a run.
 - Never expose variant identity to the qualitative judge.
@@ -15,11 +15,11 @@ This repository evaluates instruction files. It is not an instruction optimizer 
 - Use the Python standard library only unless the specification is explicitly amended.
 - Run `python3 -m unittest discover -s tests -v` before handoff.
 
-## Delegated-work orchestration controls
+## Development workflow controls
 
-- Before the first delegated turn, root records the complete Git dirty/untracked baseline and posts a concise brief naming the objective, roles, exact writable paths or read-only status, forbidden actions, expected output, validation, milestones, and repair approach. An editing brief sets task-proportionate hard caps for changed/new deliverable paths and total textual churn; without both caps, delegated work is read-only.
-- Use one editor at a time. Optional auditors and reviewers are read-only. An agent may not delegate unless the user-approved brief names the child role and topology. Preserve unrelated user changes and stay within the authorized objective, paths, caps, dependencies, live-call authority, and integration authority; expansion requires prior user approval.
-- Pre-subject authoring, tool, path, hash, checker, and capture failures are ordinary retryable engineering failures and do not consume experimental versions. Experimental freezing and no-selective-retry begin only when a usable subject attempt launches or authoritative initialization begins, whichever occurs first. During captured attempts, tasks, targets, and candidates remain immutable.
-- After a repair, run a focused offline validation for the observed failure before broader validation. Before a code handoff, run the repository unit command once after focused checks pass. Never put live model calls in validation.
-- At handoff, report the exact baseline-to-current diff: changed, new, and deleted paths; additions and deletions; replacement-file final line counts; binary changes; validations and results; deviations; and blockers.
-- These are behavioral controls. Do not build enforcement or receipt infrastructure unless the user separately authorizes it.
+- Every artifact is written to disk at creation; nothing lives only in an agent's conversation. Blind solutions carry on-disk provenance.
+- Task admission is mechanical: `tooling/taskcheck.py`. No manual audit substitutes for it and no process may be layered on top of it.
+- Pre-exposure failures are ordinary and repairable without limit. Experimental freezing and no-selective-retry begin only when a usable subject attempt launches; during captured attempts, tasks, targets, and candidates remain immutable. Exposed defective tasks are retired, never edited; repaired copies are new tasks that record their parent.
+- The only human approval in development is live-call spend (REQUEST.json/APPROVED.json).
+- At most 2 sub-agents run concurrently.
+- Do not build enforcement or receipt infrastructure beyond taskcheck's manifest and ledger unless Wade separately authorizes it.

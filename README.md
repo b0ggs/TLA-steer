@@ -1,4 +1,5 @@
 # MD Eval
+Everything below documents frozen confirmatory machinery. Task development is governed only by TASK_TOOLING_V2_PLAN.md.
 
 MD Eval is a small, local, harness-independent evaluator for comparing two
 versions of one agent instruction file against the same coding tasks. This MVP

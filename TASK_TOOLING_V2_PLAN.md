@@ -1,8 +1,6 @@
 # Task Tooling & Process v2 — Implementation Plan (rev 2, post-audit)
 
-Status: PROPOSED. To adopt: Wade (or a session Wade directs) commits this file and
-flips this line to "Status: ACTIVE as of <date>". An implementing session that
-finds "ACTIVE" here implements it; one that finds "PROPOSED" stops and asks.
+Status: ACTIVE as of 2026-08-20.
 Rev 2 incorporates all findings from two independent audits (2026-08-19).
 
 The implementing session works on a NEW BRANCH (suggested: task-tooling-v2)

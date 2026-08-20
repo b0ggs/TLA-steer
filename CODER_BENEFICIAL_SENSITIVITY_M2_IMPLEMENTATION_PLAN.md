@@ -7,6 +7,9 @@ amendment and authorizes neither task creation nor live/model/API calls.
 Scientific authority: `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` v0.4 governs
 only its frozen campaigns; a future confirmatory protocol may be written only
 after Section 13 development PASS.
+Section 13 closed 2026-08-20 with no promising task (ledger:
+handoffs/PROCESS_FINDINGS_2026-08-19.md). Task development authority:
+TASK_TOOLING_V2_PLAN.md.
 Roadmap stage: Milestone 2 only — demonstrate beneficial measurement sensitivity
 
 ## 1. Authority, outcome, and scope

@@ -4,6 +4,7 @@ __pycache__/
 .coverage
 .venv/
 runs/*
+!runs/dev-v2/
 !runs/.gitkeep
 reports/*
 !reports/.gitkeep
