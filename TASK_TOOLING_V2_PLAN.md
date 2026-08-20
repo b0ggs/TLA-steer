@@ -9,6 +9,14 @@ The implementing session works on a NEW BRANCH (suggested: task-tooling-v2)
 created from the branch containing this plan file. It never commits directly to
 main or to any existing agent/* branch; Wade merges when acceptance (§7) passes.
 
+ATOMIC ACTIVATION (audit: flipping ACTIVE before the AGENTS.md edit creates a
+window where AGENTS.md forbids this plan): the status flip and ALL §5
+documentation edits are ONE commit — the implementing session's first commit.
+Until that commit, this plan is proposed and AGENTS.md's old sentence stands;
+from that commit, authority is transferred with no contradictory intermediate
+state. For confirmatory experiments the M2 protocol and its integrity
+machinery remain fully binding — this plan claims development only.
+
 Authority: on adoption this plan is the sole authority for TASK DEVELOPMENT.
 Section 13 of CODER_BENEFICIAL_SENSITIVITY_M2_IMPLEMENTATION_PLAN.md is closed
 (no promising task found; ledger in handoffs/PROCESS_FINDINGS_2026-08-19.md).
@@ -19,9 +27,14 @@ AGENTS.md's authority sentence so no contradiction remains.
 Vocabulary used throughout:
 - ADMIT: pass the offline mechanical gate. Re-runnable any number of times.
   Admitted tasks may be freely repaired and re-admitted.
-- EXPOSE / FREEZE: the first live subject attempt on a task. From that moment the
-  task's bytes are immutable forever. Defective exposed tasks are RETIRED, never
-  edited; a repaired copy is a new task recording its parent (see §4).
+- EXPOSE / FREEZE: the first LAUNCHED subject attempt on a task (launched =
+  subject process started, whether or not the attempt proves usable). Exposure
+  is recorded as an append-only line in tasks/exposures.jsonl (same chain
+  format as the admit ledger); from that line's existence the task's bytes are
+  immutable forever, and `admit` MUST refuse any task id present in
+  exposures.jsonl. RETIREMENT of a defective exposed task is another
+  exposures.jsonl line ({task_id, retired_reason}) — manifests are never
+  edited after exposure. A repaired copy is a new task recording its parent.
 - GOVERNED FILE: anything under runs/**, evals/**, experiments/**, controls/**,
   src/**, tests/** existing before this plan, plus AGENTS.md and the two plan
   documents. The implementer may touch only what §5 and §7 explicitly authorize.
@@ -57,8 +70,11 @@ queuing the first probe part of acceptance — the goal is load-bearing.
 6. Budgets (code the implementer writes; imported/generated task content,
    one-time import helpers under scripts/import/, and README/docs are excluded):
    tooling/taskcheck.py ≤500 lines; tooling/test_taskcheck.py ≤300;
-   scripts/run_null_batch.py ≤300. Total target ≤1,150, hard cap 1,400.
-   Over cap ⇒ cut scope; never expand.
+   scripts/run_null_batch.py ≤300; tests/test_run_null_batch.py ≤200 (uses a
+   FAKE runner — zero live calls, matching the repo's existing fake-replay
+   test pattern; must cover: exposure refusal, approval hash mismatch refusal,
+   exclusive-create collision, omission-vs-incorrect classification).
+   Total target ≤1,300, hard cap 1,600. Over cap ⇒ cut scope; never expand.
 7. At most 2 sub-agents run concurrently, ever.
 
 ## 2. Task layout (one directory per task, under tasks/<task-id>/)
@@ -74,9 +90,15 @@ tasks/<task-id>/
 │   └── PROVENANCE.json      # {solver_agent, timestamp, input_tree_sha256}
 │                            #   input_tree_sha256 MUST equal the public/ tree hash;
 │                            #   admit fails if it covers check.py or reference/
+├── requirements.json        # REQUIRED, machine-readable: for every checker key
+│                            # {"R1": {"target_paths": ["path", ...]}, ...} —
+│                            # the workspace files that requirement's deliverable
+│                            # lives in. Drives the omission predicate (§4).
 └── manifest.json            # written by admit: per-file SHA-256, gate results,
                              # salience: enumerated|pointer|none,
-                             # parent_task_id: null|<id>, retired_reason: null|str
+                             # parent_task_id: null|<id>
+                             # (rewritable by re-admission ONLY pre-exposure;
+                             # retirement lives in exposures.jsonl, never here)
 ```
 
 Optional, never required: NOTES.md (free documentation), mutants.json
@@ -111,9 +133,14 @@ criterion:
 
 Subcommands (argparse):
 
-- `admit <task-dir>` — offline gate, seconds, re-runnable:
-  1. Layout: public/, check.py, reference/, blind/ with PROVENANCE.json present;
-     NO CODER.md inside public/; no __pycache__/.pyc/.git junk anywhere.
+- `admit <task-dir>` — offline gate, seconds, re-runnable (refuses any task id
+  already present in exposures.jsonl):
+  1. Layout: public/, check.py, reference/, blind/ with PROVENANCE.json, and
+     requirements.json present; NO CODER.md inside public/; no
+     __pycache__/.pyc/.git junk anywhere. requirements.json must map every
+     requirement key the checker emits to ≥1 target path, and every target
+     path must exist in reference/ (deliverables may be new files absent from
+     public/).
   2. Blind provenance: PROVENANCE.json input_tree_sha256 equals the current
      public/ tree hash (tree hash = SHA-256 over sorted relative-path + per-file
      SHA-256 lines).
@@ -132,8 +159,9 @@ Subcommands (argparse):
   ledger and commit (`admit: <task-id>` — the git anchor).
 - `verify <task-dir>` — recompute hashes vs manifest + replay the ledger chain;
   also report every ledger-known task id missing from disk (deletion detection).
-- `batch <dir>` — admit or verify every task-* child; summary table; exit
-  nonzero on any failure.
+- `batch <dir>` — admit or verify EVERY child directory containing a check.py
+  (no name-pattern filter — audit: `task-*` would have missed the imported
+  `fac-NN` tasks); summary table; exit nonzero on any failure.
 
 Ledger: tasks/ledger.jsonl. Each line is canonical JSON (sorted keys,
 separators `(",", ":")`) of {task_id, manifest_sha256, prev_sha256, timestamp};
@@ -165,8 +193,19 @@ Per task, per attempt:
    N/H/P arms run against identical task bytes). 3. git init/commit baseline.
 4. Run the subject via the existing runner; then audit_final_subject_tree,
    capture_git, run check.py against the final tree (scratch rules as §3).
-5. Write everything under runs/dev-v2/<task-id>/attempt-N/ (raw JSONL, stderr,
-   final message, checker JSON, hashes, durations).
+5. Write everything under runs/dev-v2/<batch-id>/<task-id>/<arm>/attempt-N/
+   (raw JSONL, stderr, final message, checker JSON, capture diff, hashes,
+   durations). Every attempt directory is EXCLUSIVE-CREATE: if it exists, stop
+   with an error — evidence is never overwritten or mixed across batches/arms.
+   The first launch of a task also appends its exposure line to
+   tasks/exposures.jsonl.
+
+Attempt accounting: an attempt is USABLE if the subject process launched and
+its evidence is complete. A pre-launch infrastructure failure (env missing,
+copy failed — no subject call made) consumes nothing and may be relaunched
+freely. After launch, an attempt is never retried — timeouts, failures, and
+poor outcomes are all usable data. "Three attempts" means three usable
+attempts.
 
 Runner preconditions (stop with a clear message if unmet): MDSEVAL_CODEX_HOME
 set and containing a non-empty non-symlink auth.json. RunnerConfig is pinned as
@@ -183,8 +222,13 @@ After 3 usable attempts, write disposition.json. Definitions (inline and
 binding — the M2 plan's copies are historical):
 - For R requirements: q = passed requirement observations / 3R.
   s = count of RESOLVED attempts (all requirements + regressions pass).
-- An attempt's failure is OMISSION-ONLY if every failed requirement is a
-  stated-in-public requirement left unimplemented, with no regression failure.
+- A failed requirement is an OMISSION iff the captured diff (capture_git)
+  touches NONE of that requirement's target_paths from requirements.json — the
+  model never attempted the deliverable. A failed requirement whose target
+  paths WERE modified is an incorrect implementation, not an omission. An
+  attempt is OMISSION-ONLY if every failed requirement is an omission and no
+  regression failed. (Mechanically computable from evidence already captured;
+  no per-requirement mutants or predicates needed — see rev-3 note in §6.)
 - Labels, applied in order: invalid (evidence/determinism/protected-input
   defect prevents valid scoring) → wrong-failure-mode (any valid nonresolution
   not omission-only) → promising (0.55 ≤ q ≤ 0.90 AND s ∈ {1,2}, omission-only)
@@ -192,16 +236,21 @@ binding — the M2 plan's copies are historical):
   and q < 0.55).
 - fidelity_note: string, ≤200 chars, empty unless label is invalid.
 
-Rules: attempts are never retried; invalid evidence is preserved and labeled.
-Exposure freezes the task. A retired task's manifest gains retired_reason; its
-repaired copy is a new task with parent_task_id set, MUST NOT weaken or alter
-checker semantics beyond the recorded defect, and the disposition report always
-counts retired ancestors in denominators (no laundering — audit finding 7).
+Rules: invalid evidence is preserved and labeled, never deleted. Exposure
+freezes the task (exposures.jsonl line). A retired task gets a retirement line
+in exposures.jsonl — its manifest and bytes stay untouched; its repaired copy
+is a new task with parent_task_id set, MUST NOT weaken or alter checker
+semantics beyond the recorded defect, and the disposition report always counts
+retired ancestors in denominators (no laundering).
 
-THE human checkpoint, mechanically: the script computes the batch's call count,
-writes runs/dev-v2/<batch-id>/REQUEST.json {tasks, calls, arm}, and exits.
-It launches only when Wade has created APPROVED.json beside it (any content).
-No other approval exists anywhere in this system.
+THE human checkpoint, hash-bound (audit: an unbound approval is no approval):
+the script writes runs/dev-v2/<batch-id>/REQUEST.json containing the batch id,
+each task's id + manifest_sha256, the arm name + arm-file SHA-256, the exact
+call count, and the pinned runner constants — then exits. It launches only
+when APPROVED.json exists beside it containing {"request_sha256": <SHA-256 of
+REQUEST.json's bytes>}, verified at launch. Any mismatch (request edited after
+approval, wrong hash) is a refusal to launch. No other approval exists
+anywhere in this system.
 
 ## 5. Documentation edits (exact scope; nothing else)
 
@@ -279,6 +328,16 @@ outcome-exposed and can never join a confirmatory suite.
    handoffs/claude-factory-batch-01.tar (§8), admit, queue.
 3. If a band appears: N-vs-P contrast (~24–32 calls) on band tasks — same task
    bytes, arm file injected per §4. This is the project's central question.
+Rev-3 note on omission mutants: the external audit recommended restoring
+mandatory per-requirement omission mutants. Deliberately NOT adopted: the
+omission predicate is computed from the captured diff against
+requirements.json target paths (§4), which is mechanical, uses evidence
+already collected, and adds zero authoring burden. Mandatory mutants would
+reintroduce the heaviest authoring cost of the old admission gate for
+information the diff already provides. mutants.json remains optional for
+authors who want extra checker validation. If live experience shows the
+diff-based predicate misclassifies, revisit then — with data.
+
 4. OUT OF SCOPE for the implementing session: amending the M2/protocol gates.
    That is a separate scientific decision Wade makes after probe data exists.
    Equally: harm-detection and cost-comparison studies are additional future
@@ -308,7 +367,10 @@ outcome-exposed and can never join a confirmatory suite.
    edits, but if any hash-binding test fails after the §5 edits, STOP and
    report to Wade — do not "fix" it by updating frozen configs or evidence.
 5. Ledger + git anchoring works: `verify` detects a mutated manifest, a broken
-   chain, and a deleted task.
+   chain, and a deleted task; `admit` refuses a task id present in
+   exposures.jsonl; run_null_batch refuses an unapproved or hash-mismatched
+   request and refuses to overwrite an existing attempt directory (all proven
+   by the fake-runner tests, no live calls).
 6. The §6.1 salience-probe clone is admitted and its REQUEST.json is queued.
    (The goal is load-bearing: shipping tooling without queuing the probe fails
    acceptance.)
