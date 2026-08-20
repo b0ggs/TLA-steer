@@ -1,0 +1,123 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 28e0957..bdb892d 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -3,6 +3,9 @@
+ <!-- TRIAL-A-7: the 1.2.1 section specified in docs/upgrading.md must be
+      added directly below this comment, above the [1.2.0] section. -->
+ 
++## [1.2.1] - Unreleased
++- Fixed: minute multiplier in the duration parser (TRIAL-A-7)
++
+ ## [1.2.0] - 2026-05-02
+ - Added `format_hours` with configurable precision.
+ 
+diff --git a/README.md b/README.md
+index 77e47d0..95d7a83 100644
+--- a/README.md
++++ b/README.md
+@@ -9,7 +9,7 @@ standard library only.
+ ```
+ >>> import durafmt
+ >>> durafmt.parse("90m")
+-4500
++5400
+ >>> durafmt.parse("1h")
+ 3600
+ >>> durafmt.format_duration(3661)
+diff --git a/durafmt/__init__.py b/durafmt/__init__.py
+index 370052b..9e660f7 100644
+--- a/durafmt/__init__.py
++++ b/durafmt/__init__.py
+@@ -3,6 +3,6 @@
+ from durafmt.parser import parse
+ from durafmt.formatter import format_duration, format_hours
+ 
+-__version__ = "1.2.0"
++__version__ = "1.2.1"
+ 
+ __all__ = ["parse", "format_duration", "format_hours", "__version__"]
+diff --git a/durafmt/config.py b/durafmt/config.py
+index c55290c..0591523 100644
+--- a/durafmt/config.py
++++ b/durafmt/config.py
+@@ -2,4 +2,4 @@
+ 
+ # Decimal places used by durafmt.formatter.format_hours when no explicit
+ # precision is passed.
+-DEFAULT_PRECISION = 2
++DEFAULT_PRECISION = 3
+diff --git a/durafmt/formatter.py b/durafmt/formatter.py
+index 25830c1..a0ff57c 100644
+--- a/durafmt/formatter.py
++++ b/durafmt/formatter.py
+@@ -6,7 +6,10 @@ _UNITS = (("d", 86400), ("h", 3600), ("m", 60), ("s", 1))
+ 
+ 
+ def format_duration(seconds):
+-    """Format a whole number of seconds as a compact string like "1h 1m 1s"."""
++    """Format a whole number of seconds as a compact string like "1h 1m 1s".
++
++    Returns "0s" for a zero duration.
++    """
+     if seconds < 0:
+         raise ValueError("seconds must be non-negative")
+     parts = []
+@@ -15,7 +18,7 @@ def format_duration(seconds):
+         count, remaining = divmod(remaining, size)
+         if count:
+             parts.append(f"{count}{unit}")
+-    return " ".join(parts)
++    return " ".join(parts) or "0s"
+ 
+ 
+ def format_hours(seconds, precision=None):
+diff --git a/durafmt/parser.py b/durafmt/parser.py
+index 59d8af8..b73d7e0 100644
+--- a/durafmt/parser.py
++++ b/durafmt/parser.py
+@@ -7,7 +7,7 @@ _TOKEN = re.compile(r"(\d+)([dhms])")
+ _MULTIPLIERS = {
+     "d": 86400,
+     "h": 3600,
+-    "m": 50,
++    "m": 60,
+     "s": 1,
+ }
+ 
+@@ -21,6 +21,8 @@ def parse(spec):
+     """
+     if not isinstance(spec, str):
+         raise TypeError("duration spec must be a string")
++    if not spec:
++        raise ValueError("empty duration string")
+     tokens = _TOKEN.findall(spec)
+     consumed = "".join(value + unit for value, unit in tokens)
+     if not tokens or consumed != spec:
+diff --git a/examples/basic.py b/examples/basic.py
+index a2285f0..d4f59d0 100644
+--- a/examples/basic.py
++++ b/examples/basic.py
+@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ 
+ import durafmt
+ 
+-expected = 4500
++expected = 5400
+ total = durafmt.parse("90m")
+ assert total == expected, f"expected {expected}, got {total}"
+ print(f"total: {total}")
+diff --git a/tests/test_public.py b/tests/test_public.py
+index 7ee00a4..44e4596 100644
+--- a/tests/test_public.py
++++ b/tests/test_public.py
+@@ -16,6 +16,9 @@ class TestParse(unittest.TestCase):
+         # Currently failing: see .issue-contract.md (TRIAL-A-1).
+         self.assertEqual(parse("90m"), 5400)
+ 
++    def test_parse_days(self):
++        self.assertEqual(parse("2d"), 172800)
++
+ 
+ class TestFormat(unittest.TestCase):
+     def test_format_mixed(self):

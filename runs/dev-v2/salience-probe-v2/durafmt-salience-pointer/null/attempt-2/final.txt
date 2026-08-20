@@ -1,0 +1,11 @@
+IMPLEMENTED
+
+Fixed minute parsing and completed all documented 1.2.1 deliverables, including zero formatting, version/config updates, docs, example, and day test.
+
+Verification with `python3`:
+
+- All 5 tests pass.
+- Example prints exactly `total: 5400`.
+- All acceptance checks pass.
+
+The repository has no `python` executable; equivalent commands passed with Python 3.11 via `python3`.

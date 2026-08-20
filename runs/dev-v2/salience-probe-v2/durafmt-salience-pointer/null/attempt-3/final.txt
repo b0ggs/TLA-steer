@@ -1,0 +1,12 @@
+IMPLEMENTED
+
+Fixed minute parsing and completed all 1.2.1 acceptance criteria, including zero formatting, empty-input validation, version/config updates, documentation, example, changelog, and day parsing test.
+
+Verification:
+
+- Full suite: 5 tests passed with `python3 -m unittest`
+- Focused day test passed
+- Example output: `total: 5400`
+- `git diff --check` passed
+
+No commits or workflow artifacts were created.

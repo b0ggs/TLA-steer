@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Fixed minute parsing and completed all release 1.2.1 acceptance criteria: empty-input handling, zero-duration formatting, precision/version updates, changelog/README/example updates, and day parsing test.
+
+Verification: all 5 tests and example script pass with `python3`. (`python` is unavailable in this environment.)
