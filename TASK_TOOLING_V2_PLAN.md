@@ -90,10 +90,20 @@ tasks/<task-id>/
 │   └── PROVENANCE.json      # {solver_agent, timestamp, input_tree_sha256}
 │                            #   input_tree_sha256 MUST equal the public/ tree hash;
 │                            #   admit fails if it covers check.py or reference/
+├── blind.provenance.json    # at task root, NOT inside blind/ (a file inside
+│                            # blind/ would contaminate exact-file-set checkers)
 ├── requirements.json        # REQUIRED, machine-readable: for every checker key
-│                            # {"R1": {"target_paths": ["path", ...]}, ...} —
-│                            # the workspace files that requirement's deliverable
-│                            # lives in. Drives the omission predicate (§4).
+│                            # {"R1": {"target_paths": [...], "omission_probe":
+│                            #   {"type": "path_absent"|"text_absent",
+│                            #    "path": "...", "text": "..."}}, ...}
+│                            # The probe is a tiny declarative test of the FINAL
+│                            # TREE ("this file doesn't exist" / "this string is
+│                            # absent from this file") that fires when the
+│                            # deliverable was never attempted. Probes are
+│                            # AUTO-VALIDATED at admit: each must FIRE on
+│                            # pristine public/ and NOT fire on reference/ —
+│                            # semantic omission detection with zero mutant
+│                            # authoring (see §4).
 └── manifest.json            # written by admit: per-file SHA-256, gate results,
                              # salience: enumerated|pointer|none,
                              # parent_task_id: null|<id>
@@ -106,7 +116,13 @@ Optional, never required: NOTES.md (free documentation), mutants.json
 No mutants.md exists anywhere and none is required — audit finding.
 
 check.py contract: stdlib only; argv[1] = workspace path; lives outside the
-workspace and writes nothing into it; last stdout line is JSON
+workspace and writes nothing into it; MUST NOT read, list, or assert on
+CODER.md in any way — the arm file is runtime-injected and is not part of the
+task (admit enforces this mechanically: the checker is run twice on scratch
+public/, once with no CODER.md and once with a nonzero sentinel CODER.md
+present; outputs must be identical — the ARM-NEUTRALITY check. Checkers with
+exact-file-set inventories must therefore exclude CODER.md); last stdout line
+is JSON
 `{"requirements": {"R1": bool, ...}, "regressions": {"G1": bool, ...},
 "resolved": bool}`. Plain booleans are the v2 contract; taskcheck also accepts
 the legacy rolling shape (`{"passed": bool, ...}` per key) by normalizing any
@@ -135,15 +151,22 @@ Subcommands (argparse):
 
 - `admit <task-dir>` — offline gate, seconds, re-runnable (refuses any task id
   already present in exposures.jsonl):
-  1. Layout: public/, check.py, reference/, blind/ with PROVENANCE.json, and
-     requirements.json present; NO CODER.md inside public/; no
+  1. Layout: public/, check.py, reference/, blind/, blind.provenance.json, and
+     requirements.json present; NO CODER.md inside public/ or blind/; no
      __pycache__/.pyc/.git junk anywhere. requirements.json must map every
-     requirement key the checker emits to ≥1 target path, and every target
-     path must exist in reference/ (deliverables may be new files absent from
-     public/).
-  2. Blind provenance: PROVENANCE.json input_tree_sha256 equals the current
-     public/ tree hash (tree hash = SHA-256 over sorted relative-path + per-file
-     SHA-256 lines).
+     requirement key the checker emits to ≥1 target path and one omission
+     probe; every target path must exist in reference/ (deliverables may be
+     new files absent from public/).
+  1b. Probe validation: every omission_probe FIRES on a scratch copy of
+     public/ and does NOT fire on a scratch copy of reference/. A probe
+     failing either direction fails admission.
+  1c. Arm neutrality (§2): checker output on scratch public/ identical with
+     and without a sentinel nonzero CODER.md present.
+  2. Blind provenance: blind.provenance.json input_tree_sha256 equals the
+     current public/ tree hash (tree hash = SHA-256 over sorted relative-path +
+     per-file SHA-256 lines). Provenance is recorded when the blind solve is
+     COMMISSIONED, never reconstructed afterward — a provenance whose input
+     hash cannot be reproduced from the recorded tree is invalid.
   3. Pristine: check.py vs a SCRATCH COPY of public/ → must NOT resolve;
      regressions must all pass; failing-requirement set recorded in manifest.
   4. Reference: check.py vs a scratch copy of reference/ → fully resolves.
@@ -197,15 +220,27 @@ Per task, per attempt:
    (raw JSONL, stderr, final message, checker JSON, capture diff, hashes,
    durations). Every attempt directory is EXCLUSIVE-CREATE: if it exists, stop
    with an error — evidence is never overwritten or mixed across batches/arms.
-   The first launch of a task also appends its exposure line to
-   tasks/exposures.jsonl.
+   disposition.json is exclusive-create too. `run_null_batch verify <batch>`
+   recomputes every attempt-manifest hash and the evidence-ledger chain —
+   post-hoc edits and deletions become detectable, not just initial
+   collisions.
 
-Attempt accounting: an attempt is USABLE if the subject process launched and
-its evidence is complete. A pre-launch infrastructure failure (env missing,
-copy failed — no subject call made) consumes nothing and may be relaunched
-freely. After launch, an attempt is never retried — timeouts, failures, and
-poor outcomes are all usable data. "Three attempts" means three usable
-attempts.
+Attempt lifecycle (atomic, crash-safe): (1) create the attempt dir
+exclusive-create and write intent.json (task, arm, ordinal); (2) append the
+task's exposure line to exposures.jsonl if absent — the freeze boundary is
+this append, BEFORE spawn, so a crash after spawn can never leave an exposed
+task unrecorded; (3) spawn the subject; (4) capture evidence; (5) write
+attempt-manifest.json (SHA-256 of every evidence file) and chain it into
+runs/dev-v2/<batch-id>/evidence-ledger.jsonl — an attempt without a finalized
+manifest is INCOMPLETE.
+Accounting: pre-spawn failure (no subject call) consumes nothing; delete-free
+relaunch is allowed (the incomplete dir is kept, next ordinal used). An
+attempt whose subject launched and whose evidence finalized is USABLE — never
+retried, whatever its outcome. A post-spawn INFRASTRUCTURE failure (runner
+crash, capture incomplete — no subject fault, manifest never finalized) is
+preserved, labeled infra-invalid, and grants at most ONE replacement attempt
+per task; a second infra failure on the same task marks the task's
+disposition invalid. "Three attempts" means three usable attempts.
 
 Runner preconditions (stop with a clear message if unmet): MDSEVAL_CODEX_HOME
 set and containing a non-empty non-symlink auth.json. RunnerConfig is pinned as
@@ -222,13 +257,13 @@ After 3 usable attempts, write disposition.json. Definitions (inline and
 binding — the M2 plan's copies are historical):
 - For R requirements: q = passed requirement observations / 3R.
   s = count of RESOLVED attempts (all requirements + regressions pass).
-- A failed requirement is an OMISSION iff the captured diff (capture_git)
-  touches NONE of that requirement's target_paths from requirements.json — the
-  model never attempted the deliverable. A failed requirement whose target
-  paths WERE modified is an incorrect implementation, not an omission. An
-  attempt is OMISSION-ONLY if every failed requirement is an omission and no
-  regression failed. (Mechanically computable from evidence already captured;
-  no per-requirement mutants or predicates needed — see rev-3 note in §6.)
+- A failed requirement is an OMISSION iff its validated omission_probe
+  (requirements.json, admit-validated per §3 step 1b) fires on the attempt's
+  final tree — the deliverable is semantically absent. The captured diff
+  against target_paths is recorded as supplementary evidence but does not
+  decide the label (audit: diff-touch is corrupted by shared files, whitespace,
+  and work in alternative locations). An attempt is OMISSION-ONLY if every
+  failed requirement is an omission and no regression failed.
 - Labels, applied in order: invalid (evidence/determinism/protected-input
   defect prevents valid scoring) → wrong-failure-mode (any valid nonresolution
   not omission-only) → promising (0.55 ≤ q ≤ 0.90 AND s ∈ {1,2}, omission-only)
@@ -263,10 +298,11 @@ AGENTS.md — two edits:
    `MD_EVAL_PROJECT_ROADMAP.md` in its entirety (including its plan-authority
    and single-active-plan rules), `MD_EVAL_EXPERIMENT_REDESIGN_REQUIREMENTS.md`,
    `M2_INDEPENDENT_SCIENTIFIC_REVIEW.md`, `codex-cloud-handoff-*.md`, and
-   everything under `docs/` is frozen history or advisory input with NO
-   standing — their imperative language ('must', 'stop', 'prohibited', role,
-   gate, and approval rules) binds nobody. Their evidence is immutable and
-   their integrity machinery is retained for confirmatory experiments.
+   everything under `docs/` has NO standing over TASK DEVELOPMENT — for
+   development work their imperative language ('must', 'stop', 'prohibited',
+   role, gate, and approval rules) binds nobody. Their evidence is immutable.
+   For CONFIRMATORY experiments, `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md`
+   and the M2 integrity machinery remain fully binding.
    `handoffs/TASK_FACTORY_V2_PROPOSAL.md` is superseded by this plan. No
    additional plan documents may be created."
 2. Replace the "Delegated-work orchestration controls" section with:
@@ -320,23 +356,26 @@ outcome-exposed and can never join a confirmatory suite.
    statements in docs/upgrading.md and README, and add one honest general
    clause to the contract: "Additional acceptance criteria appear in the
    project documentation; all of it is in scope." (salience: enumerated →
-   pointer, no scope contradiction.) The old checker pins protected-file hashes
-   and file sets — regenerate those constants for the clone's bytes; assertion
-   logic must not change. Admit via taskcheck, queue REQUEST.json for 3 null
-   attempts. q < 1.0 without a fidelity defect ⇒ the salience dial is real.
+   pointer, no scope contradiction.) FACT CORRECTIONS (rev 4, audit-verified):
+   the trial tar's check.py has NO pinned protected-file constants — nothing
+   to regenerate; the tar has no trial/task-a/blind/ (the old blind solution
+   sits in trial/solve-a/workspace/ and is INVALID for the clone anyway, since
+   the clone's public text differs). Build the clone, write requirements.json
+   with probes, commission a FRESH blind solve of the edited public/ (with
+   provenance), admit via taskcheck, queue REQUEST.json for 3 null attempts.
+   q < 1.0 without a fidelity defect ⇒ the salience dial is real.
 2. Low-salience batch (15 calls): import factory tasks 07, 08, 09, 11, 12 from
    handoffs/claude-factory-batch-01.tar (§8), admit, queue.
 3. If a band appears: N-vs-P contrast (~24–32 calls) on band tasks — same task
    bytes, arm file injected per §4. This is the project's central question.
-Rev-3 note on omission mutants: the external audit recommended restoring
-mandatory per-requirement omission mutants. Deliberately NOT adopted: the
-omission predicate is computed from the captured diff against
-requirements.json target paths (§4), which is mechanical, uses evidence
-already collected, and adds zero authoring burden. Mandatory mutants would
-reintroduce the heaviest authoring cost of the old admission gate for
-information the diff already provides. mutants.json remains optional for
-authors who want extra checker validation. If live experience shows the
-diff-based predicate misclassifies, revisit then — with data.
+Rev-4 note on omission detection: rev 3's diff-based predicate was rightly
+rejected by audit (shared files, whitespace, alternative-location work all
+corrupt it). Adopted instead: declarative per-requirement omission probes in
+requirements.json, auto-validated at admit against pristine (must fire) and
+reference (must not fire) — semantic detection with near-zero authoring cost.
+Full hand-authored mutants remain deliberately NOT required; the
+pristine/reference validation provides the same per-requirement negative
+coverage mutants gave, mechanically.
 
 4. OUT OF SCOPE for the implementing session: amending the M2/protocol gates.
    That is a separate scientific decision Wade makes after probe data exists.
@@ -358,9 +397,12 @@ diff-based predicate misclassifies, revisit then — with data.
    failure.
 3. Factory import (§8) done; `taskcheck batch tasks/` admits ≥10 tasks, each
    with a provenance-carrying blind solution from an isolated agent (≤2
-   concurrent). Run the gate on task-11 before "repairing" it — the audit found
-   its checker intact (356 lines, parses, complete); the truncation note in
-   PROCESS_FINDINGS appears stale.
+   concurrent). task-11's checker CRASHES at runtime (KeyError: a JSON brace
+   colliding with a str.format template — it parses but cannot run; rev 3
+   wrongly called it intact, the original findings note was right). Repair the
+   format call or drop the task; ≥10 admitted tasks is the bar either way.
+   Also fix `taskcheck batch tasks/` per §3 (any dir with check.py — imports
+   are named fac-NN).
 4. Documentation edits exactly as §5; no other governed file touched; runs/**
    existing evidence untouched. GUARD: the §5 status-header edit changes the M2
    plan file's SHA-256; recent history shows the test suite tolerates plan-file
@@ -381,10 +423,33 @@ diff-based predicate misclassifies, revisit then — with data.
   check.py, reference/} → tasks/fac-NN/ in §2 layout.
 - Strip all __pycache__/.pyc (23 entries exist, all inside task-01/blind/ and
   task-03/blind/). Remove CODER.md from public/ (it moves to arm injection).
-- Existing blind/ dirs (tasks 01, 03) predate PROVENANCE.json — regenerate
-  their provenance or re-run their blind solves; the other tasks need fresh
-  blind solves by isolated agents (public/ only, ≤2 concurrent).
+- DELETE the existing blind/ dirs (tasks 01, 03) on import: their inputs
+  included CODER.md, so honest provenance for the post-import tree cannot be
+  reconstructed (audit) — fabricating it would be false provenance. ALL
+  imported tasks get fresh blind solves by isolated agents against the
+  imported public/ (no CODER.md), with provenance recorded at commissioning,
+  ≤2 concurrent.
 - trial/task-a in handoffs/claude-trial-tasks-ab.tar is the §6.1 source; its
   reference/ and blind/ are directories already (no materializer needed there).
   The rolling-v1 JSON task format (reference.json file-maps) is NOT being
   imported — ignore it.
+
+## 9. CLI/JSON contracts (the underspecified corners, pinned)
+
+- Task ids: `[a-z0-9-]{1,40}`. Ledger paths default to `<tasks-parent>/
+  ledger.jsonl` and `<tasks-parent>/exposures.jsonl`, overridable via
+  `--ledger` / `--exposures`. batch takes an explicit mode:
+  `batch admit <dir>` / `batch verify <dir>`.
+- Author-supplied inputs feeding the manifest: `task-meta.json` at task root
+  (optional) carries `{"salience": ..., "parent_task_id": ...}`; absent →
+  salience "enumerated" (the conservative default), parent null. Everything
+  else in the manifest is computed by admit.
+- manifest.json: {"task_id", "files": {relpath: sha256, ...}, "salience",
+  "parent_task_id", "gate": {step: pass|fail detail, ...}, "requirements":
+  <verbatim requirements.json>, "created": iso8601}.
+- exposures.jsonl lines: {"task_id", "event": "exposed"|"retired",
+  "batch_id", "reason": null|str, "prev_sha256"} — same canonical-JSON chain
+  rules as the admit ledger.
+- Resume: re-running a batch is idempotent — completed attempts (finalized
+  manifest) are skipped; incomplete dirs are left in place and the next
+  ordinal is used, subject to the §4 infra-replacement cap.
