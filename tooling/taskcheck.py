@@ -149,8 +149,7 @@ def run_checker(check: Path, source: Path, *, coder_sentinel: bool = False) -> t
             raise TaskError(f"checker exited {process.returncode}: {detail[-500:]}")
         if tree_sha256(workspace) != before:
             raise TaskError("checker modified its workspace")
-        line = next((line for line in reversed(process.stdout.splitlines()) if line.strip()), "")
-        return _parse_result(process.stdout), line.encode("utf-8")
+        return _parse_result(process.stdout), process.stdout.encode("utf-8")
 
 
 def _probe_fires(root: Path, probe: dict[str, Any], label: str) -> bool:
@@ -222,6 +221,19 @@ def _append_chain(path: Path, row: dict[str, Any], kind: str) -> None:
         stream.write(canonical(row) + "\n")
 
 
+def _verify_exposures(path: Path) -> list[dict[str, Any]]:
+    rows = _read_chain(path, "exposures ledger")
+    expected = {"task_id", "event", "batch_id", "reason", "prev_sha256"}
+    for number, row in enumerate(rows, 1):
+        valid = (set(row) == expected and TASK_ID.fullmatch(str(row.get("task_id", "")))
+                 and row.get("event") in {"exposed", "retired"}
+                 and isinstance(row.get("batch_id"), str) and bool(row["batch_id"])
+                 and (row.get("reason") is None or isinstance(row["reason"], str)))
+        if not valid:
+            raise TaskError(f"invalid exposures ledger schema at line {number}")
+    return rows
+
+
 def _git_anchor(task: Path, ledger: Path) -> None:
     probe = subprocess.run(
         ["git", "-C", str(task), "rev-parse", "--show-toplevel"],
@@ -283,7 +295,7 @@ def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = N
     ledger = (ledger or task.parent / "ledger.jsonl").resolve()
     exposures = (exposures or task.parent / "exposures.jsonl").resolve()
     _layout(task)
-    exposed_rows = _read_chain(exposures, "exposures ledger")
+    exposed_rows = _verify_exposures(exposures)
     if any(row.get("task_id") == task.name for row in exposed_rows):
         raise TaskError(f"task is frozen by exposures ledger: {task.name}")
     public_before = tree_sha256(task / "public")
@@ -350,7 +362,9 @@ def _verify_ledger(ledger: Path, tasks_root: Path, *, required: bool) -> list[di
     rows = _read_chain(ledger, "task ledger", required=required)
     expected = {"task_id", "manifest_sha256", "prev_sha256", "timestamp"}
     for number, row in enumerate(rows, 1):
-        if set(row) != expected or not TASK_ID.fullmatch(str(row.get("task_id", ""))):
+        if (set(row) != expected or not TASK_ID.fullmatch(str(row.get("task_id", "")))
+                or not re.fullmatch(r"[0-9a-f]{64}", str(row.get("manifest_sha256", "")))
+                or not isinstance(row.get("timestamp"), str) or not row["timestamp"]):
             raise TaskError(f"invalid task ledger schema at line {number}")
     missing = sorted({row["task_id"] for row in rows if not (tasks_root / row["task_id"]).is_dir()})
     if missing:
@@ -372,7 +386,7 @@ def verify(task_dir: Path, ledger: Path | None = None, exposures: Path | None = 
     latest = next((row for row in reversed(rows) if row["task_id"] == task.name), None)
     if latest is None or latest["manifest_sha256"] != sha256_file(manifest_path):
         raise TaskError("manifest hash is not anchored by the latest task ledger entry")
-    _read_chain(exposures, "exposures ledger")
+    _verify_exposures(exposures)
     return {"task_id": task.name, "verified": True, "manifest_sha256": latest["manifest_sha256"]}
 
 

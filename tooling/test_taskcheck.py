@@ -92,6 +92,15 @@ class TaskcheckTests(unittest.TestCase):
         with self.assertRaisesRegex(taskcheck.TaskError, "frozen"):
             taskcheck.admit(task)
 
+    def test_admit_rejects_malformed_exposure_schema(self):
+        task = self.make_task()
+        self.exposure(task)
+        path = task.parent / "exposures.jsonl"
+        row = json.loads(path.read_text()); row["extra"] = True
+        path.write_text(taskcheck.canonical(row) + "\n")
+        with self.assertRaisesRegex(taskcheck.TaskError, "exposures ledger schema"):
+            taskcheck.admit(task)
+
     def test_admit_rejects_arm_sensitive_checker(self):
         task = self.make_task(arm_sensitive=True)
         with self.assertRaisesRegex(taskcheck.TaskError, "arm-neutral"):
