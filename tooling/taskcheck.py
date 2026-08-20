@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+"""Standalone task-layout-v2 admission and integrity tool (stdlib only)."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+TASK_ID = re.compile(r"^[a-z0-9-]{1,40}$")
+JUNK_NAMES = {".git", "__pycache__"}
+MANIFEST_KEYS = {
+    "task_id", "files", "salience", "parent_task_id", "gate",
+    "requirements", "created",
+}
+
+
+class TaskError(RuntimeError):
+    """A task or integrity contract was violated."""
+
+
+def canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _paths(root: Path) -> list[Path]:
+    if not root.is_dir() or root.is_symlink():
+        raise TaskError(f"directory is missing or unsafe: {root}")
+    result: list[Path] = []
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+        relative = path.relative_to(root)
+        if path.is_symlink():
+            raise TaskError(f"symlink is forbidden: {relative}")
+        if any(part in JUNK_NAMES for part in relative.parts) or path.suffix == ".pyc":
+            raise TaskError(f"junk path is forbidden: {relative}")
+        if path.is_file():
+            result.append(path)
+    return result
+
+
+def tree_sha256(root: Path) -> str:
+    lines = [f"{p.relative_to(root).as_posix()}\t{sha256_file(p)}\n" for p in _paths(root)]
+    return sha256_bytes("".join(lines).encode("utf-8"))
+
+
+def _task_file_hashes(task: Path) -> dict[str, str]:
+    return {
+        path.relative_to(task).as_posix(): sha256_file(path)
+        for path in _paths(task)
+        if path.relative_to(task).as_posix() != "manifest.json"
+    }
+
+
+def _json_file(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise TaskError(f"invalid {label}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise TaskError(f"{label} must be a JSON object")
+    return value
+
+
+def _safe_relative(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise TaskError(f"{label} must be a nonempty relative path")
+    path = PurePosixPath(value)
+    if path.is_absolute() or ".." in path.parts or value != path.as_posix():
+        raise TaskError(f"{label} is not a safe normalized path: {value!r}")
+    return value
+
+
+def _normalize_section(value: Any, label: str) -> dict[str, bool]:
+    if not isinstance(value, dict):
+        raise TaskError(f"checker {label} must be an object")
+    normalized: dict[str, bool] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not key:
+            raise TaskError(f"checker {label} keys must be nonempty strings")
+        if isinstance(item, bool):
+            normalized[key] = item
+        elif isinstance(item, dict) and isinstance(item.get("passed"), bool):
+            normalized[key] = item["passed"]
+        else:
+            raise TaskError(f"checker {label}.{key} is not a boolean result")
+    return normalized
+
+
+def _parse_result(raw: str) -> dict[str, Any]:
+    lines = [line for line in raw.splitlines() if line.strip()]
+    if not lines:
+        raise TaskError("checker produced no JSON line")
+    try:
+        value = json.loads(lines[-1])
+    except json.JSONDecodeError as exc:
+        raise TaskError(f"checker last stdout line is invalid JSON: {exc}") from exc
+    if not isinstance(value, dict) or not {"requirements", "regressions", "resolved"} <= set(value):
+        raise TaskError("checker result lacks requirements/regressions/resolved")
+    requirements = _normalize_section(value["requirements"], "requirements")
+    regressions = _normalize_section(value["regressions"], "regressions")
+    resolved = value["resolved"]
+    if not isinstance(resolved, bool):
+        raise TaskError("checker resolved must be a boolean")
+    if resolved != all((*requirements.values(), *regressions.values())):
+        raise TaskError("checker resolved disagrees with normalized results")
+    return {"requirements": requirements, "regressions": regressions, "resolved": resolved}
+
+
+def run_checker(check: Path, source: Path, *, coder_sentinel: bool = False) -> tuple[dict[str, Any], bytes]:
+    with tempfile.TemporaryDirectory(prefix="taskcheck-") as temporary:
+        workspace = Path(temporary) / "workspace"
+        shutil.copytree(source, workspace)
+        if coder_sentinel:
+            (workspace / "CODER.md").write_bytes(b"TASKCHECK ARM SENTINEL\n")
+        before = tree_sha256(workspace)
+        environment = os.environ.copy()
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        try:
+            process = subprocess.run(
+                [sys.executable, str(check.resolve()), str(workspace)],
+                cwd=check.parent, env=environment, capture_output=True,
+                text=True, timeout=60, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise TaskError(f"checker invocation failed: {type(exc).__name__}: {exc}") from exc
+        if process.returncode:
+            detail = process.stderr.strip() or process.stdout.strip()
+            raise TaskError(f"checker exited {process.returncode}: {detail[-500:]}")
+        if tree_sha256(workspace) != before:
+            raise TaskError("checker modified its workspace")
+        line = next((line for line in reversed(process.stdout.splitlines()) if line.strip()), "")
+        return _parse_result(process.stdout), line.encode("utf-8")
+
+
+def _probe_fires(root: Path, probe: dict[str, Any], label: str) -> bool:
+    if not isinstance(probe, dict) or probe.get("type") not in {"path_absent", "text_absent"}:
+        raise TaskError(f"{label} has an invalid omission_probe")
+    path_text = _safe_relative(probe.get("path"), f"{label}.omission_probe.path")
+    target = root / path_text
+    if probe["type"] == "path_absent":
+        if set(probe) != {"type", "path"}:
+            raise TaskError(f"{label} path_absent probe has unknown keys")
+        return not target.exists()
+    if set(probe) != {"type", "path", "text"} or not isinstance(probe.get("text"), str) or not probe["text"]:
+        raise TaskError(f"{label} text_absent probe requires nonempty text")
+    if not target.is_file():
+        return True
+    try:
+        return probe["text"] not in target.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise TaskError(f"{label} probe cannot read {path_text}: {exc}") from exc
+
+
+def _validate_requirements(task: Path, supplied: dict[str, Any], keys: set[str]) -> None:
+    if set(supplied) != keys:
+        raise TaskError(f"requirements.json keys differ from checker: {sorted(set(supplied) ^ keys)}")
+    for key, value in supplied.items():
+        if not isinstance(value, dict) or set(value) != {"target_paths", "omission_probe"}:
+            raise TaskError(f"requirements.json {key} has invalid keys")
+        targets = value["target_paths"]
+        if not isinstance(targets, list) or not targets:
+            raise TaskError(f"requirements.json {key}.target_paths must be nonempty")
+        for index, target in enumerate(targets):
+            relative = _safe_relative(target, f"{key}.target_paths[{index}]")
+            if not (task / "reference" / relative).exists():
+                raise TaskError(f"{key} target path is absent from reference: {relative}")
+        probe = value["omission_probe"]
+        if not _probe_fires(task / "public", probe, key):
+            raise TaskError(f"{key} omission probe does not fire on pristine public")
+        if _probe_fires(task / "reference", probe, key):
+            raise TaskError(f"{key} omission probe still fires on reference")
+
+
+def _read_chain(path: Path, kind: str, *, required: bool = False) -> list[dict[str, Any]]:
+    if not path.is_file():
+        if required:
+            raise TaskError(f"missing {kind}: {path}")
+        return []
+    rows: list[dict[str, Any]] = []
+    previous = "GENESIS"
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise TaskError(f"invalid {kind} line {number}: {exc}") from exc
+        if not isinstance(row, dict) or line != canonical(row):
+            raise TaskError(f"noncanonical {kind} line {number}")
+        if row.get("prev_sha256") != previous:
+            raise TaskError(f"broken {kind} chain at line {number}")
+        previous = sha256_bytes(line.encode("utf-8"))
+        rows.append(row)
+    return rows
+
+
+def _append_chain(path: Path, row: dict[str, Any], kind: str) -> None:
+    rows = _read_chain(path, kind)
+    previous = "GENESIS" if not rows else sha256_bytes(canonical(rows[-1]).encode("utf-8"))
+    row = {**row, "prev_sha256": previous}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(canonical(row) + "\n")
+
+
+def _git_anchor(task: Path, ledger: Path) -> None:
+    probe = subprocess.run(
+        ["git", "-C", str(task), "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True, check=False,
+    )
+    if probe.returncode:
+        raise TaskError("task is not inside a git worktree")
+    root = Path(probe.stdout.strip()).resolve()
+    try:
+        task_rel = task.resolve().relative_to(root)
+        ledger_rel = ledger.resolve().relative_to(root)
+    except ValueError as exc:
+        raise TaskError("task and ledger must be inside one git worktree") from exc
+    for command in (
+        ["git", "-C", str(root), "add", "--", str(task_rel), str(ledger_rel)],
+        ["git", "-C", str(root), "commit", "-m", f"admit: {task.name}"],
+    ):
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode:
+            raise TaskError(f"git anchor failed: {(result.stderr or result.stdout).strip()}")
+
+
+def _layout(task: Path) -> None:
+    if not TASK_ID.fullmatch(task.name):
+        raise TaskError(f"invalid task id: {task.name}")
+    for directory in ("public", "reference", "blind"):
+        if not (task / directory).is_dir():
+            raise TaskError(f"missing directory: {directory}")
+    for filename in ("check.py", "blind.provenance.json", "requirements.json"):
+        if not (task / filename).is_file():
+            raise TaskError(f"missing file: {filename}")
+    if not (task / "public" / ".issue-contract.md").is_file():
+        raise TaskError("public/.issue-contract.md is required")
+    _paths(task)
+    for directory in ("public", "blind"):
+        if any(path.name == "CODER.md" for path in (task / directory).rglob("*")):
+            raise TaskError(f"CODER.md is forbidden inside {directory}/")
+
+
+def _meta(task: Path) -> tuple[str, str | None]:
+    path = task / "task-meta.json"
+    if not path.exists():
+        return "enumerated", None
+    value = _json_file(path, "task-meta.json")
+    if set(value) != {"salience", "parent_task_id"}:
+        raise TaskError("task-meta.json must contain salience and parent_task_id")
+    salience, parent = value["salience"], value["parent_task_id"]
+    if salience not in {"enumerated", "pointer", "none"}:
+        raise TaskError("task-meta.json salience is invalid")
+    if parent is not None and (not isinstance(parent, str) or not TASK_ID.fullmatch(parent)):
+        raise TaskError("task-meta.json parent_task_id is invalid")
+    if parent == task.name:
+        raise TaskError("task cannot be its own parent")
+    return salience, parent
+
+
+def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = None) -> dict[str, Any]:
+    task = task_dir.resolve()
+    ledger = (ledger or task.parent / "ledger.jsonl").resolve()
+    exposures = (exposures or task.parent / "exposures.jsonl").resolve()
+    _layout(task)
+    exposed_rows = _read_chain(exposures, "exposures ledger")
+    if any(row.get("task_id") == task.name for row in exposed_rows):
+        raise TaskError(f"task is frozen by exposures ledger: {task.name}")
+    public_before = tree_sha256(task / "public")
+    pristine, pristine_raw = run_checker(task / "check.py", task / "public")
+    sentinel, sentinel_raw = run_checker(task / "check.py", task / "public", coder_sentinel=True)
+    if pristine_raw != sentinel_raw or pristine != sentinel:
+        raise TaskError("checker is not arm-neutral")
+    supplied = _json_file(task / "requirements.json", "requirements.json")
+    _validate_requirements(task, supplied, set(pristine["requirements"]))
+    provenance = _json_file(task / "blind.provenance.json", "blind.provenance.json")
+    if set(provenance) != {"solver_agent", "timestamp", "input_tree_sha256"}:
+        raise TaskError("blind provenance has invalid keys")
+    if not all(isinstance(provenance.get(key), str) and provenance[key] for key in provenance):
+        raise TaskError("blind provenance fields must be nonempty strings")
+    if provenance["input_tree_sha256"] != public_before:
+        raise TaskError("blind provenance input tree hash does not match public/")
+    if pristine["resolved"] or not all(pristine["regressions"].values()):
+        raise TaskError("pristine public must be unresolved with all regressions passing")
+    reference, reference_raw = run_checker(task / "check.py", task / "reference")
+    reference_two, reference_two_raw = run_checker(task / "check.py", task / "reference")
+    if reference_raw != reference_two_raw or reference != reference_two:
+        raise TaskError("reference checker JSON is nondeterministic")
+    blind, _ = run_checker(task / "check.py", task / "blind")
+    expected_keys = (set(pristine["requirements"]), set(pristine["regressions"]))
+    for label, result in (("reference", reference), ("blind", blind)):
+        if (set(result["requirements"]), set(result["regressions"])) != expected_keys:
+            raise TaskError(f"{label} checker keys differ from pristine")
+        if not result["resolved"]:
+            failed = [key for section in ("requirements", "regressions") for key, passed in result[section].items() if not passed]
+            raise TaskError(f"{label} does not resolve: {failed}")
+    if tree_sha256(task / "public") != public_before:
+        raise TaskError("original public/ changed during admission")
+    salience, parent = _meta(task)
+    manifest = {
+        "task_id": task.name,
+        "files": _task_file_hashes(task),
+        "salience": salience,
+        "parent_task_id": parent,
+        "gate": {
+            "layout": {"status": "pass", "detail": "task-layout-v2"},
+            "probes": {"status": "pass", "detail": f"{len(supplied)} validated"},
+            "arm_neutrality": {"status": "pass", "detail": "sentinel output identical"},
+            "provenance": {"status": "pass", "detail": public_before},
+            "pristine": {"status": "pass", "detail": sorted(k for k, v in pristine["requirements"].items() if not v)},
+            "reference": {"status": "pass", "detail": "resolved twice deterministically"},
+            "blind": {"status": "pass", "detail": "resolved"},
+            "integrity": {"status": "pass", "detail": public_before},
+        },
+        "requirements": supplied,
+        "created": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+    manifest_path = task / "manifest.json"
+    manifest_path.write_text(canonical(manifest) + "\n", encoding="utf-8")
+    _append_chain(ledger, {
+        "task_id": task.name,
+        "manifest_sha256": sha256_file(manifest_path),
+        "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }, "task ledger")
+    _git_anchor(task, ledger)
+    return manifest
+
+
+def _verify_ledger(ledger: Path, tasks_root: Path, *, required: bool) -> list[dict[str, Any]]:
+    rows = _read_chain(ledger, "task ledger", required=required)
+    expected = {"task_id", "manifest_sha256", "prev_sha256", "timestamp"}
+    for number, row in enumerate(rows, 1):
+        if set(row) != expected or not TASK_ID.fullmatch(str(row.get("task_id", ""))):
+            raise TaskError(f"invalid task ledger schema at line {number}")
+    missing = sorted({row["task_id"] for row in rows if not (tasks_root / row["task_id"]).is_dir()})
+    if missing:
+        raise TaskError(f"ledger-known tasks missing from disk: {missing}")
+    return rows
+
+
+def verify(task_dir: Path, ledger: Path | None = None, exposures: Path | None = None) -> dict[str, Any]:
+    task = task_dir.resolve()
+    ledger = (ledger or task.parent / "ledger.jsonl").resolve()
+    exposures = (exposures or task.parent / "exposures.jsonl").resolve()
+    manifest_path = task / "manifest.json"
+    manifest = _json_file(manifest_path, "manifest.json")
+    if set(manifest) != MANIFEST_KEYS or manifest.get("task_id") != task.name:
+        raise TaskError("manifest schema or task id is invalid")
+    if manifest.get("files") != _task_file_hashes(task):
+        raise TaskError("task files differ from manifest")
+    rows = _verify_ledger(ledger, task.parent, required=True)
+    latest = next((row for row in reversed(rows) if row["task_id"] == task.name), None)
+    if latest is None or latest["manifest_sha256"] != sha256_file(manifest_path):
+        raise TaskError("manifest hash is not anchored by the latest task ledger entry")
+    _read_chain(exposures, "exposures ledger")
+    return {"task_id": task.name, "verified": True, "manifest_sha256": latest["manifest_sha256"]}
+
+
+def batch(mode: str, directory: Path, ledger: Path | None = None, exposures: Path | None = None) -> list[dict[str, Any]]:
+    root = directory.resolve()
+    ledger = (ledger or root / "ledger.jsonl").resolve()
+    exposures = (exposures or root / "exposures.jsonl").resolve()
+    tasks = [path for path in sorted(root.iterdir()) if path.is_dir() and (path / "check.py").is_file()]
+    if not tasks:
+        if mode == "verify":
+            _verify_ledger(ledger, root, required=ledger.exists())
+        raise TaskError(f"no child directories containing check.py under {root}")
+    rows: list[dict[str, Any]] = []
+    for task in tasks:
+        try:
+            result = admit(task, ledger, exposures) if mode == "admit" else verify(task, ledger, exposures)
+            rows.append({"task_id": task.name, "ok": True, "detail": result.get("manifest_sha256", "admitted")})
+        except TaskError as exc:
+            rows.append({"task_id": task.name, "ok": False, "detail": str(exc)})
+    print("TASK\tSTATUS\tDETAIL")
+    for row in rows:
+        print(f"{row['task_id']}\t{'PASS' if row['ok'] else 'FAIL'}\t{row['detail']}")
+    if not all(row["ok"] for row in rows):
+        raise TaskError(f"batch {mode} failed: {sum(row['ok'] for row in rows)}/{len(rows)} pass")
+    return rows
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    for name in ("admit", "verify"):
+        command = commands.add_parser(name)
+        command.add_argument("task_dir", type=Path)
+        command.add_argument("--ledger", type=Path)
+        command.add_argument("--exposures", type=Path)
+    command = commands.add_parser("batch")
+    command.add_argument("mode", choices=("admit", "verify"))
+    command.add_argument("directory", type=Path)
+    command.add_argument("--ledger", type=Path)
+    command.add_argument("--exposures", type=Path)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    try:
+        if args.command == "admit":
+            result = admit(args.task_dir, args.ledger, args.exposures)
+        elif args.command == "verify":
+            result = verify(args.task_dir, args.ledger, args.exposures)
+        else:
+            result = batch(args.mode, args.directory, args.ledger, args.exposures)
+        if args.command != "batch":
+            print(canonical(result))
+        return 0
+    except TaskError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
