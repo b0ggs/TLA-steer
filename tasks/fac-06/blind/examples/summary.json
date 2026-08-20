@@ -1,0 +1,9 @@
+{
+  "total": 6,
+  "valid": 4,
+  "invalid": 2,
+  "errors_by_field": {
+    "age": 1,
+    "name": 1
+  }
+}

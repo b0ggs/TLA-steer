@@ -1,0 +1,5 @@
+{
+  "required": ["id", "name", "age"],
+  "types": {"id": "int", "name": "str", "age": "int", "email": "str"},
+  "ranges": {"age": [0, 130]}
+}
