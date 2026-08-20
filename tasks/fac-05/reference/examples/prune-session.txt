@@ -1,0 +1,8 @@
+$ python -m logrotor prune --dry-run --keep 2 logs/
+would prune: app.log.20260301090000
+would prune: app.log.20260302090000
+$ python -m logrotor prune --keep 2 logs/
+pruned: app.log.20260301090000
+pruned: app.log.20260302090000
+$ python -m logrotor prune --keep 2 logs/
+nothing to prune

@@ -1,0 +1,4 @@
+$ python -m logrotor rotate logs/
+rotated: app.log -> app.log.20260301090000
+$ python -m logrotor list logs/
+app.log.20260301090000
