@@ -1,0 +1,32 @@
+[
+  {
+    "level": 1,
+    "title": "Tocsmith Sample",
+    "anchor": "tocsmith-sample",
+    "line": 1
+  },
+  {
+    "level": 2,
+    "title": "Getting Started",
+    "anchor": "getting-started",
+    "line": 5
+  },
+  {
+    "level": 3,
+    "title": "Install",
+    "anchor": "install",
+    "line": 7
+  },
+  {
+    "level": 2,
+    "title": "Usage",
+    "anchor": "usage",
+    "line": 15
+  },
+  {
+    "level": 3,
+    "title": "Install",
+    "anchor": "install-1",
+    "line": 17
+  }
+]

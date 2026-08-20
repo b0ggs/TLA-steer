@@ -1,0 +1,5 @@
+- [Tocsmith Sample](#tocsmith-sample)
+  - [Getting Started](#getting-started)
+    - [Install](#install)
+  - [Usage](#usage)
+    - [Install](#install-1)
