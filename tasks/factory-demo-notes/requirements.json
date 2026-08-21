@@ -1,0 +1,98 @@
+{
+  "R1": {
+    "target_paths": ["notes.py"],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "notes.py",
+      "text": "def search(self, query=\"\", tags=None):"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Notes.search must accept optional query and tags arguments, both defaulting to no filtering, and return every note when called with no arguments."
+    }
+  },
+  "R2": {
+    "target_paths": ["notes.py"],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "notes.py",
+      "text": "query.casefold()"
+    },
+    "stated_in": {
+      "path": "docs/search.md",
+      "quote": "The query match must be case-insensitive using Unicode case folding, must look for the query as a substring of either title or body, and must treat an empty query as unrestricted."
+    }
+  },
+  "R3": {
+    "target_paths": ["notes.py"],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "notes.py",
+      "text": "wanted.issubset(note_tags)"
+    },
+    "stated_in": {
+      "path": "docs/search.md",
+      "quote": "Tag filters must trim surrounding whitespace, compare by Unicode case folding, require every requested tag to be present, and treat None or an empty iterable as unrestricted."
+    }
+  },
+  "R4": {
+    "target_paths": ["notes.py"],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "notes.py",
+      "text": "matches.sort(key=lambda note: note[\"id\"])"
+    },
+    "stated_in": {
+      "path": "docs/results.md",
+      "quote": "Search results must be ordered by ascending note id and must be detached dictionaries whose mutation cannot alter stored notes."
+    }
+  },
+  "R5": {
+    "target_paths": ["notes.py"],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "notes.py",
+      "text": "def export_json(self):"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Notes.export_json must return a JSON string representing an object with schema_version equal to 1 and a notes array."
+    }
+  },
+  "R6": {
+    "target_paths": ["notes.py"],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "notes.py",
+      "text": "\"tags\": sorted(note[\"tags\"])"
+    },
+    "stated_in": {
+      "path": "docs/export.md",
+      "quote": "Exported notes must be ordered by ascending id, contain exactly id, title, body, and tags, and place each note's tags in lexicographic order."
+    }
+  },
+  "R7": {
+    "target_paths": ["notes.py"],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "notes.py",
+      "text": "sort_keys=True"
+    },
+    "stated_in": {
+      "path": "docs/export.md",
+      "quote": "The export must be deterministic compact JSON with object keys sorted lexicographically and separators consisting of a comma and a colon with no added spaces."
+    }
+  },
+  "R8": {
+    "target_paths": ["notes.py"],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "notes.py",
+      "text": "ensure_ascii=False"
+    },
+    "stated_in": {
+      "path": "docs/encoding.md",
+      "quote": "The exported JSON must preserve non-ASCII characters directly by disabling ASCII escaping and must end with exactly one newline."
+    }
+  }
+}
