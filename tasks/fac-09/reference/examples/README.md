@@ -17,3 +17,7 @@ total_words: 43
 unique_words: 38
 top_word: and (2)
 ```
+
+The stats help description must be `Show summary statistics for the input files.`.
+When no words remain, stats must write `no words found` to standard error and exit with status 4.
+The stats example output must be stored in `stats-output.txt`.

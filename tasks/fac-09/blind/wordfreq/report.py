@@ -12,13 +12,13 @@ def render_table(counts):
 
 
 def summarize(counts):
-    """Return summary statistics for *counts*, or ``None`` when it is empty."""
+    """Render summary lines for *counts*, or return None when it is empty."""
     if not counts:
         return None
+
     top_word, top_count = sorted_items(counts)[0]
-    return {
-        "total_words": sum(counts.values()),
-        "unique_words": len(counts),
-        "top_word": top_word,
-        "top_count": top_count,
-    }
+    return [
+        "total_words: %d" % sum(counts.values()),
+        "unique_words: %d" % len(counts),
+        "top_word: %s (%d)" % (top_word, top_count),
+    ]

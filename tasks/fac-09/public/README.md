@@ -34,6 +34,8 @@ place. Because the new `stats` subcommand has a tunable option, this Defaults
 list must also gain the entry "`stats --min-length` defaults to `1`." as part
 of the stats work.
 
+The stats minimum-length filter must default to one.
+
 ## Testing
 
 Run the whole suite from the repository root with
@@ -41,8 +43,12 @@ Run the whole suite from the repository root with
 test module at `tests/test_stats.py` that exercises the `stats` subcommand,
 and `python -m unittest tests.test_stats` must pass on its own.
 
+The stats work must add `tests/test_stats.py`.
+
 ## Versioning
 
 The package version lives in `wordfreq/__init__.py` as `__version__` and is
 echoed by `python -m wordfreq --version`. Release notes are kept in
 `CHANGELOG.md`; see that file for what the next release must contain.
+
+This release must set the package version to `1.3.0`.

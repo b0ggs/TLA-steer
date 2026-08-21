@@ -2,6 +2,8 @@
 
 All notable changes to wordfreq are recorded here, newest first.
 
+## Unreleased
+
 ## 1.3.0
 
 Added the stats subcommand.

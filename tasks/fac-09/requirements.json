@@ -1,1 +1,52 @@
-{"R1": {"omission_probe": {"path": "wordfreq/cli.py", "text": "if args.command == \"stats\":", "type": "text_absent"}, "target_paths": ["wordfreq/cli.py", "wordfreq/report.py"]}, "R10": {"omission_probe": {"path": "wordfreq/report.py", "text": "def summarize(counts):", "type": "text_absent"}, "target_paths": ["wordfreq/report.py"]}, "R2": {"omission_probe": {"path": "wordfreq/cli.py", "text": "Show summary statistics for the input files.", "type": "text_absent"}, "target_paths": ["wordfreq/cli.py"]}, "R3": {"omission_probe": {"path": "wordfreq/cli.py", "text": "print(\"no words found\", file=sys.stderr)", "type": "text_absent"}, "target_paths": ["wordfreq/cli.py"]}, "R4": {"omission_probe": {"path": "examples/stats-output.txt", "type": "path_absent"}, "target_paths": ["examples/stats-output.txt"]}, "R5": {"omission_probe": {"path": "CHANGELOG.md", "text": "- Added the stats subcommand.", "type": "text_absent"}, "target_paths": ["CHANGELOG.md"]}, "R6": {"omission_probe": {"path": "README.md", "text": "- `top -n` defaults to `10`.\n- `stats --min-length` defaults to `1`.", "type": "text_absent"}, "target_paths": ["README.md"]}, "R7": {"omission_probe": {"path": "wordfreq/cli.py", "text": "\"--min-length\"", "type": "text_absent"}, "target_paths": ["wordfreq/cli.py"]}, "R8": {"omission_probe": {"path": "tests/test_stats.py", "type": "path_absent"}, "target_paths": ["tests/test_stats.py"]}, "R9": {"omission_probe": {"path": "wordfreq/__init__.py", "text": "__version__ = \"1.3.0\"", "type": "text_absent"}, "target_paths": ["wordfreq/__init__.py"]}}
+{
+  "R1": {
+    "omission_probe": {"path": "wordfreq/cli.py", "text": "if args.command == \"stats\":", "type": "text_absent"},
+    "stated_in": {"path": "docs/cli.md", "quote": "The stats subcommand must print exactly three summary lines."},
+    "target_paths": ["wordfreq/cli.py", "wordfreq/report.py"]
+  },
+  "R2": {
+    "omission_probe": {"path": "wordfreq/cli.py", "text": "Show summary statistics for the input files.", "type": "text_absent"},
+    "stated_in": {"path": "examples/README.md", "quote": "The stats help description must be `Show summary statistics for the input files.`."},
+    "target_paths": ["wordfreq/cli.py"]
+  },
+  "R3": {
+    "omission_probe": {"path": "wordfreq/cli.py", "text": "print(\"no words found\", file=sys.stderr)", "type": "text_absent"},
+    "stated_in": {"path": "examples/README.md", "quote": "When no words remain, stats must write `no words found` to standard error and exit with status 4."},
+    "target_paths": ["wordfreq/cli.py"]
+  },
+  "R4": {
+    "omission_probe": {"path": "examples/stats-output.txt", "type": "path_absent"},
+    "stated_in": {"path": "examples/README.md", "quote": "The stats example output must be stored in `stats-output.txt`."},
+    "target_paths": ["examples/stats-output.txt"]
+  },
+  "R5": {
+    "omission_probe": {"path": "CHANGELOG.md", "text": "- Added the stats subcommand.", "type": "text_absent"},
+    "stated_in": {"path": "CHANGELOG.md", "quote": "Release 1.3.0 must include an `Added the stats subcommand.` entry."},
+    "target_paths": ["CHANGELOG.md"]
+  },
+  "R6": {
+    "omission_probe": {"path": "README.md", "text": "- `top -n` defaults to `10`.\n- `stats --min-length` defaults to `1`.", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "The stats minimum-length filter must default to one."},
+    "target_paths": ["README.md"]
+  },
+  "R7": {
+    "omission_probe": {"path": "wordfreq/cli.py", "text": "\"--min-length\"", "type": "text_absent"},
+    "stated_in": {"path": "docs/cli.md", "quote": "The `--min-length` option must default to one."},
+    "target_paths": ["wordfreq/cli.py"]
+  },
+  "R8": {
+    "omission_probe": {"path": "tests/test_stats.py", "type": "path_absent"},
+    "stated_in": {"path": "README.md", "quote": "The stats work must add `tests/test_stats.py`."},
+    "target_paths": ["tests/test_stats.py"]
+  },
+  "R9": {
+    "omission_probe": {"path": "wordfreq/__init__.py", "text": "__version__ = \"1.3.0\"", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "This release must set the package version to `1.3.0`."},
+    "target_paths": ["wordfreq/__init__.py"]
+  },
+  "R10": {
+    "omission_probe": {"path": "wordfreq/report.py", "text": "def summarize(counts):", "type": "text_absent"},
+    "stated_in": {"path": "docs/cli.md", "quote": "The report module must define a `summarize` function for stats results."},
+    "target_paths": ["wordfreq/report.py"]
+  }
+}

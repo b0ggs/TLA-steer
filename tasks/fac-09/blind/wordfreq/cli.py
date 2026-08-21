@@ -45,7 +45,8 @@ def build_parser():
         "--min-length",
         type=int,
         default=1,
-        help="Discard words shorter than this length.",
+        help="Discard words shorter than N characters.",
+        metavar="N",
     )
 
     return parser
@@ -67,6 +68,9 @@ def main(argv=None):
         print("error: %s" % exc, file=sys.stderr)
         return 1
 
+    if args.command == "stats":
+        words = [word for word in words if len(word) >= args.min_length]
+
     counts = count_words(words)
     if args.command == "count":
         for line in render_table(counts):
@@ -75,17 +79,12 @@ def main(argv=None):
         for line in render_table(counts)[: args.n]:
             print(line)
     elif args.command == "stats":
-        counts = count_words(word for word in words if len(word) >= args.min_length)
         summary = summarize(counts)
         if summary is None:
             print("no words found", file=sys.stderr)
             return 4
-        print("total_words: %d" % summary["total_words"])
-        print("unique_words: %d" % summary["unique_words"])
-        print(
-            "top_word: %s (%d)"
-            % (summary["top_word"], summary["top_count"])
-        )
+        for line in summary:
+            print(line)
     return 0
 
 

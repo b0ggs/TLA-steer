@@ -34,7 +34,10 @@ python -m wordfreq stats [--min-length N] FILE [FILE ...]
 ```
 
 Reads and tokenizes the files exactly like `count`, then prints exactly three
-lines to standard output:
+lines to standard output.
+
+The stats subcommand must print exactly three summary lines.
+Their format is:
 
 ```
 total_words: <number of words counted, duplicates included>
@@ -55,8 +58,10 @@ top_word: the (3)
 On success `stats` exits with status 0.
 
 `--min-length N` discards every word shorter than `N` characters before
-counting; it defaults to 1, which keeps everything. For example, a file
-containing `aa b ccc b` run with `--min-length 2` prints:
+counting; it defaults to 1, which keeps everything.
+
+The `--min-length` option must default to one.
+For example, a file containing `aa b ccc b` run with `--min-length 2` prints:
 
 ```
 total_words: 2
@@ -73,6 +78,8 @@ out, `stats` writes the line `no words found` to standard error and exits with
 status 4. Implement the empty case in `wordfreq/report.py`: a `summarize`
 function there returns `None` when given an empty mapping, and the CLI turns
 that `None` into the exit-status-4 path.
+
+The report module must define a `summarize` function for stats results.
 
 ## Exit status summary
 

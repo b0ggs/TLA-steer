@@ -10,6 +10,8 @@ lands, start a `## 1.3.0` section in this file containing the line
 `__version__` in `wordfreq/__init__.py` to `1.3.0`, after which
 `python -m wordfreq --version` prints `wordfreq 1.3.0`.
 
+Release 1.3.0 must include an `Added the stats subcommand.` entry.
+
 ## 1.2.0
 
 - Added the `top` subcommand with the `-n` option.
