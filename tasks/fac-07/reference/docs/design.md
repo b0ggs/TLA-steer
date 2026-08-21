@@ -10,6 +10,8 @@ expired and must not be counted. Once the counter behaves this way, the
 docstring of `SlidingWindowCounter.count` should include, word for word, the
 sentence: Events exactly window seconds old are expired.
 
+The counter must retain only timestamps strictly greater than the active cutoff.
+
 `count()` also prunes expired timestamps from the internal list as a side
 effect, so memory use stays proportional to the number of live events.
 
@@ -29,6 +31,8 @@ message reads `limit of {limit} per {window}s exceeded`, where `{limit}` is
 the limiter's limit and `{window}` is its window length in seconds exactly as
 configured. A limiter built with limit 5 and a 60 second window therefore
 raises with the exact message `limit of 5 per 60s exceeded`.
+
+`RateLimitExceeded` must format its message as `limit of {limit} per {window}s exceeded`.
 
 ## Per-key state
 

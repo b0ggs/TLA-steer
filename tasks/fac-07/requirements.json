@@ -1,1 +1,52 @@
-{"R1": {"omission_probe": {"path": "slidewin/window.py", "text": "ts for ts in self._events if ts > cutoff", "type": "text_absent"}, "target_paths": ["slidewin/window.py"]}, "R10": {"omission_probe": {"path": "slidewin/limiter.py", "text": "return self.remaining(key)", "type": "text_absent"}, "target_paths": ["slidewin/limiter.py"]}, "R2": {"omission_probe": {"path": "CHANGELOG.md", "text": "## 0.2.1\n\n- Fixed the window boundary:", "type": "text_absent"}, "target_paths": ["CHANGELOG.md"]}, "R3": {"omission_probe": {"path": "slidewin/__init__.py", "text": "__version__ = \"0.2.1\"", "type": "text_absent"}, "target_paths": ["slidewin/__init__.py"]}, "R4": {"omission_probe": {"path": "slidewin/window.py", "text": "Events exactly window seconds old are expired.", "type": "text_absent"}, "target_paths": ["slidewin/window.py"]}, "R5": {"omission_probe": {"path": "slidewin/config.py", "text": "window_seconds=60, default_limit=5", "type": "text_absent"}, "target_paths": ["slidewin/config.py"]}, "R6": {"omission_probe": {"path": "slidewin/limiter.py", "text": "\"limit of {0} per {1}s exceeded\"", "type": "text_absent"}, "target_paths": ["slidewin/limiter.py"]}, "R7": {"omission_probe": {"path": "slidewin/clock.py", "text": "raise ValueError(\"cannot advance clock backwards\")", "type": "text_absent"}, "target_paths": ["slidewin/clock.py"]}, "R8": {"omission_probe": {"path": "slidewin/limiter.py", "text": "return max(0, self.limit - self._counter(key).count())", "type": "text_absent"}, "target_paths": ["slidewin/limiter.py"]}, "R9": {"omission_probe": {"path": "tests/test_window.py", "text": "def test_boundary_event_expired", "type": "text_absent"}, "target_paths": ["tests/test_window.py"]}}
+{
+  "R1": {
+    "omission_probe": {"path": "slidewin/window.py", "text": "ts for ts in self._events if ts > cutoff", "type": "text_absent"},
+    "stated_in": {"path": "docs/design.md", "quote": "The counter must retain only timestamps strictly greater than the active cutoff."},
+    "target_paths": ["slidewin/window.py"]
+  },
+  "R2": {
+    "omission_probe": {"path": "CHANGELOG.md", "text": "## 0.2.1\n\n- Fixed the window boundary:", "type": "text_absent"},
+    "stated_in": {"path": "CHANGELOG.md", "quote": "Release 0.2.1 must include a changelog entry for the corrected window boundary."},
+    "target_paths": ["CHANGELOG.md"]
+  },
+  "R3": {
+    "omission_probe": {"path": "slidewin/__init__.py", "text": "__version__ = \"0.2.1\"", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "The boundary fix must set the package version to `0.2.1`."},
+    "target_paths": ["slidewin/__init__.py"]
+  },
+  "R4": {
+    "omission_probe": {"path": "slidewin/window.py", "text": "Events exactly window seconds old are expired.", "type": "text_absent"},
+    "stated_in": {"path": "docs/design.md", "quote": "Events exactly window seconds old are expired."},
+    "target_paths": ["slidewin/window.py"]
+  },
+  "R5": {
+    "omission_probe": {"path": "slidewin/config.py", "text": "window_seconds=60, default_limit=5", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "A default LimiterConfig must use a 60-second window and a limit of five."},
+    "target_paths": ["slidewin/config.py"]
+  },
+  "R6": {
+    "omission_probe": {"path": "slidewin/limiter.py", "text": "\"limit of {0} per {1}s exceeded\"", "type": "text_absent"},
+    "stated_in": {"path": "docs/design.md", "quote": "`RateLimitExceeded` must format its message as `limit of {limit} per {window}s exceeded`."},
+    "target_paths": ["slidewin/limiter.py"]
+  },
+  "R7": {
+    "omission_probe": {"path": "slidewin/clock.py", "text": "raise ValueError(\"cannot advance clock backwards\")", "type": "text_absent"},
+    "stated_in": {"path": "examples/basic_usage.py", "quote": "ManualClock.advance must reject negative steps with `cannot advance clock backwards`."},
+    "target_paths": ["slidewin/clock.py"]
+  },
+  "R8": {
+    "omission_probe": {"path": "slidewin/limiter.py", "text": "return max(0, self.limit - self._counter(key).count())", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "`remaining(key)` must clamp exhausted or over-limit counters to zero."},
+    "target_paths": ["slidewin/limiter.py"]
+  },
+  "R9": {
+    "omission_probe": {"path": "tests/test_window.py", "text": "def test_boundary_event_expired", "type": "text_absent"},
+    "stated_in": {"path": "CHANGELOG.md", "quote": "The boundary repair must add a regression test named `test_boundary_event_expired`."},
+    "target_paths": ["tests/test_window.py"]
+  },
+  "R10": {
+    "omission_probe": {"path": "slidewin/limiter.py", "text": "return self.remaining(key)", "type": "text_absent"},
+    "stated_in": {"path": "examples/basic_usage.py", "quote": "A successful RateLimiter.acquire call must return the number of slots remaining afterward."},
+    "target_paths": ["slidewin/limiter.py"]
+  }
+}

@@ -21,3 +21,6 @@ print("remaining for 'api':", limiter.remaining("api"))
 for i in range(3):
     limiter.hit("background")
 print("remaining for 'background':", limiter.remaining("background"))
+
+# ManualClock.advance must reject negative steps with `cannot advance clock backwards`.
+# A successful RateLimiter.acquire call must return the number of slots remaining afterward.

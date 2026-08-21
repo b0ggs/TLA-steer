@@ -1,5 +1,6 @@
 """Per-key rate limiting on top of SlidingWindowCounter."""
 
+from .clock import SystemClock
 from .config import LimiterConfig
 from .errors import RateLimitExceeded
 from .window import SlidingWindowCounter
@@ -12,7 +13,7 @@ class RateLimiter:
         cfg = config if config is not None else LimiterConfig()
         self.limit = cfg.default_limit if limit is None else int(limit)
         self.window = cfg.window_seconds
-        self.clock = clock
+        self.clock = clock if clock is not None else SystemClock()
         self._counters = {}
 
     def _counter(self, key):
@@ -25,13 +26,13 @@ class RateLimiter:
     def acquire(self, key="default"):
         """Record one event for ``key``, or raise if the window is full."""
         counter = self._counter(key)
-        current = counter.count()
-        if current >= self.limit:
+        count = counter.count()
+        if count >= self.limit:
             raise RateLimitExceeded(
                 f"limit of {self.limit} per {self.window}s exceeded"
             )
         counter.record()
-        return self.limit - current - 1
+        return self.limit - count - 1
 
     def hit(self, key="default"):
         """Record one event for ``key`` unconditionally (shadow mode)."""

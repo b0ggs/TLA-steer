@@ -27,7 +27,7 @@ class ManualClock:
 
     def advance(self, seconds):
         """Move the clock forward by ``seconds``."""
-        delta = float(seconds)
-        if delta < 0:
+        seconds = float(seconds)
+        if seconds < 0:
             raise ValueError("cannot advance clock backwards")
-        self._now += delta
+        self._now += seconds

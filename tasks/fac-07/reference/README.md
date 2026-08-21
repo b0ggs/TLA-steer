@@ -30,6 +30,8 @@ seconds, which means `LimiterConfig()` constructed with no arguments reports a
 `window_seconds` of 60 and a `default_limit` of 5. Pass either argument
 explicitly to override the stock values for a single limiter.
 
+A default LimiterConfig must use a 60-second window and a limit of five.
+
 ## Enforcement and shadow mode
 
 `RateLimiter.acquire(key)` checks the window for that key, raises
@@ -45,12 +47,16 @@ Because shadow mode can push the recorded count past the limit,
 `remaining(key)` is clamped at zero — it never returns a negative number; once
 hits meet or exceed the limit it simply returns 0.
 
+`remaining(key)` must clamp exhausted or over-limit counters to zero.
+
 ## Releases
 
 Every released change bumps `__version__` in `slidewin/__init__.py` and gets a
 matching entry in `CHANGELOG.md`. The window-boundary fix tracked in the
 current issue ships as version 0.2.1, so `__version__` reads `"0.2.1"` once
 that fix lands.
+
+The boundary fix must set the package version to `0.2.1`.
 
 ## Layout
 
