@@ -18,10 +18,10 @@ class Sieve:
     def decide(self, path):
         """Decide whether *path* is excluded.
 
+        The last matching rule wins.
+
         Returns True when the path is excluded by the rule set and
         False when it survives filtering.
-
-        The last matching rule wins.
         """
         excluded = False
         for rule in self.rules:

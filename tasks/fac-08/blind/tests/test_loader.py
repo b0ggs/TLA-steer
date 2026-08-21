@@ -10,6 +10,10 @@ class LoaderTests(unittest.TestCase):
     def test_flush_left_comment_skipped(self):
         self.assertEqual(len(load_text("# comment\n*.tmp\n")), 1)
 
+    def test_indented_comments_skipped(self):
+        rules = load_text("   # secret\n\t# tab comment\n*.log\n")
+        self.assertEqual(len(rules), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

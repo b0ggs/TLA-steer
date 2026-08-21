@@ -10,6 +10,9 @@ on a line of its own. That release ships as 0.4.1, which means
 `__version__` in `pathsieve/__init__.py` must be updated to `"0.4.1"`
 at the same time.
 
+The Unreleased section must record that negation patterns re-include previously excluded paths.
+The repair must add a regression test named `test_negation_reinclude`.
+
 ## 0.4.0 - 2026-07-30
 
 - Added the `filter_paths` convenience helper.

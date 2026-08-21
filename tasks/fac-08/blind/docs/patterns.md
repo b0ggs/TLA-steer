@@ -38,6 +38,8 @@ invariant out for future readers as well: the docstring of
 `Sieve.decide` must contain, verbatim, the sentence
 `The last matching rule wins.` — including the final period.
 
+When several rules match, a negated last match must re-include the path.
+
 A lone `!` with nothing after it is invalid. `compile_pattern("!")`
 must raise `PatternError` with the exact message
 `negation requires a pattern body`; at the moment it silently builds a
@@ -45,6 +47,8 @@ rule that can never match, which is another of the small defects to
 clean up. An entirely empty pattern line passed to `compile_pattern`
 raises `PatternError` with the message `empty pattern`, as it always
 has.
+
+A lone negation must raise `PatternError` with the message `negation requires a pattern body`.
 
 ## Case sensitivity
 

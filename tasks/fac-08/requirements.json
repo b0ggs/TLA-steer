@@ -1,1 +1,52 @@
-{"R1": {"omission_probe": {"path": "pathsieve/engine.py", "text": "verdict = not rule.negated", "type": "text_absent"}, "target_paths": ["pathsieve/engine.py"]}, "R10": {"omission_probe": {"path": "pathsieve/__init__.py", "text": "from .errors import PatternError", "type": "text_absent"}, "target_paths": ["pathsieve/__init__.py"]}, "R2": {"omission_probe": {"path": "CHANGELOG.md", "text": "## Unreleased\n\n- Fixed: negation patterns now re-include previously excluded paths.", "type": "text_absent"}, "target_paths": ["CHANGELOG.md"]}, "R3": {"omission_probe": {"path": "pathsieve/__init__.py", "text": "__version__ = \"0.4.1\"", "type": "text_absent"}, "target_paths": ["pathsieve/__init__.py"]}, "R4": {"omission_probe": {"path": "pathsieve/patterns.py", "text": "raise PatternError(\"negation requires a pattern body\")", "type": "text_absent"}, "target_paths": ["pathsieve/patterns.py"]}, "R5": {"omission_probe": {"path": "pathsieve/loader.py", "text": "if line.lstrip().startswith(\"#\"):", "type": "text_absent"}, "target_paths": ["pathsieve/loader.py"]}, "R6": {"omission_probe": {"path": "pathsieve/engine.py", "text": "The last matching rule wins.", "type": "text_absent"}, "target_paths": ["pathsieve/engine.py"]}, "R7": {"omission_probe": {"path": "tests/test_engine.py", "text": "def test_negation_reinclude", "type": "text_absent"}, "target_paths": ["tests/test_engine.py"]}, "R8": {"omission_probe": {"path": "pathsieve/engine.py", "text": "def __init__(self, patterns, ignore_case=False):", "type": "text_absent"}, "target_paths": ["pathsieve/engine.py"]}, "R9": {"omission_probe": {"path": "pathsieve/__init__.py", "text": "return [p for p in paths if not sieve.excludes(p)]", "type": "text_absent"}, "target_paths": ["pathsieve/__init__.py"]}}
+{
+  "R1": {
+    "omission_probe": {"path": "pathsieve/engine.py", "text": "verdict = not rule.negated", "type": "text_absent"},
+    "stated_in": {"path": "docs/patterns.md", "quote": "When several rules match, a negated last match must re-include the path."},
+    "target_paths": ["pathsieve/engine.py"]
+  },
+  "R2": {
+    "omission_probe": {"path": "CHANGELOG.md", "text": "## Unreleased\n\n- Fixed: negation patterns now re-include previously excluded paths.", "type": "text_absent"},
+    "stated_in": {"path": "CHANGELOG.md", "quote": "The Unreleased section must record that negation patterns re-include previously excluded paths."},
+    "target_paths": ["CHANGELOG.md"]
+  },
+  "R3": {
+    "omission_probe": {"path": "pathsieve/__init__.py", "text": "__version__ = \"0.4.1\"", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "The repaired package must report version `0.4.1`."},
+    "target_paths": ["pathsieve/__init__.py"]
+  },
+  "R4": {
+    "omission_probe": {"path": "pathsieve/patterns.py", "text": "raise PatternError(\"negation requires a pattern body\")", "type": "text_absent"},
+    "stated_in": {"path": "docs/patterns.md", "quote": "A lone negation must raise `PatternError` with the message `negation requires a pattern body`."},
+    "target_paths": ["pathsieve/patterns.py"]
+  },
+  "R5": {
+    "omission_probe": {"path": "pathsieve/loader.py", "text": "if line.lstrip().startswith(\"#\"):", "type": "text_absent"},
+    "stated_in": {"path": "examples/basic.py", "quote": "Pattern loading must ignore comments with leading whitespace."},
+    "target_paths": ["pathsieve/loader.py"]
+  },
+  "R6": {
+    "omission_probe": {"path": "pathsieve/engine.py", "text": "The last matching rule wins.", "type": "text_absent"},
+    "stated_in": {"path": "docs/patterns.md", "quote": "The last matching rule wins."},
+    "target_paths": ["pathsieve/engine.py"]
+  },
+  "R7": {
+    "omission_probe": {"path": "tests/test_engine.py", "text": "def test_negation_reinclude", "type": "text_absent"},
+    "stated_in": {"path": "CHANGELOG.md", "quote": "The repair must add a regression test named `test_negation_reinclude`."},
+    "target_paths": ["tests/test_engine.py"]
+  },
+  "R8": {
+    "omission_probe": {"path": "pathsieve/engine.py", "text": "def __init__(self, patterns, ignore_case=False):", "type": "text_absent"},
+    "stated_in": {"path": "examples/basic.py", "quote": "Sieve ignore_case must default to False."},
+    "target_paths": ["pathsieve/engine.py"]
+  },
+  "R9": {
+    "omission_probe": {"path": "pathsieve/__init__.py", "text": "return [p for p in paths if not sieve.excludes(p)]", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "`filter_paths` must preserve surviving input paths in their original order."},
+    "target_paths": ["pathsieve/__init__.py"]
+  },
+  "R10": {
+    "omission_probe": {"path": "pathsieve/__init__.py", "text": "from .errors import PatternError", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "The top-level package must re-export `PatternError`."},
+    "target_paths": ["pathsieve/__init__.py"]
+  }
+}

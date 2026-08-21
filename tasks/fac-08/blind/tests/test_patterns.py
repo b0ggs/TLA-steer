@@ -9,6 +9,12 @@ class CompileTests(unittest.TestCase):
         with self.assertRaises(PatternError):
             compile_pattern("   ")
 
+    def test_lone_negation_rejected(self):
+        with self.assertRaisesRegex(
+            PatternError, "^negation requires a pattern body$"
+        ):
+            compile_pattern("!")
+
     def test_star_does_not_cross_directories(self):
         rule = compile_pattern("docs/*.md")
         self.assertTrue(rule.matches("docs/guide.md"))

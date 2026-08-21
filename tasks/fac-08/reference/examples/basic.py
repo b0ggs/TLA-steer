@@ -2,6 +2,9 @@
 
 from pathsieve import Sieve, load_text
 
+# Pattern loading must ignore comments with leading whitespace.
+# Sieve ignore_case must default to False.
+
 RULES = """
 # build artefacts
 *.log

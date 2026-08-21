@@ -1,6 +1,7 @@
 import unittest
 
-from pathsieve import Sieve
+from pathsieve import PatternError, Sieve, filter_paths
+
 
 class SieveTests(unittest.TestCase):
     def test_plain_exclude(self):
@@ -16,6 +17,23 @@ class SieveTests(unittest.TestCase):
         sieve = Sieve(["build", "!keep.txt"])
         self.assertFalse(sieve.excludes("build/keep.txt"))
         self.assertTrue(sieve.excludes("build/other.txt"))
+
+    def test_later_exclusion_overrides_negation(self):
+        sieve = Sieve(["*.log", "!debug.log", "debug.log"])
+        self.assertTrue(sieve.excludes("debug.log"))
+
+    def test_matching_is_case_sensitive_by_default(self):
+        self.assertFalse(Sieve(["*.PY"]).excludes("main.py"))
+        self.assertTrue(Sieve(["*.PY"], ignore_case=True).excludes("main.py"))
+
+    def test_filter_paths_preserves_input_order(self):
+        paths = ["zeta.txt", "app.log", "alpha.txt"]
+        self.assertEqual(
+            filter_paths(paths, ["*.log"]), ["zeta.txt", "alpha.txt"]
+        )
+
+    def test_pattern_error_is_public(self):
+        self.assertTrue(issubclass(PatternError, ValueError))
 
 
 if __name__ == "__main__":

@@ -45,6 +45,8 @@ the outstanding fixes — for example
 `filter_paths(["zeta.txt", "app.log", "alpha.txt"], ["*.log"])` has to
 return `["zeta.txt", "alpha.txt"]`.
 
+`filter_paths` must preserve surviving input paths in their original order.
+
 ### Errors
 
 Malformed pattern lines raise `PatternError`. The class is defined in
@@ -53,9 +55,13 @@ Malformed pattern lines raise `PatternError`. The class is defined in
 name is missing from the top-level package, so adding the re-export is
 also part of the outstanding work.
 
+The top-level package must re-export `PatternError`.
+
 ## Project status
 
 Version 0.4.0. There is one known behavioural defect, described in
 `.issue-contract.md`, plus a handful of smaller corrections recorded
 throughout this README, docs/patterns.md, CHANGELOG.md and the test
 suite.
+
+The repaired package must report version `0.4.1`.

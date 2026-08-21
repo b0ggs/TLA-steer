@@ -7,8 +7,8 @@ from .errors import PatternError
 from .loader import load_file, load_text
 
 __all__ = [
-    "PatternError",
     "Sieve",
+    "PatternError",
     "load_file",
     "load_text",
     "filter_paths",
