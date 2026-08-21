@@ -22,6 +22,9 @@ option. The newest command prints five entries when no --limit option is passed 
 the command line. Shipping newest is a feature release, so once the command works
 `python -m dirlens --version` must report `dirlens 0.3.0`.
 
+The newest limit must cap the maximum number of output rows.
+This release must set the package version to `0.3.0`.
+
 ## Testing
 
 The test suite uses only the standard library's unittest module. Existing tests live
@@ -29,6 +32,8 @@ in tests/ and run with `python -m unittest discover -s tests -t .` from the
 repository root. The newest command has to arrive with its own module,
 tests/test_newest.py, which must pass with at least one test when invoked as
 `python -m unittest tests.test_newest` from the repository root.
+
+The newest feature must add `tests/test_newest.py`.
 
 ## Layout
 

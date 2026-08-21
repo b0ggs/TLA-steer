@@ -34,6 +34,8 @@ prints an error to standard error and exits with status 3 when PATH does not exi
 
 `python -m dirlens newest PATH [--limit N] [--json]`
 
+The report module must define a `newest_entries` function.
+
 The newest command walks PATH recursively and reports the most recently modified
 regular files. In the plain text mode each output line consists of the file's
 modification time, a single tab character, and the file's path relative to PATH
@@ -45,12 +47,15 @@ the option is absent is stated in the README. Passing `--json` switches the comm
 to print a JSON array on standard output instead of text lines, honouring the same
 ordering and the same limit, where every element is an object with exactly two keys,
 `path` and `mtime`, holding the relative path and the timestamp string described
-above. When PATH exists but contains no files at all, newest prints nothing to
-standard output and exits with status 0, and in JSON mode it prints an empty array.
+above. JSON output objects must contain only `path` and `mtime`. When PATH exists
+but contains no files at all, newest prints nothing to standard output and exits
+with status 0, and in JSON mode it prints an empty array.
 Like the other commands, newest must print an error message to standard error and
 exit with status 3 when PATH does not exist. Finally, the help text printed by
 `python -m dirlens newest --help` has to contain, exactly as written here, the
 sentence "List the most recently modified files in a directory tree."
+
+An empty directory tree must produce an empty list.
 
 ## Exit codes
 

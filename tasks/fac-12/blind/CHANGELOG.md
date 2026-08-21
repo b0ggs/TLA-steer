@@ -1,9 +1,6 @@
 # Changelog
 
-All notable changes to dirlens are recorded here, newest release first. The next
-release will be 0.3.0: when the newest subcommand is implemented, start a new section
-at the top of the release list headed `## 0.3.0` whose first bullet is exactly
-`- Added the newest subcommand.`
+All notable changes to dirlens are recorded here, newest release first.
 
 ## 0.3.0
 

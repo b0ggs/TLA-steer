@@ -24,24 +24,17 @@ def ext_lines(root):
 
 
 def newest_entries(root, limit=5):
-    """Return newest-file objects ordered by mtime descending, then path."""
+    """Return the newest files as ``path``/``mtime`` dictionaries."""
     rows = []
     for path in iter_files(root):
-        rows.append((path.stat().st_mtime, rel_posix(path, root)))
-    rows.sort(key=lambda row: (-row[0], row[1]))
+        mtime_ns = path.stat().st_mtime_ns
+        rows.append((mtime_ns, rel_posix(path, root)))
 
+    rows.sort(key=lambda row: (-row[0], row[1]))
     entries = []
-    for mtime, relative_path in rows[:limit]:
-        timestamp = datetime.fromtimestamp(mtime, timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+    for mtime_ns, relative_path in rows[:limit]:
+        timestamp = datetime.fromtimestamp(
+            mtime_ns // 1_000_000_000, timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
         entries.append({"path": relative_path, "mtime": timestamp})
     return entries
-
-
-def newest_lines(root, limit=5):
-    """Return ``<UTC-mtime>\t<relative-path>`` lines for the newest files."""
-    return [
-        "%s\t%s" % (entry["mtime"], entry["path"])
-        for entry in newest_entries(root, limit=limit)
-    ]

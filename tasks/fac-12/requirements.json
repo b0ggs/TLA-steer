@@ -1,1 +1,52 @@
-{"R1": {"omission_probe": {"path": "dirlens/report.py", "text": "def newest_entries(root, limit):", "type": "text_absent"}, "target_paths": ["dirlens/cli.py", "dirlens/report.py"]}, "R10": {"omission_probe": {"path": "dirlens/report.py", "text": "An empty tree yields an empty list.", "type": "text_absent"}, "target_paths": ["dirlens/report.py"]}, "R2": {"omission_probe": {"path": "dirlens/report.py", "text": "rows[:limit]", "type": "text_absent"}, "target_paths": ["dirlens/cli.py", "dirlens/report.py"]}, "R3": {"omission_probe": {"path": "dirlens/cli.py", "text": "\"--json\"", "type": "text_absent"}, "target_paths": ["dirlens/cli.py", "dirlens/report.py"]}, "R4": {"omission_probe": {"path": "dirlens/cli.py", "text": "List the most recently modified files in a directory tree.", "type": "text_absent"}, "target_paths": ["dirlens/cli.py"]}, "R5": {"omission_probe": {"path": "dirlens/cli.py", "text": "elif args.command == \"newest\":", "type": "text_absent"}, "target_paths": ["dirlens/cli.py"]}, "R6": {"omission_probe": {"path": "examples/README.md", "text": "python -m dirlens ext examples/sample\npython -m dirlens newest examples/sample --limit 3", "type": "text_absent"}, "target_paths": ["examples/README.md"]}, "R7": {"omission_probe": {"path": "CHANGELOG.md", "text": "## 0.3.0\n\n- Added the newest subcommand.", "type": "text_absent"}, "target_paths": ["CHANGELOG.md"]}, "R8": {"omission_probe": {"path": "dirlens/__init__.py", "text": "__version__ = \"0.3.0\"", "type": "text_absent"}, "target_paths": ["dirlens/__init__.py"]}, "R9": {"omission_probe": {"path": "tests/test_newest.py", "type": "path_absent"}, "target_paths": ["tests/test_newest.py"]}}
+{
+  "R1": {
+    "omission_probe": {"path": "dirlens/report.py", "text": "def newest_entries(root, limit):", "type": "text_absent"},
+    "stated_in": {"path": "docs/cli.md", "quote": "The report module must define a `newest_entries` function."},
+    "target_paths": ["dirlens/cli.py", "dirlens/report.py"]
+  },
+  "R2": {
+    "omission_probe": {"path": "dirlens/report.py", "text": "rows[:limit]", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "The newest limit must cap the maximum number of output rows."},
+    "target_paths": ["dirlens/cli.py", "dirlens/report.py"]
+  },
+  "R3": {
+    "omission_probe": {"path": "dirlens/cli.py", "text": "\"--json\"", "type": "text_absent"},
+    "stated_in": {"path": "docs/cli.md", "quote": "JSON output objects must contain only `path` and `mtime`."},
+    "target_paths": ["dirlens/cli.py", "dirlens/report.py"]
+  },
+  "R4": {
+    "omission_probe": {"path": "dirlens/cli.py", "text": "List the most recently modified files in a directory tree.", "type": "text_absent"},
+    "stated_in": {"path": ".issue-contract.md", "quote": "The newest help text must say `List the most recently modified files in a directory tree.`."},
+    "target_paths": ["dirlens/cli.py"]
+  },
+  "R5": {
+    "omission_probe": {"path": "dirlens/cli.py", "text": "elif args.command == \"newest\":", "type": "text_absent"},
+    "stated_in": {"path": "examples/README.md", "quote": "The CLI must dispatch a `newest` subcommand."},
+    "target_paths": ["dirlens/cli.py"]
+  },
+  "R6": {
+    "omission_probe": {"path": "examples/README.md", "text": "python -m dirlens ext examples/sample\npython -m dirlens newest examples/sample --limit 3", "type": "text_absent"},
+    "stated_in": {"path": "examples/README.md", "quote": "The documentation must show `python -m dirlens newest examples/sample --limit 3`."},
+    "target_paths": ["examples/README.md"]
+  },
+  "R7": {
+    "omission_probe": {"path": "CHANGELOG.md", "text": "## 0.3.0\n\n- Added the newest subcommand.", "type": "text_absent"},
+    "stated_in": {"path": "CHANGELOG.md", "quote": "Release 0.3.0 must include the bullet `- Added the newest subcommand.`."},
+    "target_paths": ["CHANGELOG.md"]
+  },
+  "R8": {
+    "omission_probe": {"path": "dirlens/__init__.py", "text": "__version__ = \"0.3.0\"", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "This release must set the package version to `0.3.0`."},
+    "target_paths": ["dirlens/__init__.py"]
+  },
+  "R9": {
+    "omission_probe": {"path": "tests/test_newest.py", "type": "path_absent"},
+    "stated_in": {"path": "README.md", "quote": "The newest feature must add `tests/test_newest.py`."},
+    "target_paths": ["tests/test_newest.py"]
+  },
+  "R10": {
+    "omission_probe": {"path": "dirlens/report.py", "text": "An empty tree yields an empty list.", "type": "text_absent"},
+    "stated_in": {"path": "docs/cli.md", "quote": "An empty directory tree must produce an empty list."},
+    "target_paths": ["dirlens/report.py"]
+  }
+}

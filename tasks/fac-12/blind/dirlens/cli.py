@@ -6,7 +6,15 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .report import ext_lines, newest_entries, newest_lines, scan_lines
+from .report import ext_lines, newest_entries, scan_lines
+
+
+def non_negative_int(value):
+    """Return *value* as an integer, rejecting negative limits."""
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative integer")
+    return number
 
 
 def build_parser():
@@ -27,14 +35,12 @@ def build_parser():
     p_ext = sub.add_parser("ext", help="Summarise file counts by extension.")
     p_ext.add_argument("path")
 
-    newest_description = (
-        "List the most recently modified files in a directory tree."
-    )
+    newest_help = "List the most recently modified files in a directory tree."
     p_newest = sub.add_parser(
-        "newest", help=newest_description, description=newest_description
+        "newest", help=newest_help, description=newest_help
     )
     p_newest.add_argument("path")
-    p_newest.add_argument("--limit", type=int, default=5)
+    p_newest.add_argument("--limit", type=non_negative_int, default=5)
     p_newest.add_argument("--json", action="store_true")
 
     return parser
@@ -56,9 +62,10 @@ def main(argv=None):
         for line in ext_lines(root):
             print(line)
     elif args.command == "newest":
+        entries = newest_entries(root, args.limit)
         if args.json:
-            print(json.dumps(newest_entries(root, limit=args.limit)))
+            print(json.dumps(entries))
         else:
-            for line in newest_lines(root, limit=args.limit):
-                print(line)
+            for entry in entries:
+                print("%s\t%s" % (entry["mtime"], entry["path"]))
     return 0
