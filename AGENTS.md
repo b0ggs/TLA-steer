@@ -20,6 +20,6 @@ This repository evaluates instruction files. It is not an instruction optimizer 
 - Every artifact is written to disk at creation; nothing lives only in an agent's conversation. Blind solutions carry on-disk provenance.
 - Task admission is mechanical: `tooling/taskcheck.py`. No manual audit substitutes for it and no process may be layered on top of it.
 - Pre-exposure failures are ordinary and repairable without limit. Experimental freezing and no-selective-retry begin only when a usable subject attempt launches; during captured attempts, tasks, targets, and candidates remain immutable. Exposed defective tasks are retired, never edited; repaired copies are new tasks that record their parent.
-- The only human approval in development is live-call spend (REQUEST.json/APPROVED.json).
+- The only human approval in development is live subject-model call spend (REQUEST.json/APPROVED.json).
 - At most 2 sub-agents run concurrently.
 - Do not build enforcement or receipt infrastructure beyond taskcheck's manifest and ledger unless Wade separately authorizes it.

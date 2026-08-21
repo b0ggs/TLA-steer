@@ -454,9 +454,9 @@ coverage mutants gave, mechanically.
 
 ## 10. PHASE 2 — Task Factory + Measurement Bridge (rev 2, post-audit)
 
-Status: PROPOSED (Phase 2 starts when Wade flips this line to "Phase 2 ACTIVE
-as of <date>"). New branch off the branch containing this plan; Wade merges on
-acceptance (§10.6). §§1–9 remain in force EXCEPT where §10 explicitly
+Status: Phase 2 ACTIVE as of 2026-08-20. New branch off the branch containing
+this plan; Wade merges on acceptance (§10.6). §§1–9 remain in force EXCEPT
+where §10 explicitly
 supersedes them; every supersession is marked "SUPERSEDES". Two audits
 (2026-08-20) are incorporated; their factual findings are stated inline so the
 implementer does not rediscover them.
