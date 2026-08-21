@@ -14,6 +14,8 @@ Nothing yet.
 - mean_value returns 0.0 for an empty list.
 - Reports render with four decimal places by default.
 
+The 0.4.0 changelog must document that rollup honors per-sample weights.
+
 ## 0.3.1
 
 - Fixed median_value for even-length inputs.

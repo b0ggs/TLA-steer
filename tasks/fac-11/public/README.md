@@ -27,6 +27,8 @@ rolls each group up into a compact numeric summary.
 moves report formatting to four decimal places: change `DEFAULT_PRECISION`
 from 2 to 4.
 
+Report formatting must set `DEFAULT_PRECISION` to 4.
+
 ## Testing
 
 Run the suite with:
@@ -36,6 +38,8 @@ Run the suite with:
 Any change to the aggregation math needs direct coverage, so the 0.4.0 work
 includes adding a test function named `test_weighted_mean` to
 `tests/test_rollup.py`; with it in place the whole suite must pass.
+
+The rollup tests must add a function named `test_weighted_mean`.
 
 ## Releasing
 
@@ -47,3 +51,5 @@ bullet line read exactly:
 
 See `docs/aggregation.md` for the full description of the aggregation
 semantics.
+
+This release must set the package version to `0.4.0`.

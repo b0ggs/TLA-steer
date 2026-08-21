@@ -9,6 +9,9 @@ from pulsemetrics.rollup import rollup
 from pulsemetrics.report import render_report
 from pulsemetrics.samples import parse_line
 
+# Each rollup summary must include weight_total as the sum of effective sample weights.
+# parse_line must strip leading and trailing whitespace before splitting a line.
+
 RAW_LINES = [
     "cpu.load 1.5",
     "cpu.load 2.5",

@@ -11,6 +11,8 @@ bucket. As part of the 0.4.0 hardening, `group_samples` in
 by raising `ValueError` with the message `sample is missing a metric name`
 (that exact wording).
 
+`group_samples` must raise `ValueError` with the message `sample is missing a metric name` when a sample lacks a metric.
+
 ## Rollup
 
 `rollup` composes grouping with per-group statistics. Each summary carries
@@ -18,6 +20,8 @@ by raising `ValueError` with the message `sample is missing a metric name`
 described in the issue. Starting with 0.4.0, the mapping returned by
 `rollup` must list its metric names in ascending alphabetical order rather
 than in first-seen order.
+
+Rollup results must list metric names in ascending alphabetical order.
 
 Because the weight default is easy to miss when reading the code, the
 docstring of `rollup` must include the sentence

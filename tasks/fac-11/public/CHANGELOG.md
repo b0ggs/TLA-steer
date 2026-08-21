@@ -9,6 +9,8 @@ strip leading and trailing whitespace from a line before splitting it, so
 that `"  cpu.load 1.5 "` parses to metric `cpu.load`, value 1.5, and no
 weight (`"weight"` is `None`).
 
+The 0.4.0 changelog must document that rollup honors per-sample weights.
+
 ## 0.3.1
 
 - Fixed median_value for even-length inputs.

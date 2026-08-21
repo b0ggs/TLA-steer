@@ -16,7 +16,8 @@ rolls each group up into a compact numeric summary.
 2. `pulsemetrics.grouping.group_samples(samples)` buckets sample dicts into
    a mapping of metric name to list of samples.
 3. `pulsemetrics.rollup.rollup(samples)` produces a per-metric summary dict
-   with the keys `"count"`, `"mean"`, `"min"`, and `"max"`.
+   with the keys `"count"`, `"mean"`, `"min"`, `"max"`, and
+   `"weight_total"`. Means are weighted by each sample's effective weight.
 4. `pulsemetrics.report.render_report(summary)` renders one text line per
    metric for human consumption.
 
@@ -26,6 +27,8 @@ rolls each group up into a compact numeric summary.
 `DEFAULT_PRECISION` constant in `pulsemetrics/report.py`. The 0.4.0 release
 moves report formatting to four decimal places: change `DEFAULT_PRECISION`
 from 2 to 4.
+
+Report formatting must set `DEFAULT_PRECISION` to 4.
 
 ## Testing
 
@@ -37,6 +40,8 @@ Any change to the aggregation math needs direct coverage, so the 0.4.0 work
 includes adding a test function named `test_weighted_mean` to
 `tests/test_rollup.py`; with it in place the whole suite must pass.
 
+The rollup tests must add a function named `test_weighted_mean`.
+
 ## Releasing
 
 Every release gets its own section in `CHANGELOG.md`. When cutting 0.4.0,
@@ -47,3 +52,5 @@ bullet line read exactly:
 
 See `docs/aggregation.md` for the full description of the aggregation
 semantics.
+
+This release must set the package version to `0.4.0`.

@@ -2,6 +2,8 @@ import unittest
 
 from pulsemetrics.stats import mean_value, median_value
 
+# mean_value must return 0.0 for an empty list.
+
 # Maintenance note for the 0.4.0 aggregation work: mean_value in
 # pulsemetrics/stats.py must return 0.0 when it is given an empty list,
 # instead of raising ZeroDivisionError as it does today.

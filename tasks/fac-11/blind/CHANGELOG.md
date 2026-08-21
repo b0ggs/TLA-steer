@@ -1,9 +1,13 @@
 # Changelog
 
+## Unreleased
+
 ## 0.4.0
 
 - Weighted means: rollup now honors per-sample weights.
-- Accept leading and trailing whitespace in sample lines.
+- Added total sample weights and alphabetically ordered rollup results.
+- Hardened metric grouping and whitespace-tolerant sample parsing.
+- Increased the default report precision to four decimal places.
 
 ## 0.3.1
 

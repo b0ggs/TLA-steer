@@ -20,9 +20,7 @@ def rollup(samples):
         weight_total = sum(weights)
         result[metric] = {
             "count": len(values),
-            "mean": sum(
-                value * weight for value, weight in zip(values, weights)
-            )
+            "mean": sum(value * weight for value, weight in zip(values, weights))
             / weight_total,
             "min": min(values),
             "max": max(values),

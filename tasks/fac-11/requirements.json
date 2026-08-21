@@ -1,1 +1,52 @@
-{"R1": {"omission_probe": {"path": "pulsemetrics/rollup.py", "text": "\"weight_total\": weight_total", "type": "text_absent"}, "target_paths": ["pulsemetrics/rollup.py"]}, "R10": {"omission_probe": {"path": "pulsemetrics/samples.py", "text": "parts = line.strip().split()", "type": "text_absent"}, "target_paths": ["pulsemetrics/samples.py"]}, "R2": {"omission_probe": {"path": "CHANGELOG.md", "text": "- Weighted means: rollup now honors per-sample weights.", "type": "text_absent"}, "target_paths": ["CHANGELOG.md"]}, "R3": {"omission_probe": {"path": "pulsemetrics/__init__.py", "text": "__version__ = \"0.4.0\"", "type": "text_absent"}, "target_paths": ["pulsemetrics/__init__.py"]}, "R4": {"omission_probe": {"path": "pulsemetrics/rollup.py", "text": "Weights default to 1.0 when a sample omits them.", "type": "text_absent"}, "target_paths": ["pulsemetrics/rollup.py"]}, "R5": {"omission_probe": {"path": "pulsemetrics/report.py", "text": "DEFAULT_PRECISION = 4", "type": "text_absent"}, "target_paths": ["pulsemetrics/report.py"]}, "R6": {"omission_probe": {"path": "pulsemetrics/stats.py", "text": "if not values:\n        return 0.0", "type": "text_absent"}, "target_paths": ["pulsemetrics/stats.py"]}, "R7": {"omission_probe": {"path": "tests/test_rollup.py", "text": "def test_weighted_mean", "type": "text_absent"}, "target_paths": ["tests/test_rollup.py"]}, "R8": {"omission_probe": {"path": "pulsemetrics/grouping.py", "text": "raise ValueError(\"sample is missing a metric name\")", "type": "text_absent"}, "target_paths": ["pulsemetrics/grouping.py"]}, "R9": {"omission_probe": {"path": "pulsemetrics/rollup.py", "text": "for metric in sorted(groups):", "type": "text_absent"}, "target_paths": ["pulsemetrics/rollup.py"]}}
+{
+  "R1": {
+    "omission_probe": {"path": "pulsemetrics/rollup.py", "text": "\"weight_total\": weight_total", "type": "text_absent"},
+    "stated_in": {"path": "examples/basic.py", "quote": "Each rollup summary must include weight_total as the sum of effective sample weights."},
+    "target_paths": ["pulsemetrics/rollup.py"]
+  },
+  "R2": {
+    "omission_probe": {"path": "CHANGELOG.md", "text": "- Weighted means: rollup now honors per-sample weights.", "type": "text_absent"},
+    "stated_in": {"path": "CHANGELOG.md", "quote": "The 0.4.0 changelog must document that rollup honors per-sample weights."},
+    "target_paths": ["CHANGELOG.md"]
+  },
+  "R3": {
+    "omission_probe": {"path": "pulsemetrics/__init__.py", "text": "__version__ = \"0.4.0\"", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "This release must set the package version to `0.4.0`."},
+    "target_paths": ["pulsemetrics/__init__.py"]
+  },
+  "R4": {
+    "omission_probe": {"path": "pulsemetrics/rollup.py", "text": "Weights default to 1.0 when a sample omits them.", "type": "text_absent"},
+    "stated_in": {"path": "docs/aggregation.md", "quote": "Weights default to 1.0 when a sample omits them."},
+    "target_paths": ["pulsemetrics/rollup.py"]
+  },
+  "R5": {
+    "omission_probe": {"path": "pulsemetrics/report.py", "text": "DEFAULT_PRECISION = 4", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "Report formatting must set `DEFAULT_PRECISION` to 4."},
+    "target_paths": ["pulsemetrics/report.py"]
+  },
+  "R6": {
+    "omission_probe": {"path": "pulsemetrics/stats.py", "text": "if not values:\n        return 0.0", "type": "text_absent"},
+    "stated_in": {"path": "tests/test_stats.py", "quote": "mean_value must return 0.0 for an empty list."},
+    "target_paths": ["pulsemetrics/stats.py"]
+  },
+  "R7": {
+    "omission_probe": {"path": "tests/test_rollup.py", "text": "def test_weighted_mean", "type": "text_absent"},
+    "stated_in": {"path": "README.md", "quote": "The rollup tests must add a function named `test_weighted_mean`."},
+    "target_paths": ["tests/test_rollup.py"]
+  },
+  "R8": {
+    "omission_probe": {"path": "pulsemetrics/grouping.py", "text": "raise ValueError(\"sample is missing a metric name\")", "type": "text_absent"},
+    "stated_in": {"path": "docs/aggregation.md", "quote": "`group_samples` must raise `ValueError` with the message `sample is missing a metric name` when a sample lacks a metric."},
+    "target_paths": ["pulsemetrics/grouping.py"]
+  },
+  "R9": {
+    "omission_probe": {"path": "pulsemetrics/rollup.py", "text": "for metric in sorted(groups):", "type": "text_absent"},
+    "stated_in": {"path": "docs/aggregation.md", "quote": "Rollup results must list metric names in ascending alphabetical order."},
+    "target_paths": ["pulsemetrics/rollup.py"]
+  },
+  "R10": {
+    "omission_probe": {"path": "pulsemetrics/samples.py", "text": "parts = line.strip().split()", "type": "text_absent"},
+    "stated_in": {"path": "examples/basic.py", "quote": "parse_line must strip leading and trailing whitespace before splitting a line."},
+    "target_paths": ["pulsemetrics/samples.py"]
+  }
+}
