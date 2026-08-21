@@ -1,0 +1,4 @@
+Solve task {task_id} using only the files visible in the current directory.
+Read .issue-contract.md and all relevant project documentation, implement every
+requirement, and leave the complete solved tree in the current directory. Do
+not access external repositories or the private checker/reference material.

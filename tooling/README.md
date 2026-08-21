@@ -2,7 +2,8 @@
 
 `taskcheck.py` is a Python-standard-library-only validator and integrity tool
 for portable coding-evaluation tasks. It has no dependency on MDs_EVAL. Its
-public interfaces are versioned as **task-layout-v2** and **check-result-v2**.
+public interfaces are versioned as **task-layout-v2**, **task-layout-v3**, and
+**check-result-v2**.
 
 ## task-layout-v2
 
@@ -38,6 +39,30 @@ and not fire on `reference/`, and every target path to exist in `reference/`.
 Optional `task-meta.json` has `salience` (`enumerated`, `pointer`, or `none`)
 and `parent_task_id` (a task id or null); defaults are `enumerated` and null.
 
+## task-layout-v3
+
+V3 is selected only by `"layout_version": 3` in author-supplied
+`task-meta.json`; admission copies that field to `manifest.json`. An absent
+field selects legacy v2. V3 metadata otherwise retains `salience` and
+`parent_task_id`.
+
+Each v3 requirement adds an exact statement location:
+
+```json
+{"target_paths":["output.txt"],"omission_probe":{"type":"path_absent","path":"output.txt"},"stated_in":{"path":"docs/contract.md","quote":"The command must create output.txt."}}
+```
+
+The quote must be one or more complete sentences, must occur verbatim in the
+declared public file, and may not overlap another requirement quote. Admission
+scans every public file and rejects one containing more than
+`--max-stated-per-file` quotes (default 3). `pointer` and `none` tasks must use
+at least `--min-statement-files` distinct statement files (default 4). The
+resolved thresholds are preserved in the manifest gate.
+
+V3 `blind.provenance.json` has exactly `solver_agent`,
+`solver_command_sha256`, `sandbox_flags` (a nonempty string list), `timestamp`,
+and `input_tree_sha256`. V2 retains its historical three-key schema.
+
 Junk, bytecode, nested Git metadata, and symlinks are rejected. `manifest.json`
 records all other task-file hashes, metadata, verbatim requirements, gate
 results, and creation time. It is generated, never author-supplied.
@@ -67,6 +92,27 @@ python3 tooling/taskcheck.py verify TASK [--ledger PATH] [--exposures PATH]
 python3 tooling/taskcheck.py batch admit TASKS_DIR [--ledger PATH] [--exposures PATH]
 python3 tooling/taskcheck.py batch verify TASKS_DIR [--ledger PATH] [--exposures PATH]
 ```
+
+All admission forms also accept `--md-filename`,
+`--max-stated-per-file`, and `--min-statement-files`. The MD filename defaults
+to `CODER.md`, must be a bare safe basename, drives the arm-neutrality sentinel,
+and is forbidden in public/ and blind/.
+
+The offline factory commands use versioned prompts and argv templates whose
+`{prompt}` token is replaced without a shell:
+
+```
+python3 tooling/taskgen.py RECIPE.json --tasks-root tasks --agent-command AGENT ... '{prompt}'
+python3 tooling/blindsolve.py tasks/TASK --solver-agent NAME \
+  --sandbox-flag workspace-only --sandbox-flag no-network \
+  --agent-command AGENT ... '{prompt}'
+```
+
+`taskgen` exclusive-creates an untrusted author tree and refuses author-made
+blind evidence. `blindsolve` refuses exposed tasks, solves only a public-tree
+copy, rejects symlinks/special files, replaces pre-exposure blind output, and
+records command/sandbox provenance. Only `taskcheck admit` makes either output
+usable.
 
 Defaults are `ledger.jsonl` and `exposures.jsonl` beside the task directories.
 Every successful admission appends a canonical chained ledger row and creates

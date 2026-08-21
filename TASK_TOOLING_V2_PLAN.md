@@ -567,10 +567,14 @@ tests/test_run_batch.py ≤300. Exactly one import-site rename exists (audit).
   carry md_filename (tasks stay arm-invariant).
 - RUNNER constants become CLI args with current values as defaults; the arm
   filename becomes --md-filename (default CODER.md).
-- Authorized frozen-file edit (unchanged): src/mdseval/runner/codex_cli.py
-  project-doc filename → parameter defaulting to "CODER.md" (audit confirmed:
-  ~3 lines at codex_cli.py:66; all 7 call sites keep the default; the one
-  string-asserting test stays green).
+- SUPERSEDES the prior frozen-file edit authorization and the matching
+  exception language in §10.6.6–7: authorization to edit
+  src/mdseval/runner/codex_cli.py is WITHDRAWN because the edit breaks its
+  frozen runner hash binding (18 full-suite test errors). That file remains
+  byte-for-byte frozen and no frozen experiment hash binding changes.
+  run_batch.py alone substitutes REQUEST.md_filename into the exact
+  project_doc_fallback_filenames argument returned by build_codex_command;
+  the default CODER.md produces the existing argument and behavior unchanged.
 
 ### 10.5 Deliverable E: compare + verdict — tooling/compare.py ≤300 lines
 
@@ -660,8 +664,8 @@ budgets for Phase 2)
    and SHA-256-pinned in the REQUEST prospectively; and the report labels
    results DEVELOPMENT-ONLY, supporting no incumbent/candidate replacement
    claim.
-6. All suites green; no governed file touched beyond §10.4's codex_cli.py
-   edit; no new documents (tooling/README.md and tooling/prompts/* edits are
+6. All suites green; no governed file touched; no new documents
+   (tooling/README.md and tooling/prompts/* edits are
    authorized); no live subject calls anywhere in Phase 2 implementation.
 7. Boundary ruling, recorded so audits stop re-raising it: authoring and
    blind-solve agent invocations are NOT subject calls and need no
@@ -670,11 +674,10 @@ budgets for Phase 2)
    per-candidate ceremony; Wade controls that spend by launching sessions.
    To remove the wording ambiguity audits keep citing, one clarifying edit
    to AGENTS.md is authorized: "live-call spend" → "live subject-model call
-   spend". Likewise recorded: the §10.4 codex_cli.py edit is the SOLE
-   authorized frozen-file exception, is behavior-preserving by construction
-   (new parameter, default unchanged, existing tests prove it), and does not
-   contradict §10.7's "no change to frozen confirmatory machinery" because
-   confirmatory behavior is bit-identical under the default.
+   spend". Likewise recorded: §10.4 withdraws the former codex_cli.py edit
+   exception after its frozen hash binding failed; run_batch.py owns the
+   development-only filename substitution, leaving confirmatory machinery
+   and every frozen experiment binding unchanged.
 
 ### 10.8 Audit closure
 

@@ -1,11 +1,14 @@
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+import blindsolve
 import taskcheck
+import taskgen
 
 
 CHECKER = '''import json, sys
@@ -86,6 +89,13 @@ class TaskcheckTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertEqual(self.git("log", "-1", "--format=%s").stdout.strip(), "admit: sample-task")
 
+    def test_explicit_v2_metadata_is_copied(self):
+        task = self.make_task()
+        (task / "task-meta.json").write_text(json.dumps({"layout_version": 2, "salience": "pointer", "parent_task_id": None}))
+        manifest = taskcheck.admit(task)
+        self.assertEqual(manifest["layout_version"], 2)
+        self.assertTrue(taskcheck.verify(task)["verified"])
+
     def test_admit_refuses_exposed_task(self):
         task = self.make_task()
         self.exposure(task)
@@ -122,7 +132,7 @@ class TaskcheckTests(unittest.TestCase):
         manifest = json.loads((task / "manifest.json").read_text())
         manifest["salience"] = "pointer"
         (task / "manifest.json").write_text(taskcheck.canonical(manifest) + "\n")
-        with self.assertRaisesRegex(taskcheck.TaskError, "not anchored"):
+        with self.assertRaisesRegex(taskcheck.TaskError, "invalid|not anchored"):
             taskcheck.verify(task)
 
     def test_verify_detects_broken_chain(self):
@@ -148,6 +158,76 @@ class TaskcheckTests(unittest.TestCase):
         task = self.make_task("fac-07")
         rows = taskcheck.batch("admit", task.parent)
         self.assertEqual([row["task_id"] for row in rows], ["fac-07"])
+
+    def test_v3_factory_blindsolve_admit_and_master_list_rejection(self):
+        author = self.root / "author.py"
+        author.write_text('''import json, pathlib, shutil, sys
+root = pathlib.Path.cwd(); prompt = sys.argv[1]
+assert "ALT.md" not in prompt
+recipe = json.loads(prompt.split("recipe:", 1)[1].lstrip().splitlines()[0])
+public = root / "public"; reference = root / "reference"
+for base in (public, reference):
+    base.mkdir(); (base / ".issue-contract.md").write_text("Implement the documented outputs.\\n")
+requirements = {}
+for index in range(8):
+    name = f"doc-{index // 2}.md"; quote = f"Requirement {index + 1} must create output-{index + 1}.txt."
+    for base in (public, reference):
+        with (base / name).open("a") as stream: stream.write(quote + "\\n")
+    (reference / f"output-{index + 1}.txt").write_text("done\\n")
+    requirements[f"R{index + 1}"] = {"target_paths":[f"output-{index + 1}.txt"], "omission_probe":{"type":"path_absent","path":f"output-{index + 1}.txt"}, "stated_in":{"path":name,"quote":quote}}
+(root / "requirements.json").write_text(json.dumps(requirements))
+(root / "task-meta.json").write_text(json.dumps({"layout_version":3,"salience":recipe["salience"],"parent_task_id":None}))
+(root / "check.py").write_text("import json,sys\\nfrom pathlib import Path\\nr=Path(sys.argv[1]); q={f'R{i}':(r/f'output-{i}.txt').read_text()=='done\\\\n' if (r/f'output-{i}.txt').is_file() else False for i in range(1,9)}; print(json.dumps({'requirements':q,'regressions':{'G1':True},'resolved':all(q.values())},sort_keys=True))\\n")
+if len(sys.argv) > 2: (root / "blind").mkdir()
+''')
+        solver = self.root / "solver.py"
+        solver.write_text('''from pathlib import Path
+for index in range(1, 9): Path(f"output-{index}.txt").write_text("done\\n")
+''')
+        recipe = self.root / "recipe.json"
+        value = {"task_id": "factory-task", "family": "feature", "theme": "outputs",
+                 "requirement_count": 8, "salience": "pointer", "md_filename": "ALT.md"}
+        recipe.write_text(json.dumps(value))
+        task = taskgen.generate(recipe, self.root / "tasks", [sys.executable, str(author), "{prompt}"])
+        blindsolve.solve(task, [sys.executable, str(solver), "{prompt}"], "fake-solver",
+                         ["no-network", "workspace-only"])
+        manifest = taskcheck.admit(task, md_filename="ALT.md")
+        self.assertEqual((manifest["layout_version"], manifest["salience"]), (3, "pointer"))
+        provenance_path = task / "blind.provenance.json"
+        provenance = json.loads(provenance_path.read_text())
+        provenance["sandbox_flags"] = []
+        provenance_path.write_text(taskcheck.canonical(provenance) + "\n")
+        with self.assertRaisesRegex(taskcheck.TaskError, "nonempty strings"):
+            taskcheck.admit(task, md_filename="ALT.md")
+        provenance["sandbox_flags"] = ["no-network", "workspace-only"]
+        provenance_path.write_text(taskcheck.canonical(provenance) + "\n")
+        quotes = [row["stated_in"]["quote"] for row in manifest["requirements"].values()]
+        (task / "public" / "extra.md").write_text("\n".join(quotes[:4]) + "\n")
+        with self.assertRaisesRegex(taskcheck.TaskError, "quote cap"):
+            taskcheck.admit(task, md_filename="ALT.md")
+        (task / "public" / "extra.md").unlink()
+        requirements = json.loads((task / "requirements.json").read_text())
+        shared = "Shared contract sentence."
+        requirements["R1"]["stated_in"]["quote"] = quotes[0] + " " + shared
+        requirements["R2"]["stated_in"]["quote"] = shared + " " + quotes[1]
+        (task / "requirements.json").write_text(json.dumps(requirements))
+        (task / "public" / "doc-0.md").write_text(f"{quotes[0]} {shared} {quotes[1]}\n")
+        with self.assertRaisesRegex(taskcheck.TaskError, "non-overlapping"):
+            taskcheck.admit(task, md_filename="ALT.md")
+        value["task_id"] = "forbidden-task"; recipe.write_text(json.dumps(value))
+        with self.assertRaisesRegex(taskgen.TaskgenError, "forbidden output"):
+            taskgen.generate(recipe, self.root / "tasks",
+                             [sys.executable, str(author), "{prompt}", "forbidden"])
+        self.assertFalse((self.root / "tasks" / "forbidden-task").exists())
+
+    def test_taskgen_rejects_nonstring_recipe_fields_cleanly(self):
+        recipe = self.root / "recipe.json"
+        base = {"task_id": "bad-recipe", "family": "feature", "theme": "theme", "requirement_count": 8, "salience": "pointer", "md_filename": "CODER.md"}
+        for key in ("task_id", "family", "salience", "md_filename"):
+            value = dict(base); value[key] = []
+            recipe.write_text(json.dumps(value))
+            with self.subTest(key=key), self.assertRaisesRegex(taskgen.TaskgenError, "values"):
+                taskgen.generate(recipe, self.root / "tasks", ["unused", "{prompt}"])
 
 
 if __name__ == "__main__":

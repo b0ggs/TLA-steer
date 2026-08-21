@@ -1,0 +1,31 @@
+Create one portable Python-standard-library coding-evaluation task from this recipe:
+{recipe_json}
+
+Work only in the current directory. Produce exactly the task-author inputs
+public/, check.py, reference/, requirements.json, and task-meta.json. Use
+task-layout-v3. public/ must contain .issue-contract.md with the implementation
+request presented to the solver. task-meta.json includes layout_version 3.
+requirements.json
+must have exactly {requirement_count} top-level entries, with exactly these
+keys and no others: {requirement_ids}. The checker's requirements object must
+use those same keys; put regression checks only in its separate regressions
+object. Its final stdout line must be
+{"requirements":{"R1":false},"regressions":{"G1":true},"resolved":false}
+in that shape, with booleans for every actual key and resolved equal to their
+conjunction; a valid unresolved run still exits zero.
+
+Every requirements.json entry has exactly target_paths, omission_probe, and
+stated_in. stated_in is one object (not a list) shaped
+{"path":"docs/contract.md","quote":"One exact full sentence from public/."}.
+omission_probe is one object shaped either
+{"type":"path_absent","path":"new-file"} or
+{"type":"text_absent","path":"changed-file","text":"exact required text"};
+it must fire on public/ and not on reference/.
+No public file may contain more than three requirement quotes. For pointer or
+none salience, the declared quotes must span at least four distinct public
+files; do not duplicate a master list into another file.
+task-meta.json must contain exactly layout_version, salience, and parent_task_id;
+set parent_task_id to null and copy salience exactly from the recipe.
+The pristine public tree must be unresolved with regressions passing; reference/
+must be complete. Never create blind/, blind.provenance.json, or manifest.json.
+Keep requirement statements dispersed according to the requested salience.

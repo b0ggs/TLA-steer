@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone task-layout-v2 admission and integrity tool (stdlib only)."""
+"""Standalone task-layout-v2/v3 admission and integrity tool (stdlib only)."""
 
 from __future__ import annotations
 
@@ -18,9 +18,15 @@ from typing import Any
 
 TASK_ID = re.compile(r"^[a-z0-9-]{1,40}$")
 JUNK_NAMES = {".git", "__pycache__"}
-MANIFEST_KEYS = {
+MANIFEST_KEYS_V2 = {
     "task_id", "files", "salience", "parent_task_id", "gate",
     "requirements", "created",
+}
+MANIFEST_KEYS_V3 = MANIFEST_KEYS_V2 | {"layout_version"}
+MD_FILENAME = re.compile(r"^[A-Za-z0-9._-]+$")
+BATCH_REQUEST_KEYS = {
+    "batch_id", "tasks", "arms", "call_count", "replacement_call_cap",
+    "max_total_calls", "md_filename", "task_order_seed", "runner",
 }
 
 
@@ -127,12 +133,13 @@ def _parse_result(raw: str) -> dict[str, Any]:
     return {"requirements": requirements, "regressions": regressions, "resolved": resolved}
 
 
-def run_checker(check: Path, source: Path, *, coder_sentinel: bool = False) -> tuple[dict[str, Any], bytes]:
+def run_checker(check: Path, source: Path, *, coder_sentinel: bool = False,
+                md_filename: str = "CODER.md") -> tuple[dict[str, Any], bytes]:
     with tempfile.TemporaryDirectory(prefix="taskcheck-") as temporary:
         workspace = Path(temporary) / "workspace"
         shutil.copytree(source, workspace)
         if coder_sentinel:
-            (workspace / "CODER.md").write_bytes(b"TASKCHECK ARM SENTINEL\n")
+            (workspace / md_filename).write_bytes(b"TASKCHECK ARM SENTINEL\n")
         before = tree_sha256(workspace)
         environment = os.environ.copy()
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -171,11 +178,15 @@ def _probe_fires(root: Path, probe: dict[str, Any], label: str) -> bool:
         raise TaskError(f"{label} probe cannot read {path_text}: {exc}") from exc
 
 
-def _validate_requirements(task: Path, supplied: dict[str, Any], keys: set[str]) -> None:
+def _validate_requirements(task: Path, supplied: dict[str, Any], keys: set[str],
+                           layout: int, salience: str, max_per_file: int,
+                           min_files: int) -> dict[str, Any] | None:
     if set(supplied) != keys:
         raise TaskError(f"requirements.json keys differ from checker: {sorted(set(supplied) ^ keys)}")
+    statements: list[tuple[str, str]] = []
     for key, value in supplied.items():
-        if not isinstance(value, dict) or set(value) != {"target_paths", "omission_probe"}:
+        expected = {"target_paths", "omission_probe"} | ({"stated_in"} if layout == 3 else set())
+        if not isinstance(value, dict) or set(value) != expected:
             raise TaskError(f"requirements.json {key} has invalid keys")
         targets = value["target_paths"]
         if not isinstance(targets, list) or not targets:
@@ -189,6 +200,39 @@ def _validate_requirements(task: Path, supplied: dict[str, Any], keys: set[str])
             raise TaskError(f"{key} omission probe does not fire on pristine public")
         if _probe_fires(task / "reference", probe, key):
             raise TaskError(f"{key} omission probe still fires on reference")
+        if layout == 3:
+            stated = value["stated_in"]
+            if not isinstance(stated, dict) or set(stated) != {"path", "quote"}:
+                raise TaskError(f"{key}.stated_in must contain path and quote")
+            path = _safe_relative(stated.get("path"), f"{key}.stated_in.path")
+            quote = stated.get("quote")
+            trimmed = quote.rstrip("\"')]}\u201d\u2019") if isinstance(quote, str) else ""
+            if (not isinstance(quote, str) or quote != quote.strip() or len(quote.split()) < 2
+                    or not trimmed.endswith((".", "!", "?"))):
+                raise TaskError(f"{key}.stated_in.quote must be one or more full sentences")
+            source = task / "public" / path
+            if source.is_symlink() or not source.is_file() or quote.encode() not in source.read_bytes():
+                raise TaskError(f"{key}.stated_in.quote is absent from public/{path}")
+            statements.append((path, quote))
+    if layout != 3:
+        return None
+    quotes = [quote.encode() for _, quote in statements]
+    for source in _paths(task / "public"):
+        data = source.read_bytes()
+        positions = [[match.start() for match in re.finditer(re.escape(quote), data)]
+                     for quote in quotes]
+        for index, left in enumerate(quotes):
+            for other_index, right in enumerate(quotes[index + 1:], index + 1):
+                if any(a < b + len(right) and b < a + len(left)
+                       for a in positions[index] for b in positions[other_index]):
+                    raise TaskError("stated_in quotes must be pairwise non-overlapping")
+        if sum(bool(items) for items in positions) > max_per_file:
+            raise TaskError(f"public/{source.relative_to(task / 'public')} exceeds stated quote cap")
+    distinct = len({path for path, _ in statements})
+    if salience in {"pointer", "none"} and distinct < min_files:
+        raise TaskError(f"stated requirements span only {distinct} public files")
+    return {"max_stated_per_file": max_per_file, "min_statement_files": min_files,
+            "statement_files": distinct}
 
 
 def _read_chain(path: Path, kind: str, *, required: bool = False) -> list[dict[str, Any]]:
@@ -256,7 +300,52 @@ def _git_anchor(task: Path, ledger: Path) -> None:
             raise TaskError(f"git anchor failed: {(result.stderr or result.stdout).strip()}")
 
 
-def _layout(task: Path) -> None:
+def _md_filename(value: str) -> str:
+    if not isinstance(value, str) or not MD_FILENAME.fullmatch(value) or value in {".", ".."}:
+        raise TaskError("md filename must be a safe bare basename")
+    return value
+
+
+def _batch_task_order(rows: list[dict[str, Any]], seed: int) -> list[dict[str, Any]]:
+    return sorted(rows, key=lambda row: (sha256_bytes(f"{seed}:{row['id']}".encode()), row["id"]))
+
+
+def _validate_batch_request(request: Any, batch_id: str, arm_counts: set[int]) -> None:
+    tasks = request.get("tasks") if isinstance(request, dict) else None
+    arms = request.get("arms") if isinstance(request, dict) else None
+    seed = request.get("task_order_seed") if isinstance(request, dict) else None
+    pair_count = len(tasks) * len(arms) if isinstance(tasks, list) and isinstance(arms, list) else 0
+    valid = (
+        isinstance(request, dict) and set(request) == BATCH_REQUEST_KEYS
+        and request.get("batch_id") == batch_id and isinstance(tasks, list) and bool(tasks)
+        and isinstance(arms, list) and len(arms) in arm_counts
+        and all(isinstance(row, dict) and set(row) == {"id", "manifest_sha256"}
+                and isinstance(row["id"], str) and TASK_ID.fullmatch(row["id"])
+                and isinstance(row["manifest_sha256"], str)
+                and re.fullmatch(r"[0-9a-f]{64}", row["manifest_sha256"]) for row in tasks)
+        and all(isinstance(row, dict) and set(row) == {"name", "path", "sha256"}
+                and isinstance(row["name"], str) and TASK_ID.fullmatch(row["name"])
+                and isinstance(row["path"], str) and row["path"].startswith("controls/")
+                and PurePosixPath(row["path"]).as_posix() == row["path"]
+                and ".." not in PurePosixPath(row["path"]).parts
+                and isinstance(row["sha256"], str)
+                and re.fullmatch(r"[0-9a-f]{64}", row["sha256"]) for row in arms)
+        and len({row["id"] for row in tasks}) == len(tasks)
+        and len({row["name"] for row in arms}) == len(arms)
+        and isinstance(seed, int) and not isinstance(seed, bool) and seed >= 0
+        and tasks == _batch_task_order(tasks, seed) and isinstance(request.get("runner"), dict)
+        and all(isinstance(request.get(key), int) and not isinstance(request[key], bool)
+                for key in ("call_count", "replacement_call_cap", "max_total_calls"))
+        and request["call_count"] == 3 * pair_count
+        and request["replacement_call_cap"] == pair_count
+        and request["max_total_calls"] == 4 * pair_count
+    )
+    if not valid:
+        raise TaskError("v2 REQUEST schema or binding is invalid")
+    _md_filename(request["md_filename"])
+
+
+def _layout(task: Path, md_filename: str) -> None:
     if not TASK_ID.fullmatch(task.name):
         raise TaskError(f"invalid task id: {task.name}")
     for directory in ("public", "reference", "blind"):
@@ -269,17 +358,21 @@ def _layout(task: Path) -> None:
         raise TaskError("public/.issue-contract.md is required")
     _paths(task)
     for directory in ("public", "blind"):
-        if any(path.name == "CODER.md" for path in (task / directory).rglob("*")):
-            raise TaskError(f"CODER.md is forbidden inside {directory}/")
+        if any(path.name == md_filename for path in (task / directory).rglob("*")):
+            raise TaskError(f"{md_filename} is forbidden inside {directory}/")
 
 
-def _meta(task: Path) -> tuple[str, str | None]:
+def _meta(task: Path) -> tuple[str, str | None, int, bool]:
     path = task / "task-meta.json"
     if not path.exists():
-        return "enumerated", None
+        return "enumerated", None, 2, False
     value = _json_file(path, "task-meta.json")
-    if set(value) != {"salience", "parent_task_id"}:
-        raise TaskError("task-meta.json must contain salience and parent_task_id")
+    layout = value.get("layout_version", 2)
+    explicit = "layout_version" in value
+    expected = {"salience", "parent_task_id"} | ({"layout_version"} if explicit else set())
+    if (isinstance(layout, bool) or not isinstance(layout, int)
+            or set(value) != expected or layout not in {2, 3}):
+        raise TaskError("task-meta.json has an invalid v2/v3 schema")
     salience, parent = value["salience"], value["parent_task_id"]
     if salience not in {"enumerated", "pointer", "none"}:
         raise TaskError("task-meta.json salience is invalid")
@@ -287,29 +380,46 @@ def _meta(task: Path) -> tuple[str, str | None]:
         raise TaskError("task-meta.json parent_task_id is invalid")
     if parent == task.name:
         raise TaskError("task cannot be its own parent")
-    return salience, parent
+    return salience, parent, layout, explicit
 
 
-def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = None) -> dict[str, Any]:
+def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = None,
+          md_filename: str = "CODER.md", max_stated_per_file: int = 3,
+          min_statement_files: int = 4) -> dict[str, Any]:
     task = task_dir.resolve()
     ledger = (ledger or task.parent / "ledger.jsonl").resolve()
     exposures = (exposures or task.parent / "exposures.jsonl").resolve()
-    _layout(task)
+    md_filename = _md_filename(md_filename)
+    if max_stated_per_file < 1 or min_statement_files < 1:
+        raise TaskError("spread thresholds must be positive")
+    _layout(task, md_filename)
+    salience, parent, layout, explicit_layout = _meta(task)
     exposed_rows = _verify_exposures(exposures)
     if any(row.get("task_id") == task.name for row in exposed_rows):
         raise TaskError(f"task is frozen by exposures ledger: {task.name}")
     public_before = tree_sha256(task / "public")
     pristine, pristine_raw = run_checker(task / "check.py", task / "public")
-    sentinel, sentinel_raw = run_checker(task / "check.py", task / "public", coder_sentinel=True)
+    sentinel, sentinel_raw = run_checker(
+        task / "check.py", task / "public", coder_sentinel=True, md_filename=md_filename)
     if pristine_raw != sentinel_raw or pristine != sentinel:
         raise TaskError("checker is not arm-neutral")
     supplied = _json_file(task / "requirements.json", "requirements.json")
-    _validate_requirements(task, supplied, set(pristine["requirements"]))
+    spread = _validate_requirements(task, supplied, set(pristine["requirements"]),
+                                    layout, salience, max_stated_per_file, min_statement_files)
     provenance = _json_file(task / "blind.provenance.json", "blind.provenance.json")
-    if set(provenance) != {"solver_agent", "timestamp", "input_tree_sha256"}:
+    provenance_keys = {"solver_agent", "timestamp", "input_tree_sha256"}
+    if layout == 3:
+        provenance_keys |= {"solver_command_sha256", "sandbox_flags"}
+    if set(provenance) != provenance_keys:
         raise TaskError("blind provenance has invalid keys")
-    if not all(isinstance(provenance.get(key), str) and provenance[key] for key in provenance):
+    string_keys = provenance_keys - {"sandbox_flags"}
+    if (not all(isinstance(provenance.get(key), str) and provenance[key] for key in string_keys)
+            or (layout == 3 and (not isinstance(provenance["sandbox_flags"], list)
+                                or not provenance["sandbox_flags"]
+                                or not all(isinstance(item, str) and item for item in provenance["sandbox_flags"])))):
         raise TaskError("blind provenance fields must be nonempty strings")
+    if layout == 3 and not re.fullmatch(r"[0-9a-f]{64}", provenance["solver_command_sha256"]):
+        raise TaskError("blind provenance solver command hash is invalid")
     if provenance["input_tree_sha256"] != public_before:
         raise TaskError("blind provenance input tree hash does not match public/")
     if pristine["resolved"] or not all(pristine["regressions"].values()):
@@ -328,14 +438,13 @@ def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = N
             raise TaskError(f"{label} does not resolve: {failed}")
     if tree_sha256(task / "public") != public_before:
         raise TaskError("original public/ changed during admission")
-    salience, parent = _meta(task)
     manifest = {
         "task_id": task.name,
         "files": _task_file_hashes(task),
         "salience": salience,
         "parent_task_id": parent,
         "gate": {
-            "layout": {"status": "pass", "detail": "task-layout-v2"},
+            "layout": {"status": "pass", "detail": f"task-layout-v{layout}"},
             "probes": {"status": "pass", "detail": f"{len(supplied)} validated"},
             "arm_neutrality": {"status": "pass", "detail": "sentinel output identical"},
             "provenance": {"status": "pass", "detail": public_before},
@@ -347,6 +456,10 @@ def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = N
         "requirements": supplied,
         "created": dt.datetime.now(dt.timezone.utc).isoformat(),
     }
+    if explicit_layout:
+        manifest["layout_version"] = layout
+    if layout == 3:
+        manifest["gate"]["spread"] = {"status": "pass", "detail": spread}
     manifest_path = task / "manifest.json"
     manifest_path.write_text(canonical(manifest) + "\n", encoding="utf-8")
     _append_chain(ledger, {
@@ -372,13 +485,19 @@ def _verify_ledger(ledger: Path, tasks_root: Path, *, required: bool) -> list[di
     return rows
 
 
-def verify(task_dir: Path, ledger: Path | None = None, exposures: Path | None = None) -> dict[str, Any]:
+def verify(task_dir: Path, ledger: Path | None = None, exposures: Path | None = None,
+           md_filename: str | None = None) -> dict[str, Any]:
     task = task_dir.resolve()
     ledger = (ledger or task.parent / "ledger.jsonl").resolve()
     exposures = (exposures or task.parent / "exposures.jsonl").resolve()
     manifest_path = task / "manifest.json"
     manifest = _json_file(manifest_path, "manifest.json")
-    if set(manifest) != MANIFEST_KEYS or manifest.get("task_id") != task.name:
+    expected = MANIFEST_KEYS_V3 if "layout_version" in manifest else MANIFEST_KEYS_V2
+    salience, parent, layout, explicit_layout = _meta(task)
+    if (set(manifest) != expected or manifest.get("task_id") != task.name
+            or manifest.get("salience") != salience or manifest.get("parent_task_id") != parent
+            or manifest.get("layout_version", 2) != layout
+            or ("layout_version" in manifest) != explicit_layout):
         raise TaskError("manifest schema or task id is invalid")
     if manifest.get("files") != _task_file_hashes(task):
         raise TaskError("task files differ from manifest")
@@ -387,10 +506,20 @@ def verify(task_dir: Path, ledger: Path | None = None, exposures: Path | None = 
     if latest is None or latest["manifest_sha256"] != sha256_file(manifest_path):
         raise TaskError("manifest hash is not anchored by the latest task ledger entry")
     _verify_exposures(exposures)
+    if md_filename is not None:
+        md_filename = _md_filename(md_filename)
+        _layout(task, md_filename)
+        pristine, pristine_raw = run_checker(task / "check.py", task / "public")
+        sentinel, sentinel_raw = run_checker(
+            task / "check.py", task / "public", coder_sentinel=True, md_filename=md_filename)
+        if pristine_raw != sentinel_raw or pristine != sentinel:
+            raise TaskError("checker is not arm-neutral")
     return {"task_id": task.name, "verified": True, "manifest_sha256": latest["manifest_sha256"]}
 
 
-def batch(mode: str, directory: Path, ledger: Path | None = None, exposures: Path | None = None) -> list[dict[str, Any]]:
+def batch(mode: str, directory: Path, ledger: Path | None = None,
+          exposures: Path | None = None, md_filename: str = "CODER.md",
+          max_stated_per_file: int = 3, min_statement_files: int = 4) -> list[dict[str, Any]]:
     root = directory.resolve()
     ledger = (ledger or root / "ledger.jsonl").resolve()
     exposures = (exposures or root / "exposures.jsonl").resolve()
@@ -402,7 +531,9 @@ def batch(mode: str, directory: Path, ledger: Path | None = None, exposures: Pat
     rows: list[dict[str, Any]] = []
     for task in tasks:
         try:
-            result = admit(task, ledger, exposures) if mode == "admit" else verify(task, ledger, exposures)
+            result = (admit(task, ledger, exposures, md_filename, max_stated_per_file,
+                            min_statement_files) if mode == "admit"
+                      else verify(task, ledger, exposures, md_filename))
             rows.append({"task_id": task.name, "ok": True, "detail": result.get("manifest_sha256", "admitted")})
         except TaskError as exc:
             rows.append({"task_id": task.name, "ok": False, "detail": str(exc)})
@@ -422,11 +553,17 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("task_dir", type=Path)
         command.add_argument("--ledger", type=Path)
         command.add_argument("--exposures", type=Path)
+        command.add_argument("--md-filename", default="CODER.md")
+        command.add_argument("--max-stated-per-file", type=int, default=3)
+        command.add_argument("--min-statement-files", type=int, default=4)
     command = commands.add_parser("batch")
     command.add_argument("mode", choices=("admit", "verify"))
     command.add_argument("directory", type=Path)
     command.add_argument("--ledger", type=Path)
     command.add_argument("--exposures", type=Path)
+    command.add_argument("--md-filename", default="CODER.md")
+    command.add_argument("--max-stated-per-file", type=int, default=3)
+    command.add_argument("--min-statement-files", type=int, default=4)
     return parser
 
 
@@ -434,11 +571,14 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "admit":
-            result = admit(args.task_dir, args.ledger, args.exposures)
+            result = admit(args.task_dir, args.ledger, args.exposures, args.md_filename,
+                           args.max_stated_per_file, args.min_statement_files)
         elif args.command == "verify":
-            result = verify(args.task_dir, args.ledger, args.exposures)
+            result = verify(args.task_dir, args.ledger, args.exposures, args.md_filename)
         else:
-            result = batch(args.mode, args.directory, args.ledger, args.exposures)
+            result = batch(args.mode, args.directory, args.ledger, args.exposures,
+                           args.md_filename, args.max_stated_per_file,
+                           args.min_statement_files)
         if args.command != "batch":
             print(canonical(result))
         return 0

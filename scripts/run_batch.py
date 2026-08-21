@@ -1,0 +1,549 @@
+#!/usr/bin/env python3
+"""Queue, run, and verify one- or two-arm task-layout development batches."""
+
+import argparse
+import json
+import os
+import re
+import secrets
+import shutil
+import sys
+import tempfile
+import time
+from dataclasses import asdict, fields
+from pathlib import Path
+from typing import Any, Callable
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from mdseval.capture import Redactor, capture_git, redact_event_stream  # noqa: E402
+from mdseval.config import RunnerConfig  # noqa: E402
+from mdseval.fixtures import audit_final_subject_tree  # noqa: E402
+from mdseval.gitutils import init_repository, run_git  # noqa: E402
+from mdseval.hashing import sha256_file, tree_sha256  # noqa: E402
+from mdseval.processutils import ProcessOutcome, run_process_group  # noqa: E402
+from mdseval.runner.codex_cli import build_codex_command, isolated_environment  # noqa: E402
+from mdseval.scout import classify_infrastructure_failure  # noqa: E402
+from tooling import taskcheck  # noqa: E402
+
+RUNNER = RunnerConfig("codex-cli", "gpt-5.6-sol", "high", "workspace-write", "never",
+                      False, True, False, 300, 1)
+WRAPPER_PATH = ROOT / "tooling" / "prompts" / "subject-wrapper-v1.txt"
+V1_KEYS = {"batch_id", "tasks", "arm", "call_count", "contingent_replacement_call_cap", "runner"}
+
+BatchError = RuntimeError
+
+def _ensure(condition: bool, message: str) -> None:
+    if not condition:
+        raise BatchError(message)
+
+def _bytes(value: Any) -> bytes:
+    return (taskcheck.canonical(value) + "\n").encode()
+
+def _write_once(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as stream:
+            stream.write(data)
+    except FileExistsError as exc:
+        raise BatchError(f"exclusive-create collision: {path}") from exc
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+
+def _json(path: Path, *, canonical: bool = True) -> dict[str, Any]:
+    _ensure(not path.is_symlink() and path.is_file(), f"missing or unsafe JSON: {path}")
+    raw = path.read_bytes()
+    try:
+        value = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise BatchError(f"malformed JSON: {path}") from exc
+    _ensure(isinstance(value, dict) and (not canonical or raw == _bytes(value)),
+            f"noncanonical JSON object: {path}")
+    return value
+
+def _relative(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError as exc:
+        raise BatchError(f"path is outside repository: {path}") from exc
+
+def _resolve(relative: str) -> Path:
+    path = (ROOT / relative).resolve()
+    _ensure(_relative(path) == relative, f"unsafe repository-relative path: {relative}")
+    return path
+
+def _sha(value: Any) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"[0-9a-f]{64}", value))
+
+def _runner(value: Any) -> RunnerConfig:
+    try:
+        if not isinstance(value, dict):
+            raise TypeError
+        runner = RunnerConfig(**value)
+    except TypeError as exc:
+        raise BatchError("runner schema is invalid") from exc
+    safe = ((runner.type, runner.sandbox, runner.approval_policy)
+            == ("codex-cli", "workspace-write", "never")
+            and not runner.subagents_enabled and runner.ephemeral
+            and not runner.network_for_agent_commands
+            and isinstance(runner.timeout_seconds, int) and runner.timeout_seconds > 0
+            and not isinstance(runner.timeout_seconds, bool)
+            and runner.max_parallel_runs == 1 and not isinstance(runner.max_parallel_runs, bool)
+            and all(isinstance(value, str) and value
+                    for value in (runner.model, runner.reasoning_effort)))
+    _ensure(safe, "runner weakens the development isolation contract")
+    return runner
+
+def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]],
+        runs_root: Path = ROOT / "runs" / "dev-v2", *, md_filename: str = "CODER.md",
+        task_order_seed: int | None = None, runner: RunnerConfig = RUNNER) -> Path:
+    _ensure(bool(taskcheck.TASK_ID.fullmatch(batch_id)) and bool(tasks) and len(arms) in {1, 2},
+            "batch id, tasks, or arm count is invalid")
+    md_filename = taskcheck._md_filename(md_filename)
+    seed = secrets.randbits(64) if task_order_seed is None else task_order_seed
+    _ensure(isinstance(seed, int) and not isinstance(seed, bool) and seed >= 0,
+            "task order seed must be a nonnegative integer")
+    task_rows = [{"id": task.name, "manifest_sha256": taskcheck.verify(
+        task, md_filename=md_filename)["manifest_sha256"]} for task in tasks]
+    _ensure(len({row["id"] for row in task_rows}) == len(task_rows), "task ids must be unique")
+    arm_rows = []
+    for name, source in arms:
+        source = source.resolve()
+        if (not taskcheck.TASK_ID.fullmatch(name) or source.is_symlink() or not source.is_file()
+                or not _relative(source).startswith("controls/")):
+            raise BatchError("arm labels/files are invalid")
+        _ensure(name not in {"n", "null"} or not source.stat().st_size,
+                "null arm file must be zero bytes")
+        arm_rows.append({"name": name, "path": _relative(source), "sha256": sha256_file(source)})
+    _ensure(len({row["name"] for row in arm_rows}) == len(arm_rows),
+            "arm labels must be distinct")
+    task_rows = taskcheck._batch_task_order(task_rows, seed)
+    nominal = 3 * len(task_rows) * len(arm_rows)
+    replacement_cap = len(task_rows) * len(arm_rows)
+    request = {"batch_id": batch_id, "tasks": task_rows, "arms": arm_rows,
+               "call_count": nominal, "replacement_call_cap": replacement_cap,
+               "max_total_calls": nominal + replacement_cap, "md_filename": md_filename,
+               "task_order_seed": seed, "runner": asdict(_runner(asdict(runner)))}
+    path = runs_root / batch_id / "REQUEST.json"
+    data = _bytes(request)
+    if path.exists():
+        _ensure(path.read_bytes() == data, "existing REQUEST.json differs; evidence is immutable")
+    else:
+        _write_once(path, data)
+    return path
+
+def _approved(batch: Path) -> tuple[dict[str, Any], int]:
+    request_path = batch / "REQUEST.json"
+    request = _json(request_path)
+    approval = _json(batch / "APPROVED.json", canonical=False)
+    _ensure(set(approval) == {"request_sha256"}
+            and approval["request_sha256"] == sha256_file(request_path),
+            "APPROVED.json request hash mismatch")
+    if set(request) == V1_KEYS:
+        tasks, arm = request.get("tasks"), request.get("arm")
+        valid = (request.get("batch_id") == batch.name and isinstance(tasks, list) and bool(tasks)
+                 and isinstance(arm, dict) and set(arm) == {"name", "path", "sha256"}
+                 and isinstance(arm.get("name"), str) and taskcheck.TASK_ID.fullmatch(arm["name"])
+                 and isinstance(arm.get("path"), str) and arm["path"].startswith("controls/")
+                 and _sha(arm.get("sha256"))
+                 and all(isinstance(row, dict) and set(row) == {"task_id", "task_dir", "manifest_sha256"}
+                         and isinstance(row["task_id"], str) and taskcheck.TASK_ID.fullmatch(row["task_id"])
+                         and row["task_dir"] == f"tasks/{row['task_id']}" and _sha(row["manifest_sha256"])
+                         for row in tasks)
+                 and len({row["task_id"] for row in tasks}) == len(tasks)
+                 and request.get("call_count") == 3 * len(tasks)
+                 and request.get("contingent_replacement_call_cap") == len(tasks)
+                 and request.get("runner") == asdict(RUNNER))
+        _ensure(valid, "v1 REQUEST schema or binding is invalid")
+        return request, 1
+    taskcheck._validate_batch_request(request, batch.name, {1, 2})
+    _runner(request.get("runner"))
+    return request, 2
+
+def _ledger(batch: Path, *, required: bool = False) -> tuple[dict[str, str], dict[str, str]]:
+    rows = taskcheck._read_chain(batch / "evidence-ledger.jsonl", "evidence ledger", required=required)
+    attempts: dict[str, str] = {}
+    dispositions: dict[str, str] = {}
+    for number, row in enumerate(rows, 1):
+        if "type" not in row:
+            attempt = row.get("attempt")
+            parts = attempt.split("/") if isinstance(attempt, str) else []
+            valid = (set(row) == {"attempt", "manifest_sha256", "prev_sha256"}
+                     and len(parts) == 3 and all(taskcheck.TASK_ID.fullmatch(part) for part in parts[:2])
+                     and re.fullmatch(r"attempt-[1-9][0-9]*", parts[2])
+                     and _sha(row.get("manifest_sha256")) and attempt not in attempts)
+            _ensure(valid, f"invalid attempt ledger row at line {number}")
+            attempts[attempt] = row["manifest_sha256"]
+        else:
+            key = f"{row.get('task_id')}/{row.get('arm')}"
+            valid = (set(row) == {"type", "task_id", "arm", "sha256", "prev_sha256"}
+                     and row.get("type") == "disposition" and taskcheck.TASK_ID.fullmatch(str(row.get("task_id", "")))
+                     and taskcheck.TASK_ID.fullmatch(str(row.get("arm", "")))
+                     and _sha(row.get("sha256")) and key not in dispositions)
+            _ensure(valid, f"invalid disposition ledger row at line {number}")
+            dispositions[key] = row["sha256"]
+    return attempts, dispositions
+
+def _auth_home() -> str:
+    value = os.environ.get("MDSEVAL_CODEX_HOME")
+    auth = Path(value).expanduser() / "auth.json" if value else None
+    _ensure(bool(auth) and not auth.is_symlink() and auth.is_file() and bool(auth.stat().st_size),
+            "MDSEVAL_CODEX_HOME must contain a nonempty non-symlink auth.json")
+    return str(auth.parent)
+
+def _expose(task: Path, batch_id: str) -> None:
+    path = task.parent / "exposures.jsonl"
+    rows = taskcheck._verify_exposures(path)
+    events = [row for row in rows if row["task_id"] == task.name]
+    _ensure(not any(row["event"] == "retired" for row in events),
+            f"retired task cannot launch: {task.name}")
+    if not events:
+        taskcheck._append_chain(path, {"task_id": task.name, "event": "exposed",
+                                "batch_id": batch_id, "reason": None}, "exposures ledger")
+
+def _workspace(task: Path, arm: bytes, parent: Path, md_filename: str) -> tuple[Path, str]:
+    workspace = parent / "workspace"
+    shutil.copytree(task / "public", workspace)
+    (workspace / md_filename).write_bytes(arm)
+    init_repository(workspace)
+    for command in (("config", "user.name", "MD Eval"), ("config", "user.email", "mdseval@invalid.local"),
+                    ("add", "--all"), ("commit", "-q", "-m", "baseline")):
+        run_git(workspace, *command)
+    return workspace, str(run_git(workspace, "rev-parse", "HEAD")).strip()
+
+def _reserve(path: Path, intent: dict[str, Any]) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as exc:
+        raise BatchError(f"exclusive-create collision: {path}") from exc
+    _write_once(path / "intent.json", _bytes(intent))
+
+def _checker(task: Path, workspace: Path) -> tuple[dict[str, Any], bool, float]:
+    with tempfile.TemporaryDirectory(prefix="final-tree-") as temporary:
+        clean = Path(temporary) / "tree"
+        shutil.copytree(workspace, clean, ignore=shutil.ignore_patterns(".git"))
+        started = time.monotonic()
+        first, raw = taskcheck.run_checker(task / "check.py", clean)
+        second, raw_two = taskcheck.run_checker(task / "check.py", clean)
+        return first, first == second and raw == raw_two, time.monotonic() - started
+
+def _attempt_manifest(attempt: Path, ledger: Path | None = None) -> str:
+    target = attempt / "attempt-manifest.json"
+    files = {path.relative_to(attempt).as_posix(): sha256_file(path)
+             for path in sorted(attempt.rglob("*")) if path.is_file() and path.name != "attempt-manifest.json"}
+    if ledger is None:
+        manifest = _json(target)
+        _ensure(set(manifest) == {"files", "created"} and manifest["files"] == files,
+                f"attempt evidence differs from manifest: {attempt}")
+    else:
+        _write_once(target, _bytes({"files": files, "created": time.time()}))
+        taskcheck._append_chain(ledger, {"attempt": attempt.relative_to(ledger.parent).as_posix(),
+                                        "manifest_sha256": sha256_file(target)}, "evidence ledger")
+    return sha256_file(target)
+
+def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: int,
+        batch: Path, process_runner: Callable[..., ProcessOutcome], codex_home: str) -> bool:
+    verified = taskcheck.verify(task, md_filename=request["md_filename"])
+    expected = next(row["manifest_sha256"] for row in request["tasks"] if row["id"] == task.name)
+    arm_path = _resolve(arm["path"])
+    _ensure(verified["manifest_sha256"] == expected and sha256_file(arm_path) == arm["sha256"],
+            "approved task manifest or arm hash changed")
+    md_filename = request["md_filename"]
+    runner = _runner(request["runner"])
+    wrapper = WRAPPER_PATH.read_text(encoding="utf-8").replace("{md_filename}", md_filename)
+    wrapper_sha = taskcheck.sha256_bytes(wrapper.encode())
+    destination = batch / task.name / arm["name"] / f"attempt-{ordinal}"
+    intent = {"task": task.name, "arm": arm["name"], "ordinal": ordinal,
+              "task_manifest_sha256": expected, "arm_sha256": arm["sha256"],
+              "md_filename": md_filename, "wrapper_sha256": wrapper_sha, "runner": request["runner"]}
+    redactor = Redactor()
+    with tempfile.TemporaryDirectory(prefix=f"batch-{task.name}-") as temporary:
+        workspace, baseline = _workspace(task, arm_path.read_bytes(), Path(temporary), md_filename)
+        _reserve(destination, intent)
+        _write_once(destination / "wrapper.txt", wrapper.encode())
+        final_temp = Path(temporary) / "final.txt"
+        command = build_codex_command(runner, workspace, final_temp)
+        marker = 'project_doc_fallback_filenames=["CODER.md"]'
+        _ensure(command.count(marker) == 1, "frozen project-document argument is missing")
+        command[command.index(marker)] = (
+            f"project_doc_fallback_filenames={json.dumps([md_filename], separators=(',', ':'))}")
+        _write_once(destination / "launch.json", _bytes({**intent, "started": time.time(), "command": command}))
+        _expose(task, request["batch_id"])
+        started = time.monotonic()
+        try:
+            outcome = process_runner(command, cwd=workspace, input_text=wrapper, timeout=runner.timeout_seconds,
+                                     environment=isolated_environment(codex_home))
+        except OSError as exc:
+            _write_once(destination / "pre-spawn.json", _bytes({"error": f"{type(exc).__name__}: {exc}"}))
+            raise BatchError("subject process did not spawn; preserved as pre-spawn failure") from exc
+        duration = time.monotonic() - started
+        final = final_temp.read_text(encoding="utf-8", errors="replace") if final_temp.is_file() else ""
+        _write_once(destination / "events.jsonl", redact_event_stream(outcome.stdout, redactor).encode())
+        _write_once(destination / "stderr.txt", redactor.text(outcome.stderr).encode())
+        _write_once(destination / "final.txt", redactor.text(final).encode())
+        requirements = _json(task / "manifest.json")["requirements"]
+        blank = {"requirements": {key: False for key in requirements}, "regressions": {}, "resolved": False}
+        invalid, scoreable, changes, final_hash, checker_duration = "", True, (), "", 0.0
+        try:
+            audit_final_subject_tree(workspace)
+        except Exception as exc:
+            invalid, scoreable, checked = f"final tree audit failed: {type(exc).__name__}: {exc}", False, blank
+            _write_once(destination / "capture.json", _bytes({"error": invalid}))
+            _write_once(destination / "diff.patch", b"")
+        else:
+            try:
+                final_hash = tree_sha256(workspace)
+                capture = capture_git(workspace, baseline, redactor)
+                changes = capture.changed_paths
+                _write_once(destination / "capture.json", _bytes(asdict(capture)))
+                _write_once(destination / "diff.patch", capture.diff.encode())
+                if outcome.interrupted or classify_infrastructure_failure(
+                        spawn_error=None, timed_out=outcome.timed_out, returncode=outcome.returncode,
+                        events_jsonl=outcome.stdout, stderr=outcome.stderr, final_text=final,
+                        changed_paths=capture.changed_paths, untracked=capture.untracked):
+                    _write_once(destination / "infra-invalid.json", _bytes({"error": "runner infrastructure failure"}))
+                    return False
+                md_path = workspace / md_filename
+                contract = workspace / ".issue-contract.md"
+                if (md_path.is_symlink() or not md_path.is_file() or sha256_file(md_path) != arm["sha256"]
+                        or contract.is_symlink() or not contract.is_file()
+                        or sha256_file(contract) != sha256_file(task / "public" / ".issue-contract.md")
+                        or capture.unauthorized_commit):
+                    invalid = "protected input changed or subject committed"
+            except Exception as exc:
+                _write_once(destination / "infra-invalid.json", _bytes({"error": f"{type(exc).__name__}: {exc}"}))
+                return False
+            try:
+                checked, deterministic, checker_duration = _checker(task, workspace)
+                taskcheck.verify(task)
+                if not deterministic:
+                    invalid = "checker result nondeterministic"
+            except Exception as exc:
+                invalid, scoreable, checked = f"checker unscoreable: {type(exc).__name__}: {exc}", False, blank
+        failed = [key for key, passed in checked["requirements"].items() if not passed]
+        omissions = {key: taskcheck._probe_fires(workspace, requirements[key]["omission_probe"], key)
+                     if scoreable else False for key in failed}
+        target_changes = {key: [path for path in requirements[key]["target_paths"] if path in changes]
+                          for key in failed}
+        result = {"task_id": task.name, "arm": arm["name"], "ordinal": ordinal,
+                  "duration_seconds": duration, "checker_duration_seconds": checker_duration,
+                  "final_tree_sha256": final_hash, "task_manifest_sha256": expected,
+                  "arm_sha256": arm["sha256"], "md_filename": md_filename,
+                  "wrapper_sha256": wrapper_sha, "runner": request["runner"],
+                  "returncode": outcome.returncode, "timed_out": outcome.timed_out,
+                  "interrupted": outcome.interrupted, "requirements": checked["requirements"],
+                  "regressions": checked["regressions"], "resolved": checked["resolved"],
+                  "omissions": omissions, "omission_only": bool(failed) and all(omissions.values())
+                  and all(checked["regressions"].values()), "target_path_changes": target_changes,
+                  "valid": not invalid, "invalid_reason": invalid}
+        _write_once(destination / "checker.json", _bytes(checked))
+        _write_once(destination / "result.json", _bytes(result))
+        _attempt_manifest(destination, batch / "evidence-ledger.jsonl")
+        return True
+
+def _retired(task: Path) -> list[str]:
+    rows = taskcheck._read_chain(task.parent / "exposures.jsonl", "exposures ledger")
+    retired = {row["task_id"] for row in rows if row.get("event") == "retired"}
+    result = []
+    meta = _json(task / "task-meta.json", canonical=False) if (task / "task-meta.json").is_file() else {}
+    parent = meta.get("parent_task_id")
+    while parent in retired and parent not in result:
+        result.append(parent)
+        path = task.parent / parent / "task-meta.json"
+        parent = _json(path, canonical=False).get("parent_task_id") if path.is_file() else None
+    return result
+
+def _state(base: Path) -> tuple[list[dict[str, Any]], int, int, int]:
+    dirs = sorted(base.glob("attempt-*"), key=lambda path: int(path.name.split("-")[-1])) if base.exists() else []
+    anchored, _ = _ledger(base.parents[1])
+    results = []
+    for path in dirs:
+        manifest = path / "attempt-manifest.json"
+        if manifest.is_file():
+            relative = path.relative_to(base.parents[1]).as_posix()
+            digest = sha256_file(manifest)
+            if relative not in anchored:
+                _attempt_manifest(path)
+                taskcheck._append_chain(base.parents[1] / "evidence-ledger.jsonl",
+                                        {"attempt": relative, "manifest_sha256": digest},
+                                        "evidence ledger")
+                anchored[relative] = digest
+            _ensure(anchored[relative] == digest, f"unanchored finalized attempt: {relative}")
+            results.append(_json(path / "result.json"))
+    infra = sum((path / "launch.json").is_file() and not (path / "pre-spawn.json").exists()
+                and not (path / "attempt-manifest.json").exists() for path in dirs)
+    launched = sum((path / "launch.json").is_file() and not (path / "pre-spawn.json").exists()
+                   for path in dirs)
+    ordinal = max([int(path.name.split("-")[-1]) for path in dirs] or [0]) + 1
+    return results, infra, ordinal, launched
+
+def _disposition(task: Path, arm: dict[str, str], results: list[dict[str, Any]], infra: int,
+        request: dict[str, Any], *, legacy: bool = False) -> dict[str, Any]:
+    if not legacy:
+        rendered = WRAPPER_PATH.read_text(encoding="utf-8").replace("{md_filename}", request["md_filename"])
+        wrapper_sha = taskcheck.sha256_bytes(rendered.encode())
+        mismatch = any(row.get("runner") != request["runner"] or row.get("arm") != arm["name"]
+                       or row.get("arm_sha256") != arm["sha256"]
+                       or row.get("md_filename") != request["md_filename"]
+                       or row.get("wrapper_sha256") != wrapper_sha for row in results)
+        _ensure(not mismatch, "attempt runner/arm/wrapper evidence mismatch")
+    requirement_count = len(_json(task / "manifest.json")["requirements"])
+    passed = sum(sum(row["requirements"].values()) for row in results)
+    q = passed / (3 * requirement_count) if requirement_count else 0.0
+    s = sum(row["resolved"] for row in results)
+    invalid = ("second infrastructure failure" if infra >= 2 else next(
+        (row["invalid_reason"] for row in results if not row["valid"]), ""))
+    wrong = any(row["valid"] and not row["resolved"] and not row["omission_only"] for row in results)
+    label = ("invalid" if invalid else "wrong-failure-mode" if wrong else "promising"
+             if 0.55 <= q <= 0.90 and s in {1, 2} else "ceiling"
+             if s == 3 or (s in {1, 2} and q > 0.90) else "floor")
+    value = {"q": q, "s": s, "label": label, "fidelity_note": invalid[:200]}
+    ancestors = _retired(task)
+    value.update({"task_id": task.name, "attempts": [row["ordinal"] for row in results],
+                  "retired_ancestors": ancestors, "task_denominator": 1 + len(ancestors)})
+    if not legacy:
+        value.update({"arm": arm["name"], "runner": request["runner"]})
+    return value
+
+def _write_disposition(
+        batch: Path, task: Path, arm: dict[str, str], results: list[dict[str, Any]],
+        infra: int, request: dict[str, Any]) -> None:
+    path = batch / task.name / arm["name"] / "disposition.json"
+    expected = _disposition(task, arm, results, infra, request)
+    _, anchored = _ledger(batch)
+    key = f"{task.name}/{arm['name']}"
+    if key in anchored:
+        _ensure(path.is_file() and _json(path) == expected and anchored[key] == sha256_file(path),
+                f"disposition ledger hash mismatch: {key}")
+        return
+    _ensure(not path.exists() or _json(path) == expected,
+            f"orphan disposition differs from recomputation: {task.name}/{arm['name']}")
+    if not path.exists():
+        _write_once(path, _bytes(expected))
+    digest = sha256_file(path)
+    taskcheck._append_chain(batch / "evidence-ledger.jsonl",
+                            {"type": "disposition", "task_id": task.name, "arm": arm["name"], "sha256": digest},
+                            "evidence ledger")
+
+def _launched_calls(batch: Path) -> int:
+    return sum(path.name == "launch.json" and not (path.parent / "pre-spawn.json").exists()
+               for path in batch.rglob("launch.json"))
+
+def launch(batch_id: str, runs_root: Path = ROOT / "runs" / "dev-v2",
+        process_runner: Callable[..., ProcessOutcome] = run_process_group,
+        require_auth: bool = True) -> None:
+    batch = runs_root / batch_id
+    request, version = _approved(batch)
+    _ensure(version == 2, "launch accepts REQUEST schema v2 only")
+    codex_home = _auth_home() if require_auth else str(Path(tempfile.gettempdir()))
+    for task_index, row in enumerate(request["tasks"]):
+        task = _resolve(f"tasks/{row['id']}")
+        verified = taskcheck.verify(task, md_filename=request["md_filename"])
+        _ensure(verified["manifest_sha256"] == row["manifest_sha256"],
+                f"request-bound task hash changed: {task.name}")
+        for round_index in range(3):
+            arms = request["arms"] if (task_index + round_index) % 2 == 0 else list(reversed(request["arms"]))
+            for arm in arms:
+                base = batch / task.name / arm["name"]
+                results, infra, ordinal, _ = _state(base)
+                while len(results) <= round_index and infra < 2:
+                    _ensure(_launched_calls(batch) < request["max_total_calls"],
+                            "approved maximum subject-call count exhausted")
+                    usable = _attempt(task, request, arm, ordinal, batch, process_runner, codex_home)
+                    attempt = base / f"attempt-{ordinal}"
+                    ordinal += 1
+                    if usable:
+                        results.append(_json(attempt / "result.json"))
+                    else:
+                        infra += 1
+        for arm in request["arms"]:
+            results, infra, _, _ = _state(batch / task.name / arm["name"])
+            _write_disposition(batch, task, arm, results, infra, request)
+
+def _verify_attempts(batch: Path, *, allow_dispositions: bool) -> None:
+    attempts, dispositions = _ledger(batch, required=True)
+    _ensure(not dispositions or allow_dispositions, "v1 evidence ledger contains v2 rows")
+    manifests = {path.parent.relative_to(batch).as_posix(): path for path in batch.rglob("attempt-manifest.json")}
+    _ensure(set(manifests) == set(attempts), "finalized attempt set differs from evidence ledger")
+    for relative, path in manifests.items():
+        _ensure(sha256_file(path) == attempts[relative], f"attempt manifest hash mismatch: {relative}")
+        _attempt_manifest(path.parent)
+
+def verify_batch(batch: Path) -> None:
+    request, version = _approved(batch)
+    legacy = version == 1
+    _verify_attempts(batch, allow_dispositions=not legacy)
+    tasks = ([{"id": row["task_id"], "manifest_sha256": row["manifest_sha256"]}
+              for row in request["tasks"]] if legacy else request["tasks"])
+    arms = [request["arm"]] if legacy else request["arms"]
+    md_filename = None if legacy else request["md_filename"]
+    for arm in arms:
+        _ensure(sha256_file(_resolve(arm["path"])) == arm["sha256"],
+                f"request-bound arm hash changed: {arm['name']}")
+    anchored: dict[str, str] = {}
+    if not legacy:
+        _, anchored = _ledger(batch, required=True)
+        expected_keys = {f"{row['id']}/{arm['name']}" for row in tasks for arm in arms}
+        files = {path.parent.relative_to(batch).as_posix(): path
+                 for path in batch.rglob("disposition.json")}
+        _ensure(set(anchored) == expected_keys and set(files) == expected_keys,
+                "disposition evidence set differs from request")
+    for row in tasks:
+        task = _resolve(f"tasks/{row['id']}")
+        verified = taskcheck.verify(task, md_filename=md_filename)
+        _ensure(verified["manifest_sha256"] == row["manifest_sha256"],
+                f"request-bound task hash changed: {task.name}")
+        for arm in arms:
+            base = batch / task.name / arm["name"]
+            results, infra, _, launched = _state(base)
+            path = base / "disposition.json"
+            expected = _disposition(task, arm, results, infra, request, legacy=legacy)
+            valid = (len(results) >= 3 or infra >= 2) and path.is_file() and _json(path) == expected
+            if not legacy:
+                valid = valid and sha256_file(path) == anchored[f"{task.name}/{arm['name']}"]
+                _ensure(launched <= 4, f"replacement call cap exceeded: {task.name}/{arm['name']}")
+            _ensure(valid, f"missing or inconsistent disposition: {task.name}/{arm['name']}")
+    if not legacy:
+        _ensure(_launched_calls(batch) <= request["max_total_calls"],
+                "approved maximum subject-call count exceeded")
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    queue = commands.add_parser("queue")
+    queue.add_argument("batch_id")
+    queue.add_argument("--task", action="append", type=Path, required=True)
+    queue.add_argument("--arm", action="append", nargs=2, metavar=("NAME", "PATH"), required=True)
+    queue.add_argument("--md-filename", default="CODER.md")
+    queue.add_argument("--task-order-seed", type=int)
+    for field in fields(RunnerConfig):
+        default = getattr(RUNNER, field.name)
+        queue.add_argument("--" + field.name.replace("_", "-"), default=default,
+                           type=json.loads if isinstance(default, bool) else type(default))
+    queue.add_argument("--runs-root", type=Path, default=ROOT / "runs" / "dev-v2")
+    for name in ("run", "verify"):
+        command = commands.add_parser(name)
+        command.add_argument("batch_id")
+        command.add_argument("--runs-root", type=Path, default=ROOT / "runs" / "dev-v2")
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "queue":
+            runner = RunnerConfig(*(getattr(args, field.name) for field in fields(RunnerConfig)))
+            arms = [(name, Path(path)) for name, path in args.arm]
+            path = queue_request(args.batch_id, args.task, arms, args.runs_root, md_filename=args.md_filename,
+                                 task_order_seed=args.task_order_seed, runner=runner)
+            print(json.dumps({"request": str(path), "request_sha256": sha256_file(path)}, sort_keys=True))
+        elif args.command == "run":
+            launch(args.batch_id, args.runs_root)
+        else:
+            verify_batch(args.runs_root / args.batch_id)
+        return 0
+    except (BatchError, taskcheck.TaskError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
