@@ -85,11 +85,10 @@ tasks/<task-id>/
 ├── check.py                 # scoring script (contract below)
 ├── reference/               # full correct solution (private)
 ├── blind/                   # contract-only solution by an isolated agent (private)
-│   └── PROVENANCE.json      # {solver_agent, timestamp, input_tree_sha256}
-│                            #   input_tree_sha256 MUST equal the public/ tree hash;
-│                            #   admit fails if it covers check.py or reference/
 ├── blind.provenance.json    # at task root, NOT inside blind/ (a file inside
-│                            # blind/ would contaminate exact-file-set checkers)
+│                            # blind/ would contaminate exact-file-set checkers);
+│                            # required keys pinned in tooling/README.md; the
+│                            # input_tree_sha256 MUST equal the public/ tree hash
 ├── requirements.json        # REQUIRED, machine-readable: for every checker key
 │                            # {"R1": {"target_paths": [...], "omission_probe":
 │                            #   {"type": "path_absent"|"text_absent",
@@ -451,3 +450,165 @@ coverage mutants gave, mechanically.
 - Resume: re-running a batch is idempotent — completed attempts (finalized
   manifest) are skipped; incomplete dirs are left in place and the next
   ordinal is used, subject to the §4 infra-replacement cap.
+
+## 10. PHASE 2 — Task Factory + Measurement Bridge (rev 2, post-audit)
+
+Status: PROPOSED (Phase 2 starts when Wade flips this line to "Phase 2 ACTIVE
+as of <date>"). New branch off the branch containing this plan; Wade merges on
+acceptance (§10.6). §§1–9 remain in force EXCEPT where §10 explicitly
+supersedes them; every supersession is marked "SUPERSEDES". Two audits
+(2026-08-20) are incorporated; their factual findings are stated inline so the
+implementer does not rediscover them.
+
+Layout version: Phase 2 introduces task-layout-v3 (adds stated_in fields and
+new provenance keys, below). manifest.json gains "layout_version"; v2 tasks
+(the current 13) stay valid until re-admitted, and admission under v3 rules is
+selected by the manifest marker, not guesswork. Updating tooling/README.md to
+document v3 is REQUIRED and authorized (an edit, not a new document).
+
+### 10.1 Deliverable A: taskgen — tooling/taskgen.py ≤250 lines
+
+(roadmap.md calls this "make"; same thing.)
+- Input: recipe JSON file with exactly these keys:
+  {"task_id": "...", "family": "bug|feature|refactor|cli", "theme": "...",
+   "requirement_count": 8-12, "salience": "enumerated|pointer|none",
+   "md_filename": "CODER.md"}. md_filename is consumed ONLY by the driver
+  (never rendered into the authoring prompt — public/ stays arm-invariant).
+- Agent command template from CLI arg, e.g. ["claude","-p","{prompt}"] or
+  ["codex","exec","{prompt}"]. Repo-agnostic, agent-agnostic.
+- Runs the agent in an empty scratch dir; copies into tasks/<id>/ ONLY:
+  public/, check.py, reference/, requirements.json, task-meta.json. HARD-FAILS
+  if the agent emitted blind/, blind.provenance.json, or manifest.json —
+  (audit) otherwise the generator can fake its own blind solve and walk
+  through admit.
+- Output is untrusted; only `admit` makes it usable. Prompts live in
+  tooling/prompts/ as versioned text files.
+
+### 10.2 Deliverable B: blindsolve — tooling/blindsolve.py ≤180 lines
+
+- Copies tasks/<id>/public/ to a scratch dir, records input_tree_sha256 FIRST,
+  runs the solver agent there via the command template, copies the result to
+  blind/, writes blind.provenance.json.
+- Provenance keys (task-layout-v3, REQUIRED): {"solver_agent",
+  "solver_command_sha256", "sandbox_flags", "timestamp", "input_tree_sha256"}.
+  taskcheck's required-key set and README are updated to match (currently
+  {solver_agent, timestamp, input_tree_sha256} — a breaking v3 change, which
+  is why the layout version exists).
+- HONESTY CLAUSE (audit): an empty scratch cwd is NOT a security barrier — a
+  host agent can read the repo by absolute path or use the network. Therefore:
+  the command template MUST include the strongest scoping flags the agent CLI
+  offers (sandboxing/no-network where supported), those flags are recorded in
+  sandbox_flags, and the design accepts that blind-solve fidelity is
+  best-effort pre-exposure screening; the live null attempts remain the final
+  fidelity probe. Per-task timestamps. ≤2 concurrent solvers.
+
+### 10.3 Deliverable C: spread check — inside taskcheck (+≤160 lines; file cap
+SUPERSEDES §1.6: taskcheck.py ≤620 total; currently 451)
+
+- requirements.json (v3) gains per requirement "stated_in": {"path": ...,
+  "quote": "..."} — the exact public sentence stating the requirement. Quotes
+  must be ≥1 full sentence and pairwise non-overlapping.
+- admit under v3 verifies:
+  (a) every quote appears verbatim in its declared public file;
+  (b) MASTER-LIST SCAN (audit fix): for EVERY public file, count how many of
+      the N requirement quotes occur verbatim anywhere in it — any file
+      exceeding the per-file cap fails. The scan covers all files, not just
+      declared paths, so a duplicated master list is caught;
+  (c) salience "pointer"/"none" additionally requires statements spread
+      across a minimum number of distinct files.
+  Thresholds are CLI args with defaults (--max-stated-per-file 3,
+  --min-statement-files 4) — policy stays out of the tool (audit).
+- v2 tasks are exempt until re-admitted; a v3 admit without stated_in fails
+  (no opt-out hole: the manifest layout marker decides which rules apply).
+- Arm filename: taskcheck gains --md-filename (default CODER.md) used by the
+  arm-neutrality sentinel and the forbidden-name check (audit: three
+  hardcoded sites, taskcheck.py:135 and :271-273).
+
+### 10.4 Deliverable D: two-arm driver — scripts/run_batch.py
+
+SUPERSEDES §1.6/§4 file facts: the Phase 1 file is 297/300 lines only via
+compressed formatting (audit); Phase 2 REWRITES it as run_batch.py, cap 550
+lines, NORMALLY FORMATTED — golfing to fit a budget is itself an acceptance
+failure. tests/test_run_null_batch.py (190/200) is replaced by
+tests/test_run_batch.py ≤300. Exactly one import-site rename exists (audit).
+- Batches name ONE or TWO arms. Two-arm: per task, arm order alternates
+  (paired); 3 usable attempts PER ARM per task (two-arm task = 6 calls);
+  infra-replacement cap applies per (task, arm); a task whose arms end with
+  unequal usable counts is EXCLUDED from the paired test and listed in the
+  report (audit).
+- REQUEST schema v2: {"batch_id", "tasks": [{id, manifest_sha256}...],
+  "arms": [{name, path, sha256}...] (1 or 2), "call_count" = tasks × arms × 3,
+  "runner": {...}}. Arm names are distinct labels even when files are
+  identical (A/A = two labels, one file — audit: same-label dirs would
+  collide). verify accepts BOTH the v1 single-arm schema (existing frozen
+  salience-probe-v2 evidence must keep verifying) and v2 (audit).
+- RUNNER constants become CLI args with current values as defaults; the arm
+  filename becomes --md-filename (default CODER.md).
+- Authorized frozen-file edit (unchanged): src/mdseval/runner/codex_cli.py
+  project-doc filename → parameter defaulting to "CODER.md" (audit confirmed:
+  ~3 lines at codex_cli.py:66; all 7 call sites keep the default; the one
+  string-asserting test stays green).
+
+### 10.5 Deliverable E: compare + verdict — tooling/compare.py ≤300 lines
+
+- Inputs (audit fix — pinned to what exists on disk): for each task and arm,
+  <batch>/<task>/<arm>/disposition.json ({q, s, label, ...}); per-attempt
+  result.json is NOT consumed. compare never recomputes q/s/label (no second
+  source of truth).
+- Per-task delta = s_B − s_A (resolved counts, 0–3). Effect = mean(delta)/3.
+  Ties (delta 0) are excluded from the sign test; n_effective (nonzero
+  deltas) is always reported; below --min-effective (default 6) the verdict
+  is INCONCLUSIVE by rule. Exact two-sided sign test, own implementation
+  (deliberate ~40-line duplication of src/ stats for repo-agnosticism —
+  audit noted the duplication; it is accepted), enumeration cap 24 tasks.
+- Integrity: compare re-verifies the batch evidence-ledger chain itself
+  (~15 generic lines, same canonical-JSON chain rules) and every
+  disposition's presence; any failure, any disposition label "invalid", or
+  the two arms' recorded runner params differing → verdict INVALID (audit).
+- verdict.json + markdown report MUST embed: thresholds used, both arm names
+  + file SHA-256s, batch id, evidence-ledger head hash, task list with
+  per-task deltas, n_effective, excluded/unbalanced tasks, resolved runner
+  params (audit: nothing verdict-affecting may live only in CLI history).
+- Verdicts: {A_BETTER, B_BETTER, INCONCLUSIVE, INVALID}.
+
+### 10.6 Phase 2 acceptance criteria (all binding; SUPERSEDES §1.6/§7.1
+budgets for Phase 2)
+
+1. Budgets: taskgen ≤250; blindsolve ≤180; taskcheck ≤620 total; run_batch
+   ≤550 (normally formatted); compare ≤300; tests (new/extended, all suites)
+   ≤450. Phase 2 total new/changed target ≤1,700, hard cap ≤2,100 (includes
+   the run_batch rewrite; prompts/docs/task content excluded). Combined
+   post-Phase-2 tooling+scripts+tests budget: ≤3,000 lines.
+2. Factory proof, zero live calls: taskgen with a scripted fake agent (a
+   stdlib python script invoked via the command template that materializes a
+   fixed task tree in cwd) produces a task; blindsolve with a scripted fake
+   solver produces blind/ + v3 provenance; admit (v3) passes it; the
+   master-list scan REJECTS a fixture task whose quotes are duplicated into
+   one extra file; taskgen hard-fails a fake agent that emits blind/.
+3. Measurement proof, fake runner: a two-arm batch runs end-to-end; compare
+   emits verdict.json + report with all required embedded fields; A/A (two
+   labels, one file) yields INCONCLUSIVE with n_effective reported; v1
+   single-arm evidence (salience-probe-v2) still verifies.
+4. Real-agent demo: taskgen + blindsolve on ONE task via a real agent CLI
+   (agent calls are not subject live calls; ≤2 concurrent), admitted under
+   v3.
+5. Low-salience batch prep (audit-corrected reality): the five tasks are
+   fac-07, fac-08, fac-09, fac-11, fac-12; their manifests currently say
+   "enumerated" (no task-meta.json exists) and sampled tasks put 4
+   requirements' statements in one file, so EXPECT: public/ doc edits to
+   spread statements, ~50 hand-copied stated_in quotes (authoring work, agent
+   labor, budget-exempt), fresh blind solves after every public/ edit (tree
+   hash changes), then v3 re-admission. Then queue a NEW two-arm REQUEST
+   (null vs a chosen MD arm) for Wade — the previously mentioned "pending
+   15-call request" does not exist (audit) and hash-bound requests must be
+   regenerated after re-admission anyway.
+6. All suites green; no governed file touched beyond §10.4's codex_cli.py
+   edit; no new documents (tooling/README.md and tooling/prompts/* edits are
+   authorized); no live subject calls anywhere in Phase 2 implementation.
+
+### 10.7 Out of scope (recorded so nobody drifts)
+
+PR-to-task mining, game domains (PD/SF2), challenge/submission operations,
+CI packaging, the Stage-4 optimizer loop, any change to frozen confirmatory
+machinery, and any statistics beyond the §10.5 sign test. See roadmap.md
+"Tooling coverage note".
