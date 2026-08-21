@@ -438,9 +438,10 @@ coverage mutants gave, mechanically.
   `--ledger` / `--exposures`. batch takes an explicit mode:
   `batch admit <dir>` / `batch verify <dir>`.
 - Author-supplied inputs feeding the manifest: `task-meta.json` at task root
-  (optional) carries `{"salience": ..., "parent_task_id": ...}`; absent →
-  salience "enumerated" (the conservative default), parent null. Everything
-  else in the manifest is computed by admit.
+  (optional) carries `{"salience": ..., "parent_task_id": ...,
+  "layout_version": 2|3}`; absent → salience "enumerated" (the conservative
+  default), parent null, layout_version 2. Everything else in the manifest is
+  computed by admit; manifest.json copies layout_version verbatim.
 - manifest.json: {"task_id", "files": {relpath: sha256, ...}, "salience",
   "parent_task_id", "gate": {step: pass|fail detail, ...}, "requirements":
   <verbatim requirements.json>, "created": iso8601}.
@@ -461,10 +462,12 @@ supersedes them; every supersession is marked "SUPERSEDES". Two audits
 implementer does not rediscover them.
 
 Layout version: Phase 2 introduces task-layout-v3 (adds stated_in fields and
-new provenance keys, below). manifest.json gains "layout_version"; v2 tasks
-(the current 13) stay valid until re-admitted, and admission under v3 rules is
-selected by the manifest marker, not guesswork. Updating tooling/README.md to
-document v3 is REQUIRED and authorized (an edit, not a new document).
+new provenance keys, below). The ONE selector (audit: three passages
+disagreed): "layout_version": 3 is authored in task-meta.json; admit reads it
+there, applies v3 rules, and copies it into manifest.json; absent = v2
+(legacy). §9's task-meta.json and manifest.json schemas are amended
+accordingly. Updating tooling/README.md to document v3 is REQUIRED and
+authorized (an edit, not a new document).
 
 ### 10.1 Deliverable A: taskgen — tooling/taskgen.py ≤250 lines
 
@@ -549,7 +552,10 @@ tests/test_run_batch.py ≤300. Exactly one import-site rename exists (audit).
   "replacement_call_cap" (per §4 infra rules), "max_total_calls" =
   call_count + replacement_call_cap — launch refuses any call beyond it
   (audit: approval must bound replacement spend, not just nominal),
-  "md_filename", "runner": {...}}. Arm names are distinct labels even when
+  "md_filename" (validated: bare basename matching [A-Za-z0-9._-]+, no path
+  separators; REQUEST is its single canonical source), "task_order_seed"
+  (task order randomized per batch, seed recorded), "runner": {...}}. Arm
+  names are distinct labels even when
   files are identical (A/A = two labels, one file — audit: same-label dirs
   would collide). verify accepts BOTH the v1 single-arm schema (existing
   frozen salience-probe-v2 evidence must keep verifying) and v2 (audit).
@@ -583,10 +589,22 @@ tests/test_run_batch.py ≤300. Exactly one import-site rename exists (audit).
   compare re-verifies the chain AND each disposition's bytes against its
   ledger entry. Any failure, any disposition label "invalid", or the two
   arms' recorded runner params differing → verdict INVALID.
-- Verdict rules, pinned (audit: were unstated): A_BETTER iff p ≤ alpha AND
-  effect ≥ +threshold; B_BETTER symmetric; otherwise INCONCLUSIVE (unless
-  INVALID). Defaults alpha 0.05, threshold 0.20; both are CLI args and both
-  are embedded in verdict.json.
+- Verdict rules, pinned (rev-4 audit caught a REVERSED label): delta =
+  s_B − s_A, so positive effect means arm B won. B_BETTER iff p ≤ alpha AND
+  effect ≥ +threshold; A_BETTER iff p ≤ alpha AND effect ≤ −threshold;
+  otherwise INCONCLUSIVE (unless INVALID). Defaults alpha 0.05, threshold
+  0.20; both are CLI args and both are embedded in verdict.json.
+- Attrition vs INVALID, reconciled (audit): a task whose disposition is
+  labeled "invalid" (e.g. infra exhaustion) or whose arms have unequal usable
+  counts is EXCLUDED from the test and listed in the report. Verdict-level
+  INVALID is reserved for: ledger/chain or disposition-hash failure, arm
+  runner-param mismatch, or more than 25% of the batch's tasks excluded.
+- Disposition-ledger rows (audit: were undefined): same canonical-JSON chain,
+  {"type": "disposition", "task_id", "arm", "sha256", "prev_sha256"}; exactly
+  one per (task, arm), appended immediately after the disposition file is
+  written exclusive-create; on crash-resume the append is made if missing
+  (idempotent). disposition.json itself gains a "runner" object copied from
+  its attempts so compare can check arm equality without reading attempts.
 - verdict.json + markdown report MUST embed: thresholds used, both arm names
   + file SHA-256s, batch id, evidence-ledger head hash, task list with
   per-task deltas, n_effective, excluded/unbalanced tasks, resolved runner
@@ -609,8 +627,11 @@ budgets for Phase 2)
    one extra file; taskgen hard-fails a fake agent that emits blind/.
 3. Measurement proof, fake runner: a two-arm batch runs end-to-end; compare
    emits verdict.json + report with all required embedded fields; A/A (two
-   labels, one file) yields INCONCLUSIVE with n_effective reported; v1
-   single-arm evidence (salience-probe-v2) still verifies.
+   labels, one file) yields INCONCLUSIVE with n_effective reported; a
+   KNOWN-WINNER fixture (fake runner scripted so arm B resolves strictly
+   more tasks) yields B_BETTER — the direction test the reversed-label
+   defect proved necessary; v1 single-arm evidence (salience-probe-v2) still
+   verifies.
 4. Real-agent demo: taskgen + blindsolve on ONE task via a real agent CLI
    (agent calls are not subject live calls; ≤2 concurrent), admitted under
    v3.
@@ -620,7 +641,10 @@ budgets for Phase 2)
    requirements' statements in one file, so EXPECT: public/ doc edits to
    spread statements, ~50 hand-copied stated_in quotes (authoring work, agent
    labor, budget-exempt), fresh blind solves after every public/ edit (tree
-   hash changes), then v3 re-admission. Then queue a NULL-ONLY calibration
+   hash changes), then v3 re-admission WITH task-meta salience "pointer" or
+   "none" — a re-admitted task still labeled "enumerated" fails this
+   criterion (audit: the target salience was never pinned). Then queue a
+   NULL-ONLY calibration
    REQUEST (5 tasks × 3 calls) for Wade — calibration first; the salience
    probe FAILED (q = 1.0) and this batch is its real test, not a formality.
    (The previously mentioned "pending 15-call request" does not exist —
@@ -629,8 +653,10 @@ budgets for Phase 2)
    Phase 2 implementation scope (audit: the plan may not jump past a failed
    calibration). Preconditions before its REQUEST may even be queued:
    calibration yields enough band tasks that the cohort is prospectively
-   sized (≥8 tasks queued, expecting ≥6 non-tied — 5 tasks can never reach
-   significance: 5/5 wins gives p = 0.0625); the helpful-arm file is named
+   sized FROM CALIBRATION RATES (not a bare count: ≥8 tasks queued AND the
+   calibration-measured tie rate implies ≥6 expected non-tied — 5 tasks can
+   never reach significance: 5/5 wins gives p = 0.0625); the helpful-arm
+   file is named
    and SHA-256-pinned in the REQUEST prospectively; and the report labels
    results DEVELOPMENT-ONLY, supporting no incumbent/candidate replacement
    claim.
@@ -642,6 +668,28 @@ budgets for Phase 2)
    REQUEST/APPROVED — the single human checkpoint (§1.2) covers live subject
    spend only. Requiring approvals for agent labor would reinstate
    per-candidate ceremony; Wade controls that spend by launching sessions.
+   To remove the wording ambiguity audits keep citing, one clarifying edit
+   to AGENTS.md is authorized: "live-call spend" → "live subject-model call
+   spend". Likewise recorded: the §10.4 codex_cli.py edit is the SOLE
+   authorized frozen-file exception, is behavior-preserving by construction
+   (new parameter, default unchanged, existing tests prove it), and does not
+   contradict §10.7's "no change to frozen confirmatory machinery" because
+   confirmatory behavior is bit-identical under the default.
+
+### 10.8 Audit closure
+
+Phase 2 has now had four independent audit rounds (two commissioned here, two
+by Wade's other session) totaling ~45 findings, all dispositioned in-plan.
+Round 4's sole functional defect was the reversed winner label — now fixed
+and covered by a mandatory direction test. Findings-per-round is collapsing
+into wording consistency and confirmatory-grade hardening that belongs to the
+(already-retained) confirmatory machinery, which is this repository's known
+failure spiral. Further document-level audits are DECLINED; residual risk is
+owned by the §10.6 acceptance tests, which exercise every contract this
+section pins. The scientific auditor's remaining recommendations (randomized
+schedules beyond the recorded seed, formal power analysis, task-independence
+controls, additional directional tests) are deferred to the confirmatory
+protocol where they already exist.
 
 ### 10.7 Out of scope (recorded so nobody drifts)
 
