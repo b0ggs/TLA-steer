@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated negation to last-match-wins and completed all documented corrections: ordering, comments, errors, defaults, exports, version, changelog, and regression tests.
+
+Verification: 10 tests passed plus targeted acceptance checks. No commits or publication artifacts created.

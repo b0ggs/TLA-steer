@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added the `stats` subcommand with filtering, summaries, required exit behavior and help text. Updated version, changelog, defaults, example output, and tests.
+
+Verification: all 12 tests pass; standalone stats suite passes all 5 tests.

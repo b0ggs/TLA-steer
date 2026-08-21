@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Implemented last-match-wins negation and all documented corrections: stable filtering order, public `PatternError`, indented comments, lone-negation validation, case-sensitive default, version 0.4.1, changelog entry, and regression tests.
+
+Verification: all 13 tests pass; `git diff --check` passes.

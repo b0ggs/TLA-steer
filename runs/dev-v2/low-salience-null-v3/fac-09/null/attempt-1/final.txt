@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added the `stats` subcommand with filtering, summary output, help text, required exit statuses, tests, example output, documentation updates, changelog entry, and version 1.3.0.
+
+Verification: all 14 tests pass; `git diff --check` passes.

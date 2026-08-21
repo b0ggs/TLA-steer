@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Fixed strict sliding-window expiration and all documented acceptance criteria, including limiter behavior, clock validation, defaults, version `0.2.1`, changelog, and regression test.
+
+Validation: 6 tests passed; acceptance checks and `git diff --check` passed.

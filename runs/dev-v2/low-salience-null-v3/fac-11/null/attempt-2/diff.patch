@@ -1,0 +1,147 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index be96fb6..d85f186 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -11,6 +11,10 @@ weight (`"weight"` is `None`).
+ 
+ The 0.4.0 changelog must document that rollup honors per-sample weights.
+ 
++## 0.4.0
++
++- Weighted means: rollup now honors per-sample weights.
++
+ ## 0.3.1
+ 
+ - Fixed median_value for even-length inputs.
+diff --git a/pulsemetrics/__init__.py b/pulsemetrics/__init__.py
+index 0004ebb..8f6be93 100644
+--- a/pulsemetrics/__init__.py
++++ b/pulsemetrics/__init__.py
+@@ -1,5 +1,5 @@
+ """PulseMetrics: a tiny metrics aggregation pipeline."""
+ 
+-__version__ = "0.3.1"
++__version__ = "0.4.0"
+ 
+ from .rollup import rollup  # noqa: F401
+diff --git a/pulsemetrics/grouping.py b/pulsemetrics/grouping.py
+index 80c2319..93e105f 100644
+--- a/pulsemetrics/grouping.py
++++ b/pulsemetrics/grouping.py
+@@ -8,5 +8,7 @@ def group_samples(samples):
+     """
+     groups = {}
+     for sample in samples:
++        if "metric" not in sample:
++            raise ValueError("sample is missing a metric name")
+         groups.setdefault(sample["metric"], []).append(sample)
+     return groups
+diff --git a/pulsemetrics/report.py b/pulsemetrics/report.py
+index 7bdb753..96b9173 100644
+--- a/pulsemetrics/report.py
++++ b/pulsemetrics/report.py
+@@ -1,6 +1,6 @@
+ """Plain-text rendering of rollup summaries."""
+ 
+-DEFAULT_PRECISION = 2
++DEFAULT_PRECISION = 4
+ 
+ 
+ def render_report(summary, precision=None):
+diff --git a/pulsemetrics/rollup.py b/pulsemetrics/rollup.py
+index 9bb0b1e..50e2e80 100644
+--- a/pulsemetrics/rollup.py
++++ b/pulsemetrics/rollup.py
+@@ -1,19 +1,29 @@
+ """Rollup of sample dicts into per-metric summaries."""
+ 
+ from .grouping import group_samples
+-from .stats import mean_value
+ 
+ 
+ def rollup(samples):
+-    """Aggregate sample dicts into per-metric summary dicts."""
++    """Aggregate sample dicts into per-metric summary dicts.
++
++    Weights default to 1.0 when a sample omits them.
++    """
+     groups = group_samples(samples)
+     result = {}
+-    for metric, bucket in groups.items():
++    for metric in sorted(groups):
++        bucket = groups[metric]
+         values = [sample["value"] for sample in bucket]
++        weights = [
++            1.0 if sample.get("weight") is None else sample["weight"]
++            for sample in bucket
++        ]
++        weight_total = sum(weights)
+         result[metric] = {
+             "count": len(values),
+-            "mean": mean_value(values),
++            "mean": sum(value * weight for value, weight in zip(values, weights))
++            / weight_total,
+             "min": min(values),
+             "max": max(values),
++            "weight_total": weight_total,
+         }
+     return result
+diff --git a/pulsemetrics/samples.py b/pulsemetrics/samples.py
+index 1e39551..f458638 100644
+--- a/pulsemetrics/samples.py
++++ b/pulsemetrics/samples.py
+@@ -8,7 +8,7 @@ def parse_line(line):
+     and ``"weight"`` (float, or ``None`` when the line has no third
+     column).
+     """
+-    parts = line.rstrip("\n").split(" ")
++    parts = line.strip().split()
+     if len(parts) == 2:
+         metric, raw_value = parts
+         weight = None
+diff --git a/pulsemetrics/stats.py b/pulsemetrics/stats.py
+index ef0820f..414fbb8 100644
+--- a/pulsemetrics/stats.py
++++ b/pulsemetrics/stats.py
+@@ -3,6 +3,8 @@
+ 
+ def mean_value(values):
+     """Return the arithmetic mean of a list of floats."""
++    if not values:
++        return 0.0
+     return sum(values) / len(values)
+ 
+ 
+diff --git a/tests/test_rollup.py b/tests/test_rollup.py
+index e50ee03..74acc62 100644
+--- a/tests/test_rollup.py
++++ b/tests/test_rollup.py
+@@ -20,6 +20,28 @@ class RollupTests(unittest.TestCase):
+         samples = [{"metric": "cpu", "value": v} for v in (10.0, 20.0, 30.0)]
+         self.assertAlmostEqual(rollup(samples)["cpu"]["mean"], 20.0)
+ 
++    def test_weighted_mean(self):
++        weighted = [
++            {"metric": "cpu", "value": 10.0, "weight": 1.0},
++            {"metric": "cpu", "value": 20.0, "weight": 3.0},
++        ]
++        result = rollup(weighted)["cpu"]
++        self.assertAlmostEqual(result["mean"], 17.5)
++        self.assertAlmostEqual(result["weight_total"], 4.0)
++
++        omitted_weight = [
++            {"metric": "cpu", "value": 4.0},
++            {"metric": "cpu", "value": 8.0, "weight": 3.0},
++        ]
++        result = rollup(omitted_weight)["cpu"]
++        self.assertAlmostEqual(result["mean"], 7.0)
++        self.assertAlmostEqual(result["weight_total"], 4.0)
++
++        none_weight = [{"metric": "cpu", "value": 5.0, "weight": None}]
++        result = rollup(none_weight)["cpu"]
++        self.assertAlmostEqual(result["mean"], 5.0)
++        self.assertAlmostEqual(result["weight_total"], 1.0)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

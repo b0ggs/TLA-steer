@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added the `newest` subcommand with plain text/JSON output, UTC timestamps, ordering, `--limit`, required help text, error handling, and version 0.3.0. Updated documentation, changelog, examples, and added `tests/test_newest.py`.
+
+Verification: all 7 tests pass with `python3 -m unittest discover -s tests -t .`.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added `newest` with default/explicit limits, UTC timestamps, deterministic ordering, plain/JSON output, exact help text, missing-path handling, version `0.3.0`, required documentation, changelog, example, and dedicated tests.
+
+Verification: 6 tests pass, including all 4 `newest` tests.

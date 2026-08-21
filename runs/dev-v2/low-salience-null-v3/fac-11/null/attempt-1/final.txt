@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added weighted rollups and all documented 0.4.0 requirements: sorted metrics, validation, parsing, precision, version/changelog updates, and tests.
+
+Verification: 8 tests pass; targeted acceptance checks and `git diff --check` pass.

@@ -1,0 +1,210 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index a4bf69e..146d640 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -7,6 +7,10 @@ at the top of the release list headed `## 0.3.0` whose first bullet is exactly
+ 
+ Release 0.3.0 must include the bullet `- Added the newest subcommand.`.
+ 
++## 0.3.0
++
++- Added the newest subcommand.
++
+ ## 0.2.0
+ 
+ - Added the ext subcommand.
+diff --git a/README.md b/README.md
+index 984bade..4fc46cd 100644
+--- a/README.md
++++ b/README.md
+@@ -9,8 +9,7 @@ extension. All commands run through the package entry point, for example
+ 
+ - `scan PATH` — list every file under PATH together with its size in bytes.
+ - `ext PATH` — count files per extension.
+-- `newest PATH` — planned for the next release; the full specification lives in
+-  docs/cli.md.
++- `newest PATH` — list the most recently modified files.
+ 
+ Run `python -m dirlens --version` to see the installed version.
+ 
+diff --git a/dirlens/__init__.py b/dirlens/__init__.py
+index 2ecbedc..7eaf133 100644
+--- a/dirlens/__init__.py
++++ b/dirlens/__init__.py
+@@ -1,3 +1,3 @@
+ """dirlens - a small directory file-inventory tool."""
+ 
+-__version__ = "0.2.0"
++__version__ = "0.3.0"
+diff --git a/dirlens/cli.py b/dirlens/cli.py
+index 2a34876..a65eecd 100644
+--- a/dirlens/cli.py
++++ b/dirlens/cli.py
+@@ -1,11 +1,20 @@
+ """Command-line interface wiring for dirlens."""
+ 
+ import argparse
++import json
+ import sys
+ from pathlib import Path
+ 
+ from . import __version__
+-from .report import ext_lines, scan_lines
++from .report import ext_lines, newest_entries, scan_lines
++
++
++def nonnegative_int(value):
++    """Parse a non-negative integer for an argparse option."""
++    parsed = int(value)
++    if parsed < 0:
++        raise argparse.ArgumentTypeError("must be a non-negative integer")
++    return parsed
+ 
+ 
+ def build_parser():
+@@ -26,6 +35,14 @@ def build_parser():
+     p_ext = sub.add_parser("ext", help="Summarise file counts by extension.")
+     p_ext.add_argument("path")
+ 
++    newest_help = "List the most recently modified files in a directory tree."
++    p_newest = sub.add_parser(
++        "newest", help=newest_help, description=newest_help
++    )
++    p_newest.add_argument("path")
++    p_newest.add_argument("--limit", type=nonnegative_int, default=5)
++    p_newest.add_argument("--json", action="store_true")
++
+     return parser
+ 
+ 
+@@ -44,4 +61,11 @@ def main(argv=None):
+     elif args.command == "ext":
+         for line in ext_lines(root):
+             print(line)
++    elif args.command == "newest":
++        entries = newest_entries(root, args.limit)
++        if args.json:
++            print(json.dumps(entries))
++        else:
++            for entry in entries:
++                print("%s\t%s" % (entry["mtime"], entry["path"]))
+     return 0
+diff --git a/dirlens/report.py b/dirlens/report.py
+index c2b956e..4eac264 100644
+--- a/dirlens/report.py
++++ b/dirlens/report.py
+@@ -1,4 +1,6 @@
+-"""Report builders that turn a directory tree into output lines."""
++"""Report builders that turn a directory tree into report data or lines."""
++
++from datetime import datetime, timezone
+ 
+ from .scanner import iter_files, rel_posix
+ 
+@@ -19,3 +21,22 @@ def ext_lines(root):
+         label = path.suffix[1:] if path.suffix else "(none)"
+         counts[label] = counts.get(label, 0) + 1
+     return ["%s\t%d" % (label, counts[label]) for label in sorted(counts)]
++
++
++def newest_entries(root, limit=5):
++    """Return the most recently modified files as JSON-ready dictionaries."""
++    rows = []
++    for path in iter_files(root):
++        relative_path = rel_posix(path, root)
++        mtime_ns = path.stat().st_mtime_ns
++        rows.append((mtime_ns, relative_path))
++
++    rows.sort(key=[REDACTED] row: (-row[0], row[1]))
++    entries = []
++    for mtime_ns, relative_path in rows[:limit]:
++        whole_seconds = mtime_ns // 1_000_000_000
++        mtime = datetime.fromtimestamp(whole_seconds, timezone.utc).strftime(
++            "%Y-%m-%dT%H:%M:%SZ"
++        )
++        entries.append({"path": relative_path, "mtime": mtime})
++    return entries
+diff --git a/docs/cli.md b/docs/cli.md
+index 57cc0ce..f21fabc 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -30,7 +30,7 @@ names contain no extension are counted under the label `(none)`. Lines are sorte
+ label in ascending string order. Like scan, ext exits with status 0 on success and
+ prints an error to standard error and exits with status 3 when PATH does not exist.
+ 
+-## newest (to be implemented)
++## newest
+ 
+ `python -m dirlens newest PATH [--limit N] [--json]`
+ 
+diff --git a/examples/README.md b/examples/README.md
+index 916bb90..4068e0c 100644
+--- a/examples/README.md
++++ b/examples/README.md
+@@ -6,6 +6,7 @@ at. Try the commands below from the repository root:
+ ```
+ python -m dirlens scan examples/sample
+ python -m dirlens ext examples/sample
++python -m dirlens newest examples/sample --limit 3
+ ```
+ 
+ When the newest subcommand is implemented, extend the code block above (or add
+diff --git a/tests/test_newest.py b/tests/test_newest.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_newest.py
+@@ -0,0 +1,54 @@
++import contextlib
++import io
++import json
++import os
++import tempfile
++import unittest
++from pathlib import Path
++
++from dirlens.cli import main
++from dirlens.report import newest_entries
++
++
++class NewestTests(unittest.TestCase):
++    def test_newest_entries_orders_formats_and_limits_results(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            older = root / "older.txt"
++            alpha = root / "a.txt"
++            beta = root / "sub" / "b.txt"
++            beta.parent.mkdir()
++            for path in (older, alpha, beta):
++                path.write_text(path.name)
++
++            os.utime(older, ns=(1_600_000_000_000_000_000,) * 2)
++            tied_time = 1_700_000_000_987_654_321
++            os.utime(alpha, ns=(tied_time,) * 2)
++            os.utime(beta, ns=(tied_time,) * 2)
++
++            self.assertEqual(
++                newest_entries(root, limit=2),
++                [
++                    {"path": "a.txt", "mtime": "2023-11-14T22:13:20Z"},
++                    {"path": "sub/b.txt", "mtime": "2023-11-14T22:13:20Z"},
++                ],
++            )
++
++    def test_cli_json_and_empty_text_output(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            output = io.StringIO()
++            with contextlib.redirect_stdout(output):
++                status = main(["newest", str(root)])
++            self.assertEqual(status, 0)
++            self.assertEqual(output.getvalue(), "")
++
++            output = io.StringIO()
++            with contextlib.redirect_stdout(output):
++                status = main(["newest", str(root), "--json"])
++            self.assertEqual(status, 0)
++            self.assertEqual(json.loads(output.getvalue()), [])
++
++
++if __name__ == "__main__":
++    unittest.main()

@@ -1,0 +1,210 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 4f42167..ad19533 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,10 @@ heading is enough).
+ Release 0.2.1 must include a changelog entry for the corrected window boundary.
+ The boundary repair must add a regression test named `test_boundary_event_expired`.
+ 
++## 0.2.1
++
++- Corrected the trailing-window boundary so events exactly one window old expire.
++
+ ## 0.2.0
+ 
+ - Added `RateLimiter` with per-key counters, shadow-mode `hit()`, and
+diff --git a/slidewin/__init__.py b/slidewin/__init__.py
+index bede966..620eb1c 100644
+--- a/slidewin/__init__.py
++++ b/slidewin/__init__.py
+@@ -1,6 +1,6 @@
+ """slidewin: a small sliding-window rate-limit counter library."""
+ 
+-__version__ = "0.2.0"
++__version__ = "0.2.1"
+ 
+ from .clock import ManualClock, SystemClock
+ from .config import LimiterConfig
+diff --git a/slidewin/clock.py b/slidewin/clock.py
+index cd19bec..981456e 100644
+--- a/slidewin/clock.py
++++ b/slidewin/clock.py
+@@ -27,4 +27,7 @@ class ManualClock:
+ 
+     def advance(self, seconds):
+         """Move the clock forward by ``seconds``."""
+-        self._now += float(seconds)
++        seconds = float(seconds)
++        if seconds < 0:
++            raise ValueError("cannot advance clock backwards")
++        self._now += seconds
+diff --git a/slidewin/config.py b/slidewin/config.py
+index 7cac1f0..4ca328b 100644
+--- a/slidewin/config.py
++++ b/slidewin/config.py
+@@ -4,7 +4,7 @@
+ class LimiterConfig:
+     """Holds the window length and default limit for a RateLimiter."""
+ 
+-    def __init__(self, window_seconds=30, default_limit=5):
++    def __init__(self, window_seconds=60, default_limit=5):
+         if window_seconds <= 0:
+             raise ValueError("window_seconds must be positive")
+         if default_limit <= 0:
+diff --git a/slidewin/limiter.py b/slidewin/limiter.py
+index dce7515..bcab8ab 100644
+--- a/slidewin/limiter.py
++++ b/slidewin/limiter.py
+@@ -26,8 +26,11 @@ class RateLimiter:
+         """Record one event for ``key``, or raise if the window is full."""
+         counter = self._counter(key)
+         if counter.count() >= self.limit:
+-            raise RateLimitExceeded("too many requests")
++            raise RateLimitExceeded(
++                f"limit of {self.limit} per {self.window}s exceeded"
++            )
+         counter.record()
++        return self.remaining(key)
+ 
+     def hit(self, key=[REDACTED]):
+         """Record one event for ``key`` unconditionally (shadow mode)."""
+@@ -35,4 +38,4 @@ class RateLimiter:
+ 
+     def remaining(self, key=[REDACTED]):
+         """Return how many more events ``key`` may record in the window."""
+-        return self.limit - self._counter(key).count()
++        return max(0, self.limit - self._counter(key).count())
+diff --git a/slidewin/window.py b/slidewin/window.py
+index f571906..4840afb 100644
+--- a/slidewin/window.py
++++ b/slidewin/window.py
+@@ -19,9 +19,12 @@ class SlidingWindowCounter:
+         self._events.append(ts)
+ 
+     def count(self, now=None):
+-        """Return the number of recorded events inside the window."""
++        """Return the number of recorded events inside the window.
++
++        Events exactly window seconds old are expired.
++        """
+         if now is None:
+             now = self.clock.now()
+         cutoff = now - self.window
+-        self._events = [ts for ts in self._events if ts >= cutoff]
++        self._events = [ts for ts in self._events if ts > cutoff]
+         return len(self._events)
+diff --git a/tests/test_limiter.py b/tests/test_limiter.py
+index cae82b1..6e3aa56 100644
+--- a/tests/test_limiter.py
++++ b/tests/test_limiter.py
+@@ -17,14 +17,16 @@ def make_limiter(limit=3, window=60):
+ class RateLimiterTests(unittest.TestCase):
+     def test_allows_under_limit(self):
+         limiter, _ = make_limiter(limit=3)
+-        limiter.acquire()
+-        limiter.acquire()  # still under the limit, must not raise
++        self.assertEqual(limiter.acquire(), 2)
++        self.assertEqual(limiter.acquire(), 1)
+ 
+     def test_blocks_over_limit(self):
+         limiter, _ = make_limiter(limit=2)
+         limiter.acquire()
+         limiter.acquire()
+-        with self.assertRaises(RateLimitExceeded):
++        with self.assertRaisesRegex(
++            RateLimitExceeded, "^limit of 2 per 60s exceeded$"
++        ):
+             limiter.acquire()
+ 
+     def test_keys_are_independent(self):
+@@ -32,6 +34,18 @@ class RateLimiterTests(unittest.TestCase):
+         limiter.acquire("a")
+         limiter.acquire("b")  # a full key "a" must not affect key "b"
+ 
++    def test_remaining_is_clamped_at_zero(self):
++        limiter, _ = make_limiter(limit=1)
++        limiter.hit()
++        limiter.hit()
++        self.assertEqual(limiter.remaining(), 0)
++
++    def test_boundary_event_no_longer_blocks(self):
++        limiter, clk = make_limiter(limit=1, window=10)
++        limiter.acquire()
++        clk.advance(10)
++        self.assertEqual(limiter.acquire(), 0)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_window.py b/tests/test_window.py
+index 656903d..94dd357 100644
+--- a/tests/test_window.py
++++ b/tests/test_window.py
+@@ -22,10 +22,12 @@ class SlidingWindowCounterTests(unittest.TestCase):
+         clk.advance(11)   # strictly past the window
+         self.assertEqual(counter.count(), 0)
+ 
+-    # When the window-boundary bug from issue #41 is fixed, add a regression
+-    # test in this class named test_boundary_event_expired: record a single
+-    # event, advance a ManualClock by exactly the window length, and assert
+-    # that count() returns 0.
++    def test_boundary_event_expired(self):
++        clk = ManualClock()
++        counter = SlidingWindowCounter(10, clock=clk)
++        counter.record()
++        clk.advance(10)
++        self.assertEqual(counter.count(), 0)
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/tests/test_clock.py b/tests/test_clock.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_clock.py
+@@ -0,0 +1,21 @@
++"""Tests for clock implementations."""
++
++import unittest
++
++from slidewin.clock import ManualClock
++
++
++class ManualClockTests(unittest.TestCase):
++    def test_cannot_advance_backwards(self):
++        clk = ManualClock(start=5)
++
++        with self.assertRaisesRegex(
++            ValueError, "^cannot advance clock backwards$"
++        ):
++            clk.advance(-1)
++
++        self.assertEqual(clk.now(), 5.0)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_config.py b/tests/test_config.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_config.py
+@@ -0,0 +1,20 @@
++"""Tests for limiter configuration."""
++
++import unittest
++
++from slidewin import __version__
++from slidewin.config import LimiterConfig
++
++
++class LimiterConfigTests(unittest.TestCase):
++    def test_defaults(self):
++        config = LimiterConfig()
++        self.assertEqual(config.window_seconds, 60)
++        self.assertEqual(config.default_limit, 5)
++
++    def test_package_version(self):
++        self.assertEqual(__version__, "0.2.1")
++
++
++if __name__ == "__main__":
++    unittest.main()

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Implemented last-match-wins negation and all documented acceptance fixes, including defaults, loader behavior, exports, ordering, version/changelog, and regression coverage.
+
+Verification: `python3 -m unittest discover -v` — 8 tests passed. No generated artifacts remain.

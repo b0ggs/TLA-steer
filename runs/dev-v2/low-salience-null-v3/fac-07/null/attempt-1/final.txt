@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Fixed half-open window expiration and all documented acceptance criteria: limiter behavior, clock validation, defaults, version `0.2.1`, changelog, and regression tests.
+
+Verification: 11 tests pass with `python3 -m unittest discover -s tests -t .`.

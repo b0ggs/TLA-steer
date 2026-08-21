@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added the `newest` subcommand with plain-text/JSON output, UTC timestamps, ordering, default/validated limits, help text, missing-path handling, version 0.3.0, tests, changelog, and documentation updates.
+
+Verification: focused tests and full suite pass (4 tests total).

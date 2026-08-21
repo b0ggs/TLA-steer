@@ -1,1 +1,6 @@
 {"batch_id":"salience-probe-v2","event":"exposed","prev_sha256":"GENESIS","reason":null,"task_id":"durafmt-salience-pointer"}
+{"batch_id":"low-salience-null-v3","event":"exposed","prev_sha256":"db16669d2fffb3cdb0a59c1ad44f148c55c6242ed10f5017e118b7b548c04d2f","reason":null,"task_id":"fac-11"}
+{"batch_id":"low-salience-null-v3","event":"exposed","prev_sha256":"87e8a500ad42e8878659bf1a7af044517a5075b2e50e22a34228b45e0a981e86","reason":null,"task_id":"fac-09"}
+{"batch_id":"low-salience-null-v3","event":"exposed","prev_sha256":"2e4de93a9b9a30483aa4e0b7f6f4c8ca8fd25f45532ca3fe69b51d61d469ae7c","reason":null,"task_id":"fac-12"}
+{"batch_id":"low-salience-null-v3","event":"exposed","prev_sha256":"366a33f3c9f16d7d1dac167533035864056276294783173280bd9a4a0eb29c23","reason":null,"task_id":"fac-08"}
+{"batch_id":"low-salience-null-v3","event":"exposed","prev_sha256":"054aca695b0087c2e1d2eab3c83480c761b666f1917c9bee525ab85ef8a04728","reason":null,"task_id":"fac-07"}

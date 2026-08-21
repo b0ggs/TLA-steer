@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added the `stats` subcommand with filtering, summaries, help text, required exit statuses, tests, documentation updates, example output, changelog entry, and version `1.3.0`.
+
+Verification: all 12 tests pass with `python3`; existing `count` and `top` behavior remains intact.

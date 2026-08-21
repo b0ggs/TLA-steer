@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Fixed half-open window expiration and all documented acceptance criteria: regression test, shared clocks, limiter behavior, config defaults, clock validation, version `0.2.1`, and changelog.
+
+Verification: 6 unit tests pass; focused acceptance checks and example pass; diff check clean.

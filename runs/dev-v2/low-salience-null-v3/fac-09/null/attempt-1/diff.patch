@@ -1,0 +1,229 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d921ae7..fd2abea 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -4,13 +4,9 @@ All notable changes to wordfreq are recorded here, newest first.
+ 
+ ## Unreleased
+ 
+-The stats work described in `docs/cli.md` will ship as release 1.3.0. When it
+-lands, start a `## 1.3.0` section in this file containing the line
+-`Added the stats subcommand.` Releasing 1.3.0 also means bumping
+-`__version__` in `wordfreq/__init__.py` to `1.3.0`, after which
+-`python -m wordfreq --version` prints `wordfreq 1.3.0`.
++## 1.3.0
+ 
+-Release 1.3.0 must include an `Added the stats subcommand.` entry.
++- Added the stats subcommand.
+ 
+ ## 1.2.0
+ 
+diff --git a/README.md b/README.md
+index f9d6b17..ea3d66a 100644
+--- a/README.md
++++ b/README.md
+@@ -28,6 +28,7 @@ rules; the same tokenizer is used by every subcommand.
+ 
+ - `count` reads input files as UTF-8.
+ - `top -n` defaults to `10`.
++- `stats --min-length` defaults to `1`.
+ 
+ We keep every tunable option listed here so users can find the defaults in one
+ place. Because the new `stats` subcommand has a tunable option, this Defaults
+diff --git a/wordfreq/__init__.py b/wordfreq/__init__.py
+index db52729..b4312ab 100644
+--- a/wordfreq/__init__.py
++++ b/wordfreq/__init__.py
+@@ -1,3 +1,3 @@
+ """wordfreq: build word-frequency reports from plain text files."""
+ 
+-__version__ = "1.2.0"
++__version__ = "1.3.0"
+diff --git a/wordfreq/cli.py b/wordfreq/cli.py
+index 259456a..30a7a43 100644
+--- a/wordfreq/cli.py
++++ b/wordfreq/cli.py
+@@ -6,7 +6,7 @@ import sys
+ from . import __version__
+ from .counter import count_words
+ from .fileio import read_texts
+-from .report import render_table
++from .report import render_table, summarize
+ from .tokenizer import tokenize
+ 
+ 
+@@ -35,6 +35,20 @@ def build_parser():
+     p_top.add_argument("files", nargs="+", metavar="FILE")
+     p_top.add_argument("-n", type=int, default=10, help="How many words to show.")
+ 
++    p_stats = subparsers.add_parser(
++        "stats",
++        help="Show summary statistics for the input files.",
++        description="Show summary statistics for the input files.",
++    )
++    p_stats.add_argument("files", nargs="+", metavar="FILE")
++    p_stats.add_argument(
++        "--min-length",
++        type=int,
++        default=1,
++        help="Discard words shorter than N characters.",
++        metavar="N",
++    )
++
+     return parser
+ 
+ 
+@@ -54,6 +68,9 @@ def main(argv=None):
+         print("error: %s" % exc, file=sys.stderr)
+         return 1
+ 
++    if args.command == "stats":
++        words = [word for word in words if len(word) >= args.min_length]
++
+     counts = count_words(words)
+     if args.command == "count":
+         for line in render_table(counts):
+@@ -61,6 +78,13 @@ def main(argv=None):
+     elif args.command == "top":
+         for line in render_table(counts)[: args.n]:
+             print(line)
++    elif args.command == "stats":
++        summary = summarize(counts)
++        if summary is None:
++            print("no words found", file=sys.stderr)
++            return 4
++        for line in summary:
++            print(line)
+     return 0
+ 
+ 
+diff --git a/wordfreq/report.py b/wordfreq/report.py
+index 895879a..85631d4 100644
+--- a/wordfreq/report.py
++++ b/wordfreq/report.py
+@@ -9,3 +9,16 @@ def sorted_items(counts):
+ def render_table(counts):
+     """Render a full frequency table: one 'word count' line per distinct word."""
+     return ["%s %d" % (word, count) for word, count in sorted_items(counts)]
++
++
++def summarize(counts):
++    """Render summary statistics, or return None when there are no words."""
++    if not counts:
++        return None
++
++    top_word, top_count = sorted_items(counts)[0]
++    return [
++        "total_words: %d" % sum(counts.values()),
++        "unique_words: %d" % len(counts),
++        "top_word: %s (%d)" % (top_word, top_count),
++    ]
+diff --git a/examples/stats-output.txt b/examples/stats-output.txt
+new file mode 100644
+--- /dev/null
++++ b/examples/stats-output.txt
+@@ -0,0 +1,3 @@
++total_words: 43
++unique_words: 38
++top_word: and (2)
+diff --git a/tests/test_stats.py b/tests/test_stats.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_stats.py
+@@ -0,0 +1,96 @@
++import contextlib
++import io
++import tempfile
++import unittest
++from pathlib import Path
++
++from wordfreq.cli import main
++from wordfreq.report import summarize
++
++
++class StatsTests(unittest.TestCase):
++    def run_cli(self, *args):
++        stdout = io.StringIO()
++        stderr = io.StringIO()
++        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
++            status = main(list(args))
++        return status, stdout.getvalue(), stderr.getvalue()
++
++    def write_input(self, directory, name, contents):
++        path = Path(directory, name)
++        path.write_text(contents, encoding="utf-8")
++        return str(path)
++
++    def test_stats_output_and_alphabetical_tie_break(self):
++        with tempfile.TemporaryDirectory() as directory:
++            path = self.write_input(directory, "words.txt", "the cat and the hat and the bat")
++            status, stdout, stderr = self.run_cli("stats", path)
++
++        self.assertEqual(status, 0)
++        self.assertEqual(
++            stdout,
++            "total_words: 8\nunique_words: 5\ntop_word: the (3)\n",
++        )
++        self.assertEqual(stderr, "")
++
++    def test_min_length_filters_before_counting(self):
++        with tempfile.TemporaryDirectory() as directory:
++            path = self.write_input(directory, "words.txt", "aa b ccc b")
++            status, stdout, stderr = self.run_cli(
++                "stats", "--min-length", "2", path
++            )
++
++        self.assertEqual(status, 0)
++        self.assertEqual(
++            stdout,
++            "total_words: 2\nunique_words: 2\ntop_word: aa (1)\n",
++        )
++        self.assertEqual(stderr, "")
++
++    def test_multiple_files_are_combined(self):
++        with tempfile.TemporaryDirectory() as directory:
++            first = self.write_input(directory, "first.txt", "beta alpha")
++            second = self.write_input(directory, "second.txt", "beta")
++            status, stdout, stderr = self.run_cli("stats", first, second)
++
++        self.assertEqual(status, 0)
++        self.assertEqual(
++            stdout,
++            "total_words: 3\nunique_words: 2\ntop_word: beta (2)\n",
++        )
++        self.assertEqual(stderr, "")
++
++    def test_no_words_returns_status_four(self):
++        with tempfile.TemporaryDirectory() as directory:
++            path = self.write_input(directory, "words.txt", "a b")
++            status, stdout, stderr = self.run_cli(
++                "stats", "--min-length", "2", path
++            )
++
++        self.assertEqual(status, 4)
++        self.assertEqual(stdout, "")
++        self.assertEqual(stderr, "no words found\n")
++
++    def test_unreadable_file_returns_status_one(self):
++        status, stdout, stderr = self.run_cli("stats", "does-not-exist.txt")
++
++        self.assertEqual(status, 1)
++        self.assertEqual(stdout, "")
++        self.assertTrue(stderr.startswith("error: "))
++
++    def test_help_uses_required_description(self):
++        for args in (("--help",), ("stats", "--help")):
++            stdout = io.StringIO()
++            with self.assertRaisesRegex(SystemExit, "0"):
++                with contextlib.redirect_stdout(stdout):
++                    main(list(args))
++            self.assertIn(
++                "Show summary statistics for the input files.", stdout.getvalue()
++            )
++
++    def test_summarize_returns_none_for_empty_mapping(self):
++        self.assertIsNone(summarize({}))
++
++
++if __name__ == "__main__":
++    unittest.main()

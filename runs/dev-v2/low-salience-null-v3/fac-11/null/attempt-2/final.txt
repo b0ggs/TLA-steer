@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added weighted rollups and all documented 0.4.0 requirements: defaults, ordering, validation, parsing, precision, version, statistics behavior, changelog, and tests.
+
+Verification: `python3 -m unittest discover -s tests` — 6 tests passed.

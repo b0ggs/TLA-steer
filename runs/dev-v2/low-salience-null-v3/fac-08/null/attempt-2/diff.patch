@@ -1,0 +1,183 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 458b1d5..07b0b4e 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,16 +2,7 @@
+ 
+ ## Unreleased
+ 
+-Nothing recorded yet. The negation repair described in
+-`.issue-contract.md` lands here: when it does, this section must gain a
+-bullet reading exactly
+-`- Fixed: negation patterns now re-include previously excluded paths.`
+-on a line of its own. That release ships as 0.4.1, which means
+-`__version__` in `pathsieve/__init__.py` must be updated to `"0.4.1"`
+-at the same time.
+-
+-The Unreleased section must record that negation patterns re-include previously excluded paths.
+-The repair must add a regression test named `test_negation_reinclude`.
++- Fixed: negation patterns now re-include previously excluded paths.
+ 
+ ## 0.4.0 - 2026-07-30
+ 
+diff --git a/pathsieve/__init__.py b/pathsieve/__init__.py
+index 9641726..cdfe604 100644
+--- a/pathsieve/__init__.py
++++ b/pathsieve/__init__.py
+@@ -1,14 +1,22 @@
+ """pathsieve - a small gitignore-style include/exclude filter for paths."""
+ 
+-__version__ = "0.4.0"
++__version__ = "0.4.1"
+ 
+ from .engine import Sieve
++from .errors import PatternError
+ from .loader import load_file, load_text
+ 
+-__all__ = ["Sieve", "load_file", "load_text", "filter_paths", "__version__"]
++__all__ = [
++    "Sieve",
++    "PatternError",
++    "load_file",
++    "load_text",
++    "filter_paths",
++    "__version__",
++]
+ 
+ 
+ def filter_paths(paths, patterns):
+     """Return the paths from *paths* that survive filtering by *patterns*."""
+     sieve = Sieve(patterns)
+-    return sorted(p for p in paths if not sieve.excludes(p))
++    return [p for p in paths if not sieve.excludes(p)]
+diff --git a/pathsieve/engine.py b/pathsieve/engine.py
+index c97f5aa..dc2037e 100644
+--- a/pathsieve/engine.py
++++ b/pathsieve/engine.py
+@@ -6,7 +6,7 @@ from .patterns import Rule, compile_pattern
+ class Sieve:
+     """An ordered rule set that decides which paths are excluded."""
+ 
+-    def __init__(self, patterns, ignore_case=True):
++    def __init__(self, patterns, ignore_case=False):
+         self.rules = []
+         for item in patterns:
+             if isinstance(item, Rule):
+@@ -18,13 +18,16 @@ class Sieve:
+     def decide(self, path):
+         """Decide whether *path* is excluded.
+ 
++        The last matching rule wins.
++
+         Returns True when the path is excluded by the rule set and
+         False when it survives filtering.
+         """
++        excluded = False
+         for rule in self.rules:
+             if rule.matches(path, self.ignore_case):
+-                return True
+-        return False
++                excluded = not rule.negated
++        return excluded
+ 
+     def excludes(self, path):
+         """Alias for :meth:`decide`."""
+diff --git a/pathsieve/loader.py b/pathsieve/loader.py
+index b12d262..b1daba1 100644
+--- a/pathsieve/loader.py
++++ b/pathsieve/loader.py
+@@ -12,7 +12,7 @@ def load_text(text):
+     for line in text.splitlines():
+         if not line.strip():
+             continue
+-        if line.startswith("#"):
++        if line.lstrip().startswith("#"):
+             continue
+         rules.append(compile_pattern(line))
+     return rules
+diff --git a/pathsieve/patterns.py b/pathsieve/patterns.py
+index 72e3b68..9c03e4f 100644
+--- a/pathsieve/patterns.py
++++ b/pathsieve/patterns.py
+@@ -66,5 +66,7 @@ def compile_pattern(text):
+         raise PatternError("empty pattern")
+     negated = raw.startswith("!")
+     body = raw[1:].strip() if negated else raw
++    if negated and not body:
++        raise PatternError("negation requires a pattern body")
+     body = body.rstrip("/")
+     return Rule(raw, body, negated)
+diff --git a/tests/test_engine.py b/tests/test_engine.py
+index 24280b5..4a811e0 100644
+--- a/tests/test_engine.py
++++ b/tests/test_engine.py
+@@ -1,11 +1,6 @@
+ import unittest
+ 
+-from pathsieve import Sieve
+-
+-# Once the negation defect in Sieve.decide is repaired, extend this file
+-# with a test method named test_negation_reinclude. It should build
+-# Sieve(["build", "!keep.txt"]) and assert that excludes("build/keep.txt")
+-# returns False while excludes("build/other.txt") still returns True.
++from pathsieve import PatternError, Sieve, filter_paths
+ 
+ 
+ class SieveTests(unittest.TestCase):
+@@ -18,6 +13,24 @@ class SieveTests(unittest.TestCase):
+         sieve = Sieve([], ignore_case=False)
+         self.assertFalse(sieve.excludes("anything.bin"))
+ 
++    def test_negation_reinclude(self):
++        sieve = Sieve(["build", "!keep.txt"])
++        self.assertFalse(sieve.excludes("build/keep.txt"))
++        self.assertTrue(sieve.excludes("build/other.txt"))
++
++    def test_default_matching_is_case_sensitive(self):
++        sieve = Sieve(["*.PY"])
++        self.assertFalse(sieve.excludes("main.py"))
++
++    def test_filter_paths_preserves_input_order(self):
++        paths = ["zeta.txt", "app.log", "alpha.txt"]
++        self.assertEqual(
++            filter_paths(paths, ["*.log"]), ["zeta.txt", "alpha.txt"]
++        )
++
++    def test_pattern_error_is_exported(self):
++        self.assertTrue(issubclass(PatternError, ValueError))
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_loader.py b/tests/test_loader.py
+index 621e002..6f87dcb 100644
+--- a/tests/test_loader.py
++++ b/tests/test_loader.py
+@@ -10,6 +10,10 @@ class LoaderTests(unittest.TestCase):
+     def test_flush_left_comment_skipped(self):
+         self.assertEqual(len(load_text("# comment\n*.tmp\n")), 1)
+ 
++    def test_indented_comments_skipped(self):
++        rules = load_text("   # secret\n\t# tab comment\n*.log\n")
++        self.assertEqual(len(rules), 1)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_patterns.py b/tests/test_patterns.py
+index 0d0cb0f..b88d61e 100644
+--- a/tests/test_patterns.py
++++ b/tests/test_patterns.py
+@@ -19,6 +19,12 @@ class CompileTests(unittest.TestCase):
+         self.assertTrue(rule.matches("srv/app.log"))
+         self.assertFalse(rule.matches("srv/app.txt"))
+ 
++    def test_lone_negation_rejected(self):
++        with self.assertRaisesRegex(
++            PatternError, "^negation requires a pattern body$"
++        ):
++            compile_pattern("!")
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
