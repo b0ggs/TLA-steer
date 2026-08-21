@@ -481,6 +481,7 @@ document v3 is REQUIRED and authorized (an edit, not a new document).
   if the agent emitted blind/, blind.provenance.json, or manifest.json —
   (audit) otherwise the generator can fake its own blind solve and walk
   through admit.
+- Destinations are exclusive-create: taskgen refuses an existing tasks/<id>/.
 - Output is untrusted; only `admit` makes it usable. Prompts live in
   tooling/prompts/ as versioned text files.
 
@@ -501,6 +502,10 @@ document v3 is REQUIRED and authorized (an edit, not a new document).
   sandbox_flags, and the design accepts that blind-solve fidelity is
   best-effort pre-exposure screening; the live null attempts remain the final
   fidelity probe. Per-task timestamps. ≤2 concurrent solvers.
+- Mutation safety (audit): blindsolve refuses any task id present in
+  exposures.jsonl; stages the solve in a temp dir and atomically replaces any
+  existing pre-exposure blind/; rejects symlinks and special files in the
+  solver output; re-verifies the public/ tree hash is unchanged afterward.
 
 ### 10.3 Deliverable C: spread check — inside taskcheck (+≤160 lines; file cap
 SUPERSEDES §1.6: taskcheck.py ≤620 total; currently 451)
@@ -518,8 +523,11 @@ SUPERSEDES §1.6: taskcheck.py ≤620 total; currently 451)
       across a minimum number of distinct files.
   Thresholds are CLI args with defaults (--max-stated-per-file 3,
   --min-statement-files 4) — policy stays out of the tool (audit).
-- v2 tasks are exempt until re-admitted; a v3 admit without stated_in fails
-  (no opt-out hole: the manifest layout marker decides which rules apply).
+- Layout selection (audit: the manifest cannot select the rules that produce
+  it): "layout_version": 3 originates in task-meta.json, authored with the
+  task; admit reads it there, applies v3 rules, and copies it into the
+  manifest. Absent field = v2 (legacy). A v3 admit without stated_in fails —
+  no opt-out hole.
 - Arm filename: taskcheck gains --md-filename (default CODER.md) used by the
   arm-neutrality sentinel and the forbidden-name check (audit: three
   hardcoded sites, taskcheck.py:135 and :271-273).
@@ -538,10 +546,19 @@ tests/test_run_batch.py ≤300. Exactly one import-site rename exists (audit).
   report (audit).
 - REQUEST schema v2: {"batch_id", "tasks": [{id, manifest_sha256}...],
   "arms": [{name, path, sha256}...] (1 or 2), "call_count" = tasks × arms × 3,
-  "runner": {...}}. Arm names are distinct labels even when files are
-  identical (A/A = two labels, one file — audit: same-label dirs would
-  collide). verify accepts BOTH the v1 single-arm schema (existing frozen
-  salience-probe-v2 evidence must keep verifying) and v2 (audit).
+  "replacement_call_cap" (per §4 infra rules), "max_total_calls" =
+  call_count + replacement_call_cap — launch refuses any call beyond it
+  (audit: approval must bound replacement spend, not just nominal),
+  "md_filename", "runner": {...}}. Arm names are distinct labels even when
+  files are identical (A/A = two labels, one file — audit: same-label dirs
+  would collide). verify accepts BOTH the v1 single-arm schema (existing
+  frozen salience-probe-v2 evidence must keep verifying) and v2 (audit).
+- md_filename end-to-end (audit): recorded in REQUEST and in every attempt's
+  evidence; and the subject wrapper prompt must name the SAME file — since
+  the frozen src wrapper hardcodes "CODER.md", run_batch owns a wrapper
+  template (default = the existing wording with the filename substituted)
+  and records the rendered wrapper's SHA-256 in evidence. Task files never
+  carry md_filename (tasks stay arm-invariant).
 - RUNNER constants become CLI args with current values as defaults; the arm
   filename becomes --md-filename (default CODER.md).
 - Authorized frozen-file edit (unchanged): src/mdseval/runner/codex_cli.py
@@ -561,10 +578,15 @@ tests/test_run_batch.py ≤300. Exactly one import-site rename exists (audit).
   is INCONCLUSIVE by rule. Exact two-sided sign test, own implementation
   (deliberate ~40-line duplication of src/ stats for repo-agnosticism —
   audit noted the duplication; it is accepted), enumeration cap 24 tasks.
-- Integrity: compare re-verifies the batch evidence-ledger chain itself
-  (~15 generic lines, same canonical-JSON chain rules) and every
-  disposition's presence; any failure, any disposition label "invalid", or
-  the two arms' recorded runner params differing → verdict INVALID (audit).
+- Integrity (audit: presence-checking is tamperable): run_batch appends each
+  disposition.json's SHA-256 as its own evidence-ledger entry at write time;
+  compare re-verifies the chain AND each disposition's bytes against its
+  ledger entry. Any failure, any disposition label "invalid", or the two
+  arms' recorded runner params differing → verdict INVALID.
+- Verdict rules, pinned (audit: were unstated): A_BETTER iff p ≤ alpha AND
+  effect ≥ +threshold; B_BETTER symmetric; otherwise INCONCLUSIVE (unless
+  INVALID). Defaults alpha 0.05, threshold 0.20; both are CLI args and both
+  are embedded in verdict.json.
 - verdict.json + markdown report MUST embed: thresholds used, both arm names
   + file SHA-256s, batch id, evidence-ledger head hash, task list with
   per-task deltas, n_effective, excluded/unbalanced tasks, resolved runner
@@ -598,13 +620,28 @@ budgets for Phase 2)
    requirements' statements in one file, so EXPECT: public/ doc edits to
    spread statements, ~50 hand-copied stated_in quotes (authoring work, agent
    labor, budget-exempt), fresh blind solves after every public/ edit (tree
-   hash changes), then v3 re-admission. Then queue a NEW two-arm REQUEST
-   (null vs a chosen MD arm) for Wade — the previously mentioned "pending
-   15-call request" does not exist (audit) and hash-bound requests must be
-   regenerated after re-admission anyway.
+   hash changes), then v3 re-admission. Then queue a NULL-ONLY calibration
+   REQUEST (5 tasks × 3 calls) for Wade — calibration first; the salience
+   probe FAILED (q = 1.0) and this batch is its real test, not a formality.
+   (The previously mentioned "pending 15-call request" does not exist —
+   audit — and hash-bound requests must be regenerated after re-admission.)
+5b. The MD-vs-MD contrast is a SEPARATE, LATER measurement gate, out of
+   Phase 2 implementation scope (audit: the plan may not jump past a failed
+   calibration). Preconditions before its REQUEST may even be queued:
+   calibration yields enough band tasks that the cohort is prospectively
+   sized (≥8 tasks queued, expecting ≥6 non-tied — 5 tasks can never reach
+   significance: 5/5 wins gives p = 0.0625); the helpful-arm file is named
+   and SHA-256-pinned in the REQUEST prospectively; and the report labels
+   results DEVELOPMENT-ONLY, supporting no incumbent/candidate replacement
+   claim.
 6. All suites green; no governed file touched beyond §10.4's codex_cli.py
    edit; no new documents (tooling/README.md and tooling/prompts/* edits are
    authorized); no live subject calls anywhere in Phase 2 implementation.
+7. Boundary ruling, recorded so audits stop re-raising it: authoring and
+   blind-solve agent invocations are NOT subject calls and need no
+   REQUEST/APPROVED — the single human checkpoint (§1.2) covers live subject
+   spend only. Requiring approvals for agent labor would reinstate
+   per-candidate ceremony; Wade controls that spend by launching sessions.
 
 ### 10.7 Out of scope (recorded so nobody drifts)
 
