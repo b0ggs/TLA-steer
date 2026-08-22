@@ -1,0 +1,25 @@
+{
+  "R1": {
+    "omission_probe": {
+      "path": "urllib/parse.py",
+      "text": "if scheme != bscheme or (scheme and scheme not in uses_relative):",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "The `urljoin()` function must preserve relative base paths and undefined or empty authority markers for the enumerated empty, slash-only, authority, scheme-only, rooted-path, and relative-path cases."
+    },
+    "target_paths": ["urllib/parse.py"]
+  },
+  "R2": {
+    "omission_probe": {
+      "path": "tests/test_urljoin_relative.py",
+      "type": "path_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Add a runnable standard-library regression module at `tests/test_urljoin_relative.py` that covers both the undefined-authority `//` base and the relative-path `/b/c` base."
+    },
+    "target_paths": ["tests/test_urljoin_relative.py"]
+  }
+}

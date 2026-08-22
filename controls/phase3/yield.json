@@ -1,0 +1,54 @@
+{
+  "as_of": "2026-08-22",
+  "candidates": [
+    {
+      "admitted": true,
+      "blindsolve_runs": 2,
+      "manifest_sha256": "0aeff1d9bffb04895564d9f4bfc630540bc8f6b17edc78f83481c131d0dd8d5f",
+      "task_id": "real-cpython-enum-lookup"
+    },
+    {
+      "admitted": true,
+      "blindsolve_runs": 2,
+      "manifest_sha256": "32fe753814f8885d0e895f00ebe6d5a5f35cdabbc01d091c9d6a125289690caa",
+      "task_id": "real-cpython-doctest-notes"
+    },
+    {
+      "admitted": true,
+      "blindsolve_runs": 1,
+      "manifest_sha256": "90fd8737475f72aabf4d59ce24a4c64f00522922f02c37e42c83480549b5d93d",
+      "task_id": "real-tomli-dotted-keys"
+    },
+    {
+      "admitted": true,
+      "blindsolve_runs": 1,
+      "manifest_sha256": "475b1d85fd3ba5efc59b0d8417bd0cce4959d0f74cb77c73072b60d3ec0e410e",
+      "task_id": "real-boltons-indexed-slice"
+    },
+    {
+      "admitted": false,
+      "blindsolve_runs": 3,
+      "disposition": "blindsolve_cap_exhausted:R1_false",
+      "preserved_at": "candidates/phase3/real-cpython-urljoin-relative",
+      "task_id": "real-cpython-urljoin-relative"
+    }
+  ],
+  "counts": {
+    "admitted": 4,
+    "candidates_reconstructed": 5,
+    "issues_considered": 56,
+    "repos_screened": 6,
+    "showing_headroom": null
+  },
+  "phase": "phase3",
+  "screened_repositories": [
+    "https://github.com/astanin/python-tabulate",
+    "https://github.com/hukkin/tomli",
+    "https://github.com/mahmoud/boltons",
+    "https://github.com/pypa/packaging",
+    "https://github.com/python-hyper/h11",
+    "https://github.com/python/cpython"
+  ],
+  "status": "NULL_SCOUT_PENDING",
+  "yield_scope": "Counts only; no population-rate extrapolation. Headroom remains pending until the approved null scout is verified."
+}
