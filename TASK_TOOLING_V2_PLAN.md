@@ -708,14 +708,19 @@ Status: PROPOSED (flips to "Phase 3 ACTIVE as of <date>" on Wade's word).
 Branch: off task-tooling-v2-phase2. Timebox: 4-5 candidates, 1-2.5 working
 days of agent labor (audit-verified estimate; "one day" was optimistic) plus
 TWO hash-approved live batches, each a mandatory stop. ≤2 agents concurrent.
-Helper scripts only under scripts/import/ (budget-exempt). No new documents —
+Helper scripts only under scripts/import/ (budget-exempt but CAPPED: <=300
+lines total, single-repo scope, no generalized issue-mining framework). §11
+narrowly supersedes §10.7's mining exclusion for these 4-5 manually
+reconstructed candidates only. No new documents —
 task content, provenance, controls, REQUEST/APPROVED, and run evidence are
 artifacts, not documents. blindsolve/taskgen agent invocations are agent
 labor, not live subject calls, and sit outside the two-batch limit.
 
 ### 11.1 Why, and the permitted claim
 
-Synthetic tasks of every tested design saturate: the bare model solves 100%.
+Synthetic tasks of every tested design saturate (one historical exception:
+scout-c-integration-01 resolved 1/3 once, never replicated) — the bare model
+otherwise solves 100%.
 Published benchmarks show this model class failing 25-40% of REAL repository
 tasks. Phase 3 reconstructs candidate tasks from real repos and lets the
 model's own runs filter them. Yield decides everything; essays don't.
@@ -768,7 +773,10 @@ Mandatory mechanics (each audit-traced to the tooling):
    pre-exposure retries. It proves the task is fairly solvable from public
    text; it is NOT a difficulty filter — the candidates we want are exactly
    those the 300s subject fails, so never discard a candidate because the
-   blind solve needed retries.
+   blind solve needed retries. CAP (audit: unlimited retries defeat the
+   timebox): at most 3 blindsolve runs per candidate, then swap candidates.
+   If fewer than 4 candidates admit within the timebox, record the terminal
+   outcome SOURCE_FEASIBILITY_NOT_SHOWN and stop — that too is an answer.
 5. PROBE HONESTY: text_absent probes on real tasks are solution-shaped
    (a different-but-correct fix can look like an "omission"). Therefore:
    omission/wrong-failure-mode labels are NOT evidence in Phase 3;
@@ -778,12 +786,16 @@ Mandatory mechanics (each audit-traced to the tooling):
    "enumerated", ≤3 requirements, quotes in .issue-contract.md (the
    pragmatic route; noted openly: that is the high-salience condition —
    real-code difficulty, not salience, is what Phase 3 tests).
-6. PROVENANCE: failure-source.json (started before admit, BYTE-FINAL before
-   admit — the manifest hashes it; any later edit bricks verify, and after
+6. PROVENANCE: failure-source.json is SOURCE-ONLY and BYTE-FINAL before
+   admit (the manifest hashes it; any later edit bricks verify, and after
    first exposure there is no re-admission; every task byte is final before
-   the null batch): source/issue URLs, base+fix SHAs, patch hashes, checker
-   command, SPDX id + preserved LICENSE/NOTICE files + hashes, removed
-   instruction paths, and (when authored) the treatment MD path + SHA-256.
+   the null batch). Exact schema, validated by the preflight script:
+   {source_url, issue_url, base_sha, fix_sha, solution_patch_sha256,
+   fix_test_patch_sha256, checker_command, spdx_id, license_paths+hashes,
+   removed_instruction_paths, extraction_note}. Treatment provenance NEVER
+   goes in this file (audit: that mutation would break the frozen hashes) —
+   it lives in controls/phase3/<task-id>.provenance.json, created at MD
+   authoring time and hash-bound inside the paired REQUEST.
 7. YIELD LEDGER (restored): count repos screened → issues considered →
    candidates reconstructed → admitted → showing headroom. The counts are
    recorded; extrapolating them to a population rate is forbidden. This is
@@ -800,20 +812,25 @@ taskcheck/run_batch/compare stays untouched.
 
 ### 11.3 Treatment MD (one, post-selection, blinded author)
 
-After selection (§11.4), one agent authors ONE treatment MD for the selected
-task at controls/phase3/<task-id>.md. The author sees ONLY the pre-fix
-upstream tree and its ordinary public docs — never .issue-contract.md,
-requirements.json, check.py, reference/, blind/, the issue/PR/fix, private
-tests, or any scout evidence. Content: stable public repository knowledge
+After selection (§11.4), a FRESH-CONTEXT agent (new instance; its prompt
+contains only a mechanically generated packet) authors ONE treatment MD for
+the selected task at controls/phase3/<task-id>.md. The packet, built by a
+scripts/import/ script, contains the pre-fix upstream tree and its ordinary
+public docs and NOTHING else — never .issue-contract.md, requirements.json,
+check.py, reference/, blind/, the issue/PR/fix, private tests, or any scout
+evidence. (Audit: same-agent authoring cannot be trusted to forget.) Content: stable public repository knowledge
 (commands, architecture, source-of-truth locations, generated-file policy);
 MUST NOT name the task/issue/PR/commit, hidden test, intended patch, or a
 task-specific file/symbol; every concrete fact carries a public path+quote.
 Exactly one version, ever: no outcome-driven edit, replacement, or retry.
-Record in failure-source.json: MD sha256, its public supports, one predicted
-requirement id + binary prediction — REPORTED in the final write-up, never a
-pass/fail gate. Manual cross-check before the paired REQUEST (no tool does
-this): failure-source.json md_sha256 == sha256(controls/phase3/<id>.md) ==
-the REQUEST's arm-B sha256.
+Record in controls/phase3/<id>.provenance.json: MD sha256, its public
+supports, and the author's prediction stated as a task-level BEHAVIOR in
+plain words (the author cannot know requirement ids — audit-caught
+contradiction); a separate custodian step maps that behavior to a
+requirement id afterward and records the mapping. All of it REPORTED in the
+final write-up, never a pass/fail gate. Manual cross-check before the paired
+REQUEST (no tool does this): provenance md_sha256 ==
+sha256(controls/phase3/<id>.md) == the REQUEST's arm-B sha256.
 
 ### 11.4 Null scout — first STOP
 
@@ -832,13 +849,20 @@ inspected before selection. Selection: most qualifying nonresolutions,
 tiebreak lexicographically smallest task id. Scout attempts are calibration
 evidence and are never reused as the paired bare arm.
 
-### 11.5 Decision gate (binding — what each outcome AUTHORIZES)
+### 11.5 Decision gate (binding)
 
-| Scout outcome | Authorized without any new document |
+PHASE 3 TERMINATES after the scout plus at most one paired probe, with a
+terminal outcome recorded in handoffs/PROCESS_FINDINGS. The table's
+follow-ons are STANDING PERMISSIONS, not automatic continuations: each
+starts only on Wade's explicit go-word, uses this identical frozen recipe,
+requires no new plan document, and every live batch still requires its own
+REQUEST/APPROVED.
+
+| Scout outcome | Standing permission (Wade-triggered, no new document) |
 |---|---|
 | ≥2 tasks with task-causal nonresolutions | HEADROOM. (a) record yield; (b) run the §11.6 paired probe; (c) reconstruct a second cohort of 6-10 tasks from DIFFERENT repos under this identical frozen recipe, same two-stop pattern; (d) when ≥8 band tasks exist, queue the §10.6.5b contrast under its own preconditions. NOT authorized: pack/leaderboard/site work, generalized mining, population claims. |
 | Exactly 1 | Run the §11.6 probe on it; reconstruct 4-6 more candidates from different repos (one more day max) before any further decision. |
-| 0 | Record NO_HEADROOM_OBSERVED_IN_THIS_COHORT. Pre-authorized pivot: the product's measured dimensions become cost + regression detection (both already work). No further synthetic cohorts of any design. NOT authorized: the claim that headroom is dead for the model — 4-5 tasks is weak evidence; the pivot is a resource decision, not a scientific conclusion. |
+| 0 | Record NO_HEADROOM_OBSERVED_IN_THIS_COHORT. The cost+regression pivot becomes Wade's decision, informed by this record — no work is pre-authorized (audit: cost measurement needs its own scoping). No further synthetic cohorts of any design. NOT authorized: the claim that headroom is dead for the model — 4-5 tasks is weak evidence. |
 
 ### 11.6 Paired probe (conditional on headroom) — second STOP
 
@@ -849,13 +873,22 @@ delta = s_MD − s_bare. REQUEST binds task manifest, both arm hashes, MD
 filename, runner, order seed, spend cap (6 nominal, 8 max). STOP for
 APPROVED.json.
 
-LOCAL_DEVELOPMENT_SIGNAL_SHOWN iff: all 6 usable attempts valid, all
-regressions pass, ≥1 task-causal nonresolution in the FRESH bare arm, and
-s_MD > s_bare. Otherwise HEADROOM_NOT_REPLICATED (bare arm ceilinged) or
+Run `run_batch verify` after EVERY batch (both stops); if verification
+fails, the terminal outcome is EVIDENCE_INVALID and no arm comparison is
+made. Pinned in the REQUEST: bare arm = controls/coder/null-m2.md (zero
+bytes, sha recorded), model gpt-5.6-sol, effort high, exactly 3 usable
+attempts per arm.
+
+PRELIMINARY_LOCAL_SIGNAL iff: all 6 usable attempts valid, all regressions
+pass, ≥1 task-causal nonresolution in the FRESH bare arm, and
+s_MD > s_bare. This label is deliberately weak — with 3 attempts per arm,
+s_MD > s_bare occurs by chance ~34% of the time even for identical arms
+(audit-verified); it is a mechanism hint, never evidence of benefit.
+Otherwise HEADROOM_NOT_REPLICATED (bare arm ceilinged) or
 MD_SENSITIVITY_NOT_SHOWN (headroom recurred, MD didn't move it). The
-predicted-requirement outcome is reported alongside. compare's formal
-verdict stays INCONCLUSIVE (or INVALID if anything was excluded — report
-why). Forbidden in every outcome: a second MD, task substitution, selective
+predicted-behavior outcome is reported alongside. compare's formal verdict
+stays INCONCLUSIVE (or INVALID if anything was excluded — report why).
+Forbidden in every outcome: a second MD, task substitution, selective
 retry, arm reuse, any general claim.
 
 ### 11.7 Acceptance and boundaries
