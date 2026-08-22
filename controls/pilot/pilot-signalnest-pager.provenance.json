@@ -1,0 +1,33 @@
+{
+  "schema": "section12-blinded-md-authorship-v1",
+  "author_agent": "/root/pilot_md_author",
+  "timestamp": "2026-08-22T23:51:58.246120+00:00",
+  "input_tree_sha256": "1a440a7761d1e34827b3bd0d6131024e8c7352f5481e4331d3f0715c99464a43",
+  "author_prompt_sha256": "1842a2c0396860d6d912a824b433e6f69664d11cd47debdaa78253adf2047b58",
+  "output_sha256": "10d28986b464ad91d879efc803c1ee46913b1255cc93bcb58696a23ed97331c8",
+  "fresh_context": true,
+  "input_scope": "isolated pristine repository tree with .issue-contract.md excluded",
+  "paths_read": [
+    "README.md",
+    "catalog/routes.json",
+    "checks/__init__.py",
+    "checks/case_routes.py",
+    "docs/development.md",
+    "signalnest/__init__.py",
+    "signalnest/generated_routes.py",
+    "signalnest/router.py",
+    "tests/__init__.py",
+    "tests/test_smoke.py",
+    "tools/build_routes.py",
+    "tools/verify.py"
+  ],
+  "forbidden_inputs_excluded": [
+    ".issue-contract.md",
+    "check.py",
+    "requirements.json",
+    "reference/",
+    "blind/",
+    "decoys/",
+    "mechanism.json"
+  ]
+}
