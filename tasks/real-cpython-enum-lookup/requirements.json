@@ -1,0 +1,29 @@
+{
+  "R1": {
+    "omission_probe": {
+      "path": "enum.py",
+      "text": "if value not in enum_class._hashable_values_:",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Enum value lookup must accept an unhashable value when it compares equal to a hashable member value, so `Directions({\"sc\"})` returns `Directions.DOWN_ONLY` when `DOWN_ONLY` stores `frozenset({\"sc\"})`."
+    },
+    "target_paths": [
+      "enum.py"
+    ]
+  },
+  "R2": {
+    "omission_probe": {
+      "path": "tests/test_enum_lookup_regression.py",
+      "type": "path_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Add the regression test artifact `tests/test_enum_lookup_regression.py` covering this lookup behavior. The file must be an executable standard-library unittest artifact that reproduces the unhashable-to-hashable lookup case."
+    },
+    "target_paths": [
+      "tests/test_enum_lookup_regression.py"
+    ]
+  }
+}
