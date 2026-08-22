@@ -704,7 +704,7 @@ machinery, and any statistics beyond the §10.5 sign test. See roadmap.md
 ## 11. PHASE 3 — Real-Issue Headroom Hunt + Local MD-Sensitivity Probe
 (consensus rev: merged from both AIs' versions by two-auditor adjudication, 2026-08-22)
 
-Status: PROPOSED (flips to "Phase 3 ACTIVE as of <date>" on Wade's word).
+Status: Phase 3 ACTIVE as of 2026-08-22.
 Branch: off task-tooling-v2-phase2. Timebox: 4-5 candidates, 1-2.5 working
 days of agent labor (audit-verified estimate; "one day" was optimistic) plus
 TWO hash-approved live batches, each a mandatory stop. ≤2 agents concurrent.
