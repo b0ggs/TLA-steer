@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -159,6 +160,18 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         with patch.object(batch, "ROOT", self.root.resolve()), self.assertRaisesRegex(
                 taskcheck.TaskError, "arm-neutral"):
             batch.queue_request("fake-batch", [task], [("a", arm)], self.root / "runs", md_filename="ALT.md")
+
+    def test_checker_ignores_subject_bytecode(self):
+        task = self.task("task-1")
+        workspace = self.root / "workspace"
+        shutil.copytree(task / "reference", workspace)
+        cache = workspace / "__pycache__"
+        cache.mkdir()
+        (cache / "module.cpython-311.pyc").write_bytes(b"bytecode")
+        (workspace / "orphan.pyc").write_bytes(b"bytecode")
+        result, deterministic, _ = batch._checker(task, workspace)
+        self.assertTrue(result["resolved"])
+        self.assertTrue(deterministic)
 
     def test_unfinished_launched_attempt_consumes_replacement(self):
         request, runs = self.queued(["task-1"]); calls = []

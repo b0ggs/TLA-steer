@@ -224,7 +224,7 @@ def _reserve(path: Path, intent: dict[str, Any]) -> None:
 def _checker(task: Path, workspace: Path) -> tuple[dict[str, Any], bool, float]:
     with tempfile.TemporaryDirectory(prefix="final-tree-") as temporary:
         clean = Path(temporary) / "tree"
-        shutil.copytree(workspace, clean, ignore=shutil.ignore_patterns(".git"))
+        shutil.copytree(workspace, clean, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"))
         started = time.monotonic()
         first, raw = taskcheck.run_checker(task / "check.py", clean)
         second, raw_two = taskcheck.run_checker(task / "check.py", clean)
