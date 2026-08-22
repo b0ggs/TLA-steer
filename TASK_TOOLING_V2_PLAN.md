@@ -905,7 +905,7 @@ retry, arm reuse, any general claim.
 
 ## 12. OPERATIONAL-KNOWLEDGE PILOT (same-day; the mechanism-correct test)
 
-Status: PROPOSED (flips to "Pilot ACTIVE as of <date>" on Wade's word).
+Status: Pilot ACTIVE as of 2026-08-22.
 Branch: off phase3. Timebox: REQUEST queued within ~2.5 hours of activation;
 ONE live batch (6 nominal calls, 8 max); ONE approval stop. One audit round
 maximum before build, and the audit report is SAVED to handoffs/ (Phase 3
