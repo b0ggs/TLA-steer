@@ -1,0 +1,72 @@
+diff --git a/boltons/setutils.py b/boltons/setutils.py
+index 3ed5ab3..4651a70 100644
+--- a/boltons/setutils.py
++++ b/boltons/setutils.py
+@@ -392,13 +392,15 @@ class IndexedSet(MutableSet):
+     def iter_slice(self, start, stop, step=None):
+         "iterate over a slice of the set"
+         iterable = self
+-        if start is not None:
+-            start = self._get_real_index(start)
+-        if stop is not None:
+-            stop = self._get_real_index(stop)
+         if step is not None and step < 0:
+             step = -step
+             iterable = reversed(self)
++            if start is not None and start < 0:
++                start += len(self)
++            if stop is not None and stop < 0:
++                stop += len(self)
++        else:
++            start, stop, step = slice(start, stop, step).indices(len(self))
+         return islice(iterable, start, stop, step)
+ 
+     # list operations
+@@ -966,4 +968,3 @@ class _ComplementSet:
+         if self._included is not None:
+             return bool(self._included)
+         return True
+-
+diff --git a/tests/test_indexed_slice_regression.py b/tests/test_indexed_slice_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_indexed_slice_regression.py
+@@ -0,0 +1,38 @@
++import unittest
++
++from boltons.setutils import IndexedSet
++
++
++class IndexedSetSliceRegressionTest(unittest.TestCase):
++    def setUp(self):
++        self.indexed = IndexedSet(range(20))
++        self.indexed.remove(2)
++        self.indexed.remove(7)
++        self.current = list(self.indexed)
++
++    def assertSliceMatchesList(self, key):
++        result = self.indexed[key]
++        self.assertIsInstance(result, IndexedSet)
++        self.assertEqual(list(result), self.current[key])
++
++    def test_positive_and_negative_bounds_after_removals(self):
++        for key in (
++                slice(1, 8),
++                slice(-8, -1),
++                slice(-12, 10),
++                slice(3, -3)):
++            with self.subTest(key=[REDACTED]
++                self.assertSliceMatchesList(key)
++
++    def test_positive_steps_agree_with_list_slicing(self):
++        for key in (
++                slice(None, None, 2),
++                slice(1, 15, 3),
++                slice(-15, -2, 4),
++                slice(-100, 100, 3)):
++            with self.subTest(key=[REDACTED]
++                self.assertSliceMatchesList(key)
++
++
++if __name__ == '__main__':
++    unittest.main()

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `doctest.py` to compare exception messages with all notes, while stripping SyntaxError-family location decoration. Added executable regression coverage in `tests/test_doctest_notes_regression.py`.
+
+All focused unittests, module doctests, compilation, and diff checks pass.

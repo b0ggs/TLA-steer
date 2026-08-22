@@ -38,9 +38,24 @@
     "candidates_reconstructed": 5,
     "issues_considered": 56,
     "repos_screened": 6,
-    "showing_headroom": null
+    "showing_headroom": 0
   },
   "phase": "phase3",
+  "scout": {
+    "batch_id": "phase3-real-null-scout-v1",
+    "launched_calls": 12,
+    "replacement_calls": 0,
+    "request_sha256": "cc9bacd05bbb506455cee9b7feae439ce74dba9666dd1fc110732555dee6f12c",
+    "selected_task_id": null,
+    "task_causal_nonresolutions": {
+      "real-boltons-indexed-slice": 0,
+      "real-cpython-doctest-notes": 0,
+      "real-cpython-enum-lookup": 0,
+      "real-tomli-dotted-keys": 0
+    },
+    "usable_attempts": 12,
+    "verified": true
+  },
   "screened_repositories": [
     "https://github.com/astanin/python-tabulate",
     "https://github.com/hukkin/tomli",
@@ -49,6 +64,6 @@
     "https://github.com/python-hyper/h11",
     "https://github.com/python/cpython"
   ],
-  "status": "NULL_SCOUT_PENDING",
-  "yield_scope": "Counts only; no population-rate extrapolation. Headroom remains pending until the approved null scout is verified."
+  "status": "NO_HEADROOM_OBSERVED_IN_THIS_COHORT",
+  "yield_scope": "Counts only; no population-rate extrapolation. The terminal outcome is local to this four-task cohort and does not establish that model headroom is absent in general."
 }

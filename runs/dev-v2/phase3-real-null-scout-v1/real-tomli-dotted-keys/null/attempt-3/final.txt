@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added explicit-header namespace tracking to reject illegal dotted-key extensions beneath tables and arrays-of-tables. Added both required regression tests in [test_dotted_keys_regression.py](/var/folders/km/bh3x8rhj63zgwdr2r_fvzjp80000gq/T/batch-real-tomli-dotted-keys-80pqx0y0/workspace/tests/test_dotted_keys_regression.py).
+
+Verification: `python3 -m unittest discover -s tests -v` — 2 tests passed.

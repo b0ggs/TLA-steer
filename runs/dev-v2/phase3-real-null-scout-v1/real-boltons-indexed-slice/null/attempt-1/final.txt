@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Corrected `IndexedSet` slicing to use apparent, dead-slot-free indices while preserving negative-step semantics. Added `tests/test_indexed_slice_regression.py`.
+
+Validation: 3 unittest regressions and module doctests pass.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated parser namespace tracking to reject dotted-key extensions beneath existing explicit tables and arrays-of-tables while preserving valid dotted keys.
+
+Added `tests/test_dotted_keys_regression.py` with both required cases. All tests pass.

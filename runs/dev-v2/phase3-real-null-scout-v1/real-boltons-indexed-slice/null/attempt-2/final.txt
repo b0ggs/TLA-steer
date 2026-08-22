@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Corrected `IndexedSet` slicing to use the apparent dead-slot-free index space while preserving negative-step semantics. Added the requested standard-library regression tests for bounds, positive steps, list agreement, and result type.
+
+Verification: 2 tests and module doctests pass.

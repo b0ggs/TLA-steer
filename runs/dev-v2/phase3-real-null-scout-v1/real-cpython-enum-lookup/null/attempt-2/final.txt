@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `Enum.__new__` to compare unhashable lookup values against all members, preserving alias behavior. Added `tests/test_enum_lookup_regression.py`.
+
+Validation: direct test, unittest discovery, and hashable/unhashable alias checks all pass.

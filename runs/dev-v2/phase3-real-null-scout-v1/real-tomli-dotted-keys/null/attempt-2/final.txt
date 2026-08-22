@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated namespace tracking to reject dotted-key extensions beneath explicitly created tables and arrays-of-tables after reopening a parent table.
+
+Added `tests/test_dotted_keys_regression.py` covering both cases. All focused tests and valid parsing checks pass.

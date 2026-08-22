@@ -1,0 +1,157 @@
+diff --git a/doctest.py b/doctest.py
+index 46b4dd6..da12093 100644
+--- a/doctest.py
++++ b/doctest.py
+@@ -1393,7 +1393,23 @@ class DocTestRunner:
+ 
+             # The example raised an exception:  check if it was expected.
+             else:
+-                exc_msg = traceback.format_exception_only(*exception[:2])[-1]
++                formatted_ex = traceback.format_exception_only(*exception[:2])
++                if issubclass(exception[0], SyntaxError):
++                    # SyntaxError / IndentationError is special:
++                    # we don't care about the carets / suggestions / etc
++                    # We only care about the error message and notes.
++                    # They start with `SyntaxError:` (or any other class name)
++                    exception_line_prefixes = (
++                        f"{exception[0].__qualname__}:",
++                        f"{exception[0].__module__}.{exception[0].__qualname__}:",
++                    )
++                    exc_msg_index = next(
++                        index
++                        for index, line in enumerate(formatted_ex)
++                        if line.startswith(exception_line_prefixes)
++                    )
++                    formatted_ex = formatted_ex[exc_msg_index:]
++                exc_msg = "".join(formatted_ex)
+                 if not quiet:
+                     got += _exception_traceback(exception)
+ 
+diff --git a/tests/test_doctest_notes_regression.py b/tests/test_doctest_notes_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_doctest_notes_regression.py
+@@ -0,0 +1,123 @@
++import importlib.util
++import io
++from pathlib import Path
++import textwrap
++import unittest
++
++
++REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
++SPEC = importlib.util.spec_from_file_location(
++    "doctest_under_test", REPOSITORY_ROOT / "doctest.py"
++)
++doctest = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(doctest)
++
++
++class ExceptionNotesRegressionTests(unittest.TestCase):
++    def run_doctest(self, source, globs=None):
++        source = textwrap.dedent(source)
++        test = doctest.DocTestParser().get_doctest(
++            source, globs or {}, "exception_notes", __file__, 0
++        )
++        output = io.StringIO()
++        result = doctest.DocTestRunner(verbose=False).run(
++            test, out=output.write
++        )
++        return result, output.getvalue()
++
++    def test_ordinary_exception_note_is_compared(self):
++        source = """
++            >>> exc = ValueError("message")
++            >>> exc.add_note("the note")
++            >>> raise exc
++            Traceback (most recent call last):
++            ...
++            ValueError: message
++            the note
++        """
++        result, output = self.run_doctest(source)
++
++        self.assertEqual(result.failed, 0, output)
++
++        wrong_source = source.replace(
++            "            the note\n", "            wrong note\n"
++        )
++        result, _ = self.run_doctest(wrong_source)
++        self.assertEqual(result.failed, 1)
++
++    def test_multiple_notes_are_all_compared(self):
++        source = """
++            >>> exc = RuntimeError("message")
++            >>> exc.add_note("first note")
++            >>> exc.add_note("second note")
++            >>> raise exc
++            Traceback (most recent call last):
++            ...
++            RuntimeError: message
++            first note
++            second note
++        """
++        result, output = self.run_doctest(source)
++
++        self.assertEqual(result.failed, 0, output)
++
++        for expected, replacement in (
++            ("            first note\n", "            wrong first note\n"),
++            ("            second note\n", "            wrong second note\n"),
++        ):
++            with self.subTest(expected=expected.strip()):
++                wrong_source = source.replace(expected, replacement)
++                result, _ = self.run_doctest(wrong_source)
++                self.assertEqual(result.failed, 1)
++
++    def test_syntax_error_family_notes_ignore_location(self):
++        for exception_type in (SyntaxError, IndentationError, TabError):
++            with self.subTest(exception_type=exception_type.__name__):
++                source = f"""
++                    >>> exc = exception_type(
++                    ...     "bad syntax", ("example.py", 7, 3, "bad source")
++                    ... )
++                    >>> exc.add_note("first syntax note")
++                    >>> exc.add_note("second syntax note")
++                    >>> raise exc
++                    Traceback (most recent call last):
++                    ...
++                    {exception_type.__name__}: bad syntax
++                    first syntax note
++                    second syntax note
++                """
++                result, output = self.run_doctest(
++                    source, {"exception_type": exception_type}
++                )
++                self.assertEqual(result.failed, 0, output)
++
++    def test_syntax_error_incorrect_note_fails(self):
++        source = """
++            >>> exc = SyntaxError(
++            ...     "bad syntax", ("example.py", 7, 3, "bad source")
++            ... )
++            >>> exc.add_note("actual note")
++            >>> raise exc
++            Traceback (most recent call last):
++            ...
++            SyntaxError: bad syntax
++            wrong note
++        """
++        result, _ = self.run_doctest(source)
++
++        self.assertEqual(result.failed, 1)
++
++    def test_exception_without_notes_is_unchanged(self):
++        source = """
++            >>> raise LookupError("plain message")
++            Traceback (most recent call last):
++            ...
++            LookupError: plain message
++        """
++        result, output = self.run_doctest(source)
++
++        self.assertEqual(result.failed, 0, output)
++
++
++if __name__ == "__main__":
++    unittest.main()

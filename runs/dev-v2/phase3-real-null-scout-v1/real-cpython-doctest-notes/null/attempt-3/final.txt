@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [doctest.py](/var/folders/km/bh3x8rhj63zgwdr2r_fvzjp80000gq/T/batch-real-cpython-doctest-notes-g3cpgfxu/workspace/doctest.py) to compare all exception notes while ignoring SyntaxError source decoration.
+
+Added [test_doctest_notes_regression.py](/var/folders/km/bh3x8rhj63zgwdr2r_fvzjp80000gq/T/batch-real-cpython-doctest-notes-g3cpgfxu/workspace/tests/test_doctest_notes_regression.py) with five regression tests. Unittest discovery and module doctests pass.

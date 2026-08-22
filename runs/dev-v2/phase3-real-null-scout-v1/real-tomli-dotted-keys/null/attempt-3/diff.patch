@@ -1,0 +1,68 @@
+diff --git a/tomli/_parser.py b/tomli/_parser.py
+index ec7c749..04e820f 100644
+--- a/tomli/_parser.py
++++ b/tomli/_parser.py
+@@ -128,6 +128,8 @@ class Flags:
+     # Marks a nest that has been explicitly created and can no longer
+     # be opened using the "[table]" syntax.
+     EXPLICIT_NEST = 1
++    # Marks a nest that was explicitly created by table syntax.
++    EXPLICIT_HEADER = 2
+ 
+     def __init__(self) -> None:
+         self._flags: dict[str, dict] = {}
+@@ -282,6 +284,7 @@ def create_dict_rule(src: str, pos: Pos, out: Output) -> tuple[Pos, Key]:
+     if out.flags.is_(key, Flags.EXPLICIT_NEST) or out.flags.is_(key, Flags.FROZEN):
+         raise suffixed_err(src, pos, f"Can not declare {key} twice")
+     out.flags.set(key, Flags.EXPLICIT_NEST, recursive=False)
++    out.flags.set(key, Flags.EXPLICIT_HEADER, recursive=False)
+     try:
+         out.data.get_or_create_nest(key)
+     except KeyError:
+@@ -303,6 +306,7 @@ def create_list_rule(src: str, pos: Pos, out: Output) -> tuple[Pos, Key]:
+     out.flags.unset_all(key)
+     # ...but this key precisely is still prohibited from table declaration
+     out.flags.set(key, Flags.EXPLICIT_NEST, recursive=False)
++    out.flags.set(key, Flags.EXPLICIT_HEADER, recursive=False)
+     try:
+         out.data.append_nest_to_list(key)
+     except KeyError:
+@@ -320,6 +324,12 @@ def key_value_rule(
+     key_parent, key_stem = key[:-1], key[-1]
+     abs_key_parent = header + key_parent
+ 
++    for key_part_idx in range(1, len(key)):
++        abs_key_part = header + key[:key_part_idx]
++        if out.flags.is_(abs_key_part, Flags.EXPLICIT_HEADER):
++            raise suffixed_err(
++                src, pos, f"Can not redefine namespace {abs_key_part}"
++            )
+     if out.flags.is_(abs_key_parent, Flags.FROZEN):
+         raise suffixed_err(
+             src, pos, f"Can not mutate immutable namespace {abs_key_parent}"
+diff --git a/tests/test_dotted_keys_regression.py b/tests/test_dotted_keys_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_dotted_keys_regression.py
+@@ -0,0 +1,21 @@
++import unittest
++
++import tomli
++
++
++class DottedKeysRegressionTest(unittest.TestCase):
++    def test_dotted_key_cannot_extend_explicit_table(self) -> None:
++        source = "[a.b]\nvalue = 1\n[a]\nb.child = 2\n"
++
++        with self.assertRaises(tomli.TOMLDecodeError):
++            tomli.loads(source)
++
++    def test_dotted_key_cannot_extend_array_of_tables(self) -> None:
++        source = "[[a.b]]\nvalue = 1\n[a]\nb.child = 2\n"
++
++        with self.assertRaises(tomli.TOMLDecodeError):
++            tomli.loads(source)
++
++
++if __name__ == "__main__":
++    unittest.main()

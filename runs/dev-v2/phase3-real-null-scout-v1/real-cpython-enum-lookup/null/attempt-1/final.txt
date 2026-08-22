@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [enum.py](/var/folders/km/bh3x8rhj63zgwdr2r_fvzjp80000gq/T/batch-real-cpython-enum-lookup-m6dfbruj/workspace/enum.py:1169) to search all members for unhashable lookups. Added the required executable unittest in [test_enum_lookup_regression.py](/var/folders/km/bh3x8rhj63zgwdr2r_fvzjp80000gq/T/batch-real-cpython-enum-lookup-m6dfbruj/workspace/tests/test_enum_lookup_regression.py:1).
+
+`python3 -m unittest discover -s tests -v` passes.

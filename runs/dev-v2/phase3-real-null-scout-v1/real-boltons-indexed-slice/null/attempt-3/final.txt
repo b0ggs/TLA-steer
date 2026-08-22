@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Fixed `IndexedSet` slicing to use apparent, dead-slot-free bounds while preserving negative-step semantics. Added `tests/test_indexed_slice_regression.py`.
+
+Verified with regression tests, exhaustive slice comparisons, and doctests.

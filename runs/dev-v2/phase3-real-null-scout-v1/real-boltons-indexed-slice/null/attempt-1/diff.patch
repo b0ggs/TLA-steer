@@ -1,0 +1,80 @@
+diff --git a/boltons/setutils.py b/boltons/setutils.py
+index 3ed5ab3..919d086 100644
+--- a/boltons/setutils.py
++++ b/boltons/setutils.py
+@@ -392,13 +392,10 @@ class IndexedSet(MutableSet):
+     def iter_slice(self, start, stop, step=None):
+         "iterate over a slice of the set"
+         iterable = self
+-        if start is not None:
+-            start = self._get_real_index(start)
+-        if stop is not None:
+-            stop = self._get_real_index(stop)
+         if step is not None and step < 0:
+             step = -step
+             iterable = reversed(self)
++        start, stop, step = slice(start, stop, step).indices(len(self))
+         return islice(iterable, start, stop, step)
+ 
+     # list operations
+@@ -966,4 +963,3 @@ class _ComplementSet:
+         if self._included is not None:
+             return bool(self._included)
+         return True
+-
+diff --git a/tests/test_indexed_slice_regression.py b/tests/test_indexed_slice_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_indexed_slice_regression.py
+@@ -0,0 +1,51 @@
++import unittest
++
++from boltons.setutils import IndexedSet
++
++
++class IndexedSetSliceRegressionTest(unittest.TestCase):
++    def setUp(self):
++        self.indexed = IndexedSet(range(20))
++        self.indexed.remove(2)
++        self.indexed.remove(11)
++        self.current = list(self.indexed)
++
++    def test_post_removal_bounds_use_apparent_indices(self):
++        self.assertEqual(list(self.indexed[2:6]), self.current[2:6])
++        self.assertEqual(list(self.indexed[-9:-3]), self.current[-9:-3])
++        self.assertEqual(list(self.indexed[3:-2]), self.current[3:-2])
++        self.assertEqual(list(self.indexed[-12:15]), self.current[-12:15])
++
++    def test_positive_step_slices_agree_with_list(self):
++        slices = [
++            slice(None, None, 2),
++            slice(1, 13, 3),
++            slice(-14, -2, 3),
++            slice(3, -2, 2),
++            slice(-100, 100, 4),
++        ]
++
++        for index in slices:
++            with self.subTest(index=index):
++                result = self.indexed[index]
++                self.assertIsInstance(result, IndexedSet)
++                self.assertEqual(list(result), self.current[index])
++
++    def test_negative_step_keeps_reverse_then_slice_semantics(self):
++        reversed_current = list(reversed(self.current))
++        slices = [
++            slice(None, None, -1),
++            slice(1, 13, -2),
++            slice(-14, -2, -3),
++        ]
++
++        for index in slices:
++            with self.subTest(index=index):
++                positive_index = slice(index.start, index.stop, -index.step)
++                self.assertEqual(
++                    list(self.indexed[index]), reversed_current[positive_index]
++                )
++
++
++if __name__ == '__main__':
++    unittest.main()

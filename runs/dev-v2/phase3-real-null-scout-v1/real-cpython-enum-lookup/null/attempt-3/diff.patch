@@ -1,0 +1,43 @@
+diff --git a/enum.py b/enum.py
+index 17d7273..a40b186 100644
+--- a/enum.py
++++ b/enum.py
+@@ -1166,9 +1166,9 @@ class Enum(metaclass=EnumType):
+             pass
+         except TypeError:
+             # not there, now do long search -- O(n) behavior
+-            for name, values in cls._unhashable_values_map_.items():
+-                if value in values:
+-                    return cls[name]
++            for member in cls._member_map_.values():
++                if member._value_ == value:
++                    return member
+         # still not found -- verify that members exist, in-case somebody got here mistakenly
+         # (such as via super when trying to override __new__)
+         if not cls._member_map_:
+diff --git a/tests/test_enum_lookup_regression.py b/tests/test_enum_lookup_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_enum_lookup_regression.py
+@@ -0,0 +1,21 @@
++import os
++import sys
++
++
++sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
++
++import unittest
++
++from enum import Enum
++
++
++class EnumLookupRegressionTests(unittest.TestCase):
++    def test_unhashable_value_matches_hashable_member_value(self):
++        class Directions(Enum):
++            DOWN_ONLY = frozenset({"sc"})
++
++        self.assertIs(Directions({"sc"}), Directions.DOWN_ONLY)
++
++
++if __name__ == "__main__":
++    unittest.main()

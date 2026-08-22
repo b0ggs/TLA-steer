@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Updated [doctest.py](/var/folders/km/bh3x8rhj63zgwdr2r_fvzjp80000gq/T/batch-real-cpython-doctest-notes-frsomuy2/workspace/doctest.py:1396) to compare all exception notes while stripping SyntaxError location decoration.
+
+Added [regression tests](/var/folders/km/bh3x8rhj63zgwdr2r_fvzjp80000gq/T/batch-real-cpython-doctest-notes-frsomuy2/workspace/tests/test_doctest_notes_regression.py:1) covering all requested cases.
+
+Validation: 5 tests passed; embedded doctests passed; diff checks clean.

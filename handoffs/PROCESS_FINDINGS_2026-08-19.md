@@ -130,3 +130,31 @@ The beneficial-sensitivity claim proper is OPEN pending probes 1-3 (~50 calls).
 - Full postmortem of the pre-reset era: M2_INDEPENDENT_SCIENTIFIC_REVIEW.md plus
   the failure ledger reconstructed 2026-08-18 (13 failures: 3 scientific, 4
   task/checker, 6 infra/process; 258 live calls, 93% yielding no usable evidence).
+
+## 6. Phase 3 real-issue headroom hunt — 2026-08-22
+
+Yield: 6 repositories screened → 56 issues considered → 5 candidates
+reconstructed → 4 admitted → 0 showing provisional headroom. The fifth
+reconstruction, real-cpython-urljoin-relative, exhausted the three-run blindsolve
+cap before exposure and was not admitted.
+
+The admitted cohort was run in the hash-approved null scout
+`phase3-real-null-scout-v1` (`REQUEST.json` SHA-256
+`cc9bacd05bbb506455cee9b7feae439ce74dba9666dd1fc110732555dee6f12c`).
+The batch used exactly 12 subject calls and no replacements. `run_batch verify`
+passed before interpretation. All 12 results were valid, every regression passed,
+and every stated requirement resolved:
+
+| Task | Valid attempts | Resolved | Task-causal nonresolutions |
+|---|---:|---:|---:|
+| real-boltons-indexed-slice | 3/3 | 3/3 | 0 |
+| real-cpython-doctest-notes | 3/3 | 3/3 | 0 |
+| real-cpython-enum-lookup | 3/3 | 3/3 | 0 |
+| real-tomli-dotted-keys | 3/3 | 3/3 | 0 |
+
+Terminal Phase 3 outcome: **NO_HEADROOM_OBSERVED_IN_THIS_COHORT**. This is a
+local four-task result, not evidence that headroom is dead for the model and not
+a population claim. Under the binding Phase 3 decision gate, no task was selected,
+no treatment MD or paired probe was created, and no further synthetic cohort is
+authorized. The cost-and-regression pivot is Wade's decision; no follow-on work is
+pre-authorized by this result.
