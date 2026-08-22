@@ -1,0 +1,29 @@
+{
+  "R1": {
+    "omission_probe": {
+      "path": "doctest.py",
+      "text": "exc_msg = \"\".join(formatted_ex)",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Doctest exception comparison must include every exception note after the exception message, while SyntaxError-family comparisons must ignore source-location decoration but still compare the exception message and notes."
+    },
+    "target_paths": [
+      "doctest.py"
+    ]
+  },
+  "R2": {
+    "omission_probe": {
+      "path": "tests/test_doctest_notes_regression.py",
+      "type": "path_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Add the regression test artifact `tests/test_doctest_notes_regression.py` covering ordinary exceptions, multiple notes, and SyntaxError-family notes. The file must be an executable standard-library unittest artifact that demonstrates the corrected comparisons."
+    },
+    "target_paths": [
+      "tests/test_doctest_notes_regression.py"
+    ]
+  }
+}
