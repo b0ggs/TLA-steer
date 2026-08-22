@@ -1,0 +1,44 @@
+{
+  "R1": {
+    "omission_probe": {
+      "path": "boltons/setutils.py",
+      "text": "if start is not None and start < 0:",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "IndexedSet slicing after removals must interpret positive and negative start and stop bounds in the apparent, dead-slot-free index space."
+    },
+    "target_paths": [
+      "boltons/setutils.py"
+    ]
+  },
+  "R2": {
+    "omission_probe": {
+      "path": "boltons/setutils.py",
+      "text": "if stop is not None and stop < 0:",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "For positive slice steps after removals, IndexedSet slicing must return the same items as slicing a list of the set's current contents, and each slice result must remain an IndexedSet."
+    },
+    "target_paths": [
+      "boltons/setutils.py"
+    ]
+  },
+  "R3": {
+    "omission_probe": {
+      "path": "tests/test_indexed_slice_regression.py",
+      "type": "path_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Add a standard-library unittest regression artifact at `tests/test_indexed_slice_regression.py` that covers post-removal slice bounds and agreement with list slicing."
+    },
+    "target_paths": [
+      "tests/test_indexed_slice_regression.py"
+    ]
+  }
+}
+

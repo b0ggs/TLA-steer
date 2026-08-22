@@ -1,0 +1,22 @@
+{
+  "base_sha": "979fa9b613fa8c0a455ae16ea6f2ec91c11ecafe",
+  "checker_command": "python3 check.py WORKSPACE",
+  "extraction_note": "phase3-preflight-v1: no inherited evaluator instructions, installs, build hooks, native code, pytest plugins, submodules, LFS pointers, symlinks, networked tests, bytecode, hidden Git trees, or hiding .gitignore files; extracted the root-level pure-Python boltons package, LICENSE, ordinary README, and relevant setutils documentation from the pinned base; omitted upstream build, CI, and pytest infrastructure; reference replaces only boltons/setutils.py with the pinned production fix and adds the contracted stdlib regression artifact; PR 423 is closed unmerged in GitHub metadata, while maintainer Mahmoud Hashemi directly landed the co-authored fix as the pinned default-branch commit",
+  "fix_sha": "609cabe932a1ea1423b24568644945abb1b8bb84",
+  "fix_test_patch_sha256": "7caba0f6655f5c742bc18837ac56be7ddb9046b05419ae765695a3af535f6729",
+  "issue_url": "https://github.com/mahmoud/boltons/pull/423",
+  "license_paths": [
+    {
+      "path": "public/LICENSE",
+      "sha256": "c301912653a8d8c99eab6212aa3aea8d164ea249d8ad53c941e0558a0a5ac1e3"
+    },
+    {
+      "path": "reference/LICENSE",
+      "sha256": "c301912653a8d8c99eab6212aa3aea8d164ea249d8ad53c941e0558a0a5ac1e3"
+    }
+  ],
+  "removed_instruction_paths": [],
+  "solution_patch_sha256": "0bed9119cd0b901d24ca51f701be91b17f8c0a1dd8d8bdd50a95410c3ae39ae1",
+  "source_url": "https://github.com/mahmoud/boltons",
+  "spdx_id": "BSD-3-Clause"
+}
