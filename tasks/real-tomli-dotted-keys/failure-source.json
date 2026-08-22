@@ -1,0 +1,22 @@
+{
+  "base_sha": "486c156d96d6260ed68a378f6bfdbc489a84e717",
+  "checker_command": "python3 check.py WORKSPACE",
+  "extraction_note": "phase3-preflight-v1: no inherited evaluator instructions, installs, build hooks, native code, pytest plugins, submodules, LFS pointers, symlinks, networked tests, bytecode, hidden Git trees, or hiding .gitignore files; extracted the root-level tomli package, LICENSE, and ordinary README from the pinned base; omitted upstream build, CI, benchmark, and pytest infrastructure; reference replaces only tomli/_parser.py with the pinned production fix and adds the contracted stdlib regression artifact; private data ports the complete upstream tests diff, whose hash includes the fix commit's three added invalid fixtures and deletion of an obsolete test module",
+  "fix_sha": "9e56735f2273c2341399932b76c0d717059db61b",
+  "fix_test_patch_sha256": "826c3cdd970a55add39021a6ec8db1cf41f8f146bc92a3173a02074cca5b780f",
+  "issue_url": "https://github.com/hukkin/tomli/pull/125",
+  "license_paths": [
+    {
+      "path": "public/LICENSE",
+      "sha256": "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe"
+    },
+    {
+      "path": "reference/LICENSE",
+      "sha256": "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe"
+    }
+  ],
+  "removed_instruction_paths": [],
+  "solution_patch_sha256": "5a2f477885b2a512600d3e2bfb84a3b4fd907a4186cb6d0e8809d2c7cbb9f570",
+  "source_url": "https://github.com/hukkin/tomli",
+  "spdx_id": "MIT"
+}

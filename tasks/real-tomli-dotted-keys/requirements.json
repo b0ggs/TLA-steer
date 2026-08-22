@@ -1,0 +1,44 @@
+{
+  "R1": {
+    "omission_probe": {
+      "path": "tomli/_parser.py",
+      "text": "out.flags.add_pending(cont_key, Flags.EXPLICIT_NEST)",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "The parser must raise `tomli.TOMLDecodeError` when a dotted key inside a reopened table attempts to define a value below a table that was already explicitly created."
+    },
+    "target_paths": [
+      "tomli/_parser.py"
+    ]
+  },
+  "R2": {
+    "omission_probe": {
+      "path": "tomli/_parser.py",
+      "text": "out.flags.finalize_pending()",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "The parser must raise `tomli.TOMLDecodeError` when a dotted key inside a reopened table attempts to define a value below an array-of-tables namespace that was already created."
+    },
+    "target_paths": [
+      "tomli/_parser.py"
+    ]
+  },
+  "R3": {
+    "omission_probe": {
+      "path": "tests/test_dotted_keys_regression.py",
+      "type": "path_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Add a standard-library unittest regression artifact at `tests/test_dotted_keys_regression.py` that covers both invalid namespace-extension forms."
+    },
+    "target_paths": [
+      "tests/test_dotted_keys_regression.py"
+    ]
+  }
+}
+
