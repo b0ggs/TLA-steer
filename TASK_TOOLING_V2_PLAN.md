@@ -913,7 +913,13 @@ lesson: audits that live only in chat are unverifiable). No other documents.
 
 ### 12.1 Why (binding context)
 
-Phase 3 failed by construct: it measured coding skill, which MDs do not
+CONFLICT RESOLUTION (audit): §12 supersedes §11's "no further synthetic
+cohorts" for this single fictional task, and CLOSES §11's historical-issue
+lane (its standing permissions lapse). Phase 3 is hereby framed as
+motivating hypothesis, not established causal fact: it showed four
+real-origin micro-bug ceilings under bare scouting; it never tested an MD.
+
+Phase 3's construct error: it measured coding skill, which MDs do not
 improve. MDs supply OPERATIONAL KNOWLEDGE — commands, source-of-truth
 locations, conventions (see the advisory research landscape doc). This pilot
 tests that mechanism directly, at tripwire fidelity. The repo is FICTIONAL,
@@ -935,20 +941,29 @@ Mandatory friction, both instances:
 One task: a small feature/fix whose correct completion REQUIRES both facts
 (the real suite exercises it; the change touches the generated artifact).
 
-BINDING MECHANISM GATE (the constraint Phase 3 lost — now an admission rule):
+BINDING MECHANISM GATE (the constraint Phase 3 lost — now an admission rule;
+admission stays 100% mechanical per AGENTS.md — the semantic review of this
+section happened in the completed pre-build audit round, not at admission):
 - Every scored requirement is publicly stated (fairness rules unchanged).
-- Correct resolution must depend on the two operational facts above. A
-  solution produced with general coding skill plus the OBVIOUS commands must
-  fail at least one scored requirement or regression. The task author proves
-  this with a DECOY SOLUTION: a plausible solve that edits the generated
-  file directly and verifies via the decoy suite — check.py must REJECT it.
-  The decoy solution is stored in the task dir (private) and its rejection
-  is machine-verified at admission alongside pristine/reference/blind.
-- tasks/<id>/mechanism.json (structure machine-validated; semantics reviewed
-  once by the pre-build audit): {facts: [{fact, public_support_path,
-  predicted_bare_behavior, affected_requirement}], nondisclosure_note
-  (why .issue-contract.md does not reveal the facts or solution)}.
+- TWO decoy solutions, one per fact, both private in the task dir, both
+  machine-REJECTED at admission alongside pristine/reference/blind (audit:
+  one bundled decoy cannot isolate which fact failed):
+  DECOY-1 (wrong layer): correct behavior change made by editing the
+  generated file directly — checker rejects via regeneration mismatch.
+  DECOY-2 (wrong verification): a solve that leaves the decoy suite passing
+  while the real behavior is absent — checker rejects via the real suite.
+- tasks/<id>/mechanism.json, structure machine-validated: {facts: [{fact,
+  public_support_path, required_md_substrings: [...],
+  predicted_bare_behavior, affected_requirement}], nondisclosure_note}.
+- TREATMENT FIDELITY (audit: an unfaithful MD voids a null result): before
+  the REQUEST is queued, a script verifies the authored CODER.md contains
+  each fact's required_md_substrings. If absent: record
+  TREATMENT_UNFAITHFUL and permit exactly one fresh blinded re-author
+  (pre-exposure repair, principle §1.3); a second failure ends the pilot.
 - Fictional names/content only; no real project's code or identity.
+- Budget grants for this section: taskcheck.py cap 620 -> 700 (decoy
+  rejection + structure checks); outcome-coding helper (§12.5) <=150 lines
+  under scripts/import/, additional to the Phase 3 helper cap.
 
 Blind solve: required as usual (fresh agent, public/ only, generous limits) —
 it proves the task is fairly solvable by a solver who READS EVERYTHING. The
@@ -975,16 +990,40 @@ captured events (descriptive).
 ### 12.5 Readings (tripwire, not verdict — stated caveat: a 3-v-3 win occurs
 by chance ~34% even for identical arms)
 
-| Result | Reading |
-|---|---|
-| Bare arm fails/stumbles on the friction (decoy verification, direct edit of generated file, budget exhaustion) AND MD arm avoids it | MECHANISM_SIGNAL. Standing permission (Wade-triggered, no new document): scale to the §12-recipe repository challenge — one repo, 3-5 sealed tasks, one MD, prospective sizing. |
-| Both arms resolve everything at ≈equal cost | MECHANISM_NOT_SHOWN_IN_PILOT. The model self-discovers friction inside 300s. The completion thesis is in genuine doubt; remaining honest products: harm + cost. Wade decides. |
-| MD arm WORSE than bare | Note as first live harm observation (aligns with published findings); report prominently. |
-| Any invalid/unverifiable evidence | EVIDENCE_INVALID; fix infra; the 6 calls answered nothing. |
+Arm execution order: one of the two balanced orders, selected by the
+REQUEST's recorded task_order_seed, committed before launch (audit).
+
+MECHANICAL OUTCOME PREDICATES (audit: no subjective labels), computed by a
+<=150-line script from existing evidence only — checker booleans, the
+captured command list in each attempt's events, capture diff, durations:
+- ran_real(attempt): the real runner invocation appears in captured commands.
+- wrong_layer(attempt): capture diff modifies the generated file with no
+  matching source-of-truth change.
+- stumble(attempt): NOT resolved, OR NOT ran_real, OR wrong_layer.
+Labels, evaluated in this precedence:
+1. EVIDENCE_INVALID: any attempt invalid or batch verify fails.
+2. MECHANISM_SIGNAL: >=2 of 3 bare attempts stumble AND >=2 of 3 MD attempts
+   are resolved AND ran_real AND NOT wrong_layer.
+3. MD_WORSE: s_MD < s_bare (report prominently; first live harm observation).
+4. MECHANISM_NOT_SHOWN_IN_PILOT: everything else (including both arms
+   resolving with ran_real — the model self-discovers friction in 300s).
+On MECHANISM_SIGNAL: standing permission (Wade-triggered, no new document)
+to scale to the repository challenge — one repo, 3-5 sealed tasks, one MD,
+prospective sizing. On MECHANISM_NOT_SHOWN: the completion thesis is in
+genuine doubt on this task; only defensible negative claim is "mechanism
+not shown on this task"; remaining honest products: harm + cost; Wade
+decides. Durations/tokens reported descriptively in all cases.
 
 All outcomes append one dated entry to handoffs/PROCESS_FINDINGS. Forbidden
 in every outcome: second MD, task substitution, selective retry, general
 claims. Cost numbers are descriptive, not a measured product claim.
+
+AUDIT CLOSURE: the §12 one-audit-round requirement is SATISFIED by the
+2026-08-22 three-auditor NO-GO round; its findings are incorporated above
+(two decoys, mechanical-only admission, treatment-fidelity check, mechanical
+outcome predicates, §11 conflict resolution, budget grants, randomized
+balanced order). Its report must be committed under handoffs/ before build.
+No further document audits precede implementation.
 
 ### 12.6 Acceptance (binding on the implementing session)
 
