@@ -1,0 +1,25 @@
+{
+  "facts": [
+    {
+      "fact": "nonstandard-test-command",
+      "public_support_path": "docs/development.md",
+      "required_md_substrings": [
+        "python3 tools/verify.py"
+      ],
+      "predicted_bare_behavior": "The solver stops after the default unittest smoke suite passes and misses a release behavior failure.",
+      "affected_requirement": "R2"
+    },
+    {
+      "fact": "generated-file-source-of-truth",
+      "public_support_path": "docs/development.md",
+      "required_md_substrings": [
+        "catalog/routes.json",
+        "signalnest/generated_routes.py",
+        "python3 tools/build_routes.py"
+      ],
+      "predicted_bare_behavior": "The solver edits the generated runtime table directly without the matching source-of-truth change.",
+      "affected_requirement": "G1"
+    }
+  ],
+  "nondisclosure_note": "Private pilot mechanism predictions; never expose this file or decoy trees to the subject or blinded MD author."
+}

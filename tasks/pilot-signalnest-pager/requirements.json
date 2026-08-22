@@ -1,0 +1,31 @@
+{
+  "R1": {
+    "target_paths": [
+      "catalog/routes.json",
+      "signalnest/generated_routes.py"
+    ],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "catalog/routes.json",
+      "text": "\"pager\""
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "The routing catalog and generated runtime table must add the `pager` alias mapped to the canonical `urgent` route."
+    }
+  },
+  "R2": {
+    "target_paths": [
+      "signalnest/router.py"
+    ],
+    "omission_probe": {
+      "type": "text_absent",
+      "path": "signalnest/router.py",
+      "text": ".strip()"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "`resolve_route` must accept the `pager` alias without regard to ASCII letter case or surrounding whitespace and must return `urgent`."
+    }
+  }
+}

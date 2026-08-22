@@ -1,0 +1,13 @@
+{
+  "solver_agent": "/root/pilot_blind_solve",
+  "timestamp": "2026-08-22T23:45:39.925433+00:00",
+  "input_tree_sha256": "cc9fc74e38431d218c8875c1ec2fb5067338ad31f77936d2d1139ed49b5d4fa2",
+  "solver_command_sha256": "1890aa0f1a8f0701aafcf825e464f68a9431d60e63d8e4fc13c7ec30c4472cb2",
+  "sandbox_flags": [
+    "fresh-context",
+    "public-only-isolated-copy",
+    "workspace-write",
+    "network-unused",
+    "subagents-disabled"
+  ]
+}
