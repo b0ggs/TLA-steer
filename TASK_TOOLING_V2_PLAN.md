@@ -701,59 +701,171 @@ CI packaging, the Stage-4 optimizer loop, any change to frozen confirmatory
 machinery, and any statistics beyond the §10.5 sign test. See roadmap.md
 "Tooling coverage note".
 
-## 11. PHASE 3 — Real-Issue Sourcing: the Headroom Hunt (hours-scale)
+## 11. PHASE 3 — Real-Issue Headroom Hunt + Local MD-Sensitivity Probe
+(consensus rev: merged from both AIs' versions by two-auditor adjudication, 2026-08-22)
 
 Status: PROPOSED (flips to "Phase 3 ACTIVE as of <date>" on Wade's word).
-Branch: off task-tooling-v2-phase2 (Phase 2 code is required). Timebox: ONE
-working day of agent labor plus one approved live batch, then a decision.
-No new tooling code is required; helper scripts go under scripts/import/
-(budget-exempt). No new documents. ≤2 agents concurrent.
+Branch: off task-tooling-v2-phase2. Timebox: 4-5 candidates, 1-2.5 working
+days of agent labor (audit-verified estimate; "one day" was optimistic) plus
+TWO hash-approved live batches, each a mandatory stop. ≤2 agents concurrent.
+Helper scripts only under scripts/import/ (budget-exempt). No new documents —
+task content, provenance, controls, REQUEST/APPROVED, and run evidence are
+artifacts, not documents. blindsolve/taskgen agent invocations are agent
+labor, not live subject calls, and sit outside the two-batch limit.
 
-### 11.1 Why (one paragraph, so nobody re-litigates)
+### 11.1 Why, and the permitted claim
 
 Synthetic tasks of every tested design saturate: the bare model solves 100%.
-Published benchmarks show the same model class failing 25-40% of REAL
-repository tasks. Phase 3 imports reality: agents reconstruct candidate tasks
-from real open-source repos (revert a test-covered bugfix; the repo's own
-tests anchor the checker), and the model's own runs filter them — keep what
-it fails. This is the scalable form of "failure-derived": failures are
-manufactured by running the model, not collected from history. Yield decides
-everything; essays don't.
+Published benchmarks show this model class failing 25-40% of REAL repository
+tasks. Phase 3 reconstructs candidate tasks from real repos and lets the
+model's own runs filter them. Yield decides everything; essays don't.
 
-### 11.2 Deliverable A: 4-6 candidate tasks (agent labor, hours 0-3)
+A pass permits exactly: "this frozen MD produced a local development signal
+on this selected task under gpt-5.6-sol/high." It does NOT establish a
+population effect, statistical significance, general MD benefit, or behavior
+under another model. This phase does not invoke §10.6.5b (its cohort/sizing
+preconditions are untouched; an n=1 probe simply isn't that contrast).
+compare's verdict on a 1-task paired batch is expected INCONCLUSIVE
+(min_effective=6) — PROVIDED nothing is excluded; one invalid disposition or
+unequal usable counts yields INVALID on a 1-task batch. Cost is not measured
+in Phase 3 (dispositions carry duration only); this is a Phase 3 scope note,
+not a project claim — cost remains a roadmap Stage 2 deliverable.
 
-- Source rule: real, dependency-light Python repos (stdlib-preferred; small
-  vendorable deps allowed — the runner sandbox has NO network). Pick a real
-  closed issue whose fix commit includes tests. public/ = repo at the
-  pre-fix commit, with .issue-contract.md adapted from the real issue text.
-  reference/ = the real fix applied. check.py wraps the repo's own test
-  commands (fix tests must fail on pristine, pass on reference).
-- Format: existing task-layout-v3. PRAGMATIC RELAXATIONS for this cohort,
-  recorded here so taskcheck expectations are clear: requirement keys map to
-  the fix's named tests; omission probes may be trivial (text_absent of a
-  fix identifier) because Phase 3 needs only resolved-counts (band
-  measurement), not omission classification. Blind solves are OPTIONAL for
-  null scouting but REQUIRED before any Phase 3 task is used in a treatment
-  comparison.
-- Provenance: failure-source.json per task (source repo, issue/commit ids,
-  license note). Only permissively-licensed repos.
+### 11.2 Deliverable A: 4-5 candidates (the bulk of the labor)
 
-### 11.3 Deliverable B: null-scout batch (hours 3-5)
+Source: a real, closed, test-covered issue from a small permissively-licensed
+Python repo. public/ = pre-fix tree + .issue-contract.md adapted from the
+real issue; reference/ = the real fix applied.
 
-Admit candidates via taskcheck; queue ONE batch: every admitted candidate x 3
-null attempts (12-18 calls). One REQUEST/APPROVED cycle. Read dispositions.
+Eligibility (merged rule): checker is stdlib-only (HARD — taskcheck runs it
+with a fixed 60s timeout); pure-Python vendored deps inside public/ are
+allowed; scripted rejection scan for installs, build hooks, native code,
+pytest plugins, submodules, LFS, symlinks, networked tests. Prefer
+unittest-native sources — most real suites are pytest-based and CANNOT run
+here; porting the fix's tests into a stdlib checker is budgeted work
+(~45-90 min/candidate). Best-fit sources (audit): CPython stdlib single-module
+extractions (Lib/x.py + Lib/test/test_x.py — unittest-native, PSF license,
+thousands of test-carrying fixes), tomli, packaging, tabulate, boltons, h11.
 
-### 11.4 Decision gate (binding; the point of the phase)
+Mandatory mechanics (each audit-traced to the tooling):
+1. PRIVATE FIX TESTS: tests introduced by the fix never enter public/ or the
+   subject workspace. check.py pattern (verbatim): copy argv[1] to a temp
+   dir, overlay the private test files there (they live in the task dir,
+   e.g. tasks/<id>/private/, auto-hashed into the manifest), run with
+   PYTHONDONTWRITEBYTECODE=1 and cwd=temp dir, never write into argv[1] or
+   the task dir, one JSON last line, total runtime under 60s. "Private"
+   means not-in-workspace, not unreadable — the subject has no pointer to it.
+2. INSTRUCTION NEUTRALITY: strip every inherited CODER.md, AGENTS.md,
+   AGENTS.override.md, .agents/, .codex/ at any depth (codex auto-loads
+   AGENTS.md — an inherited one contaminates both arms). Enforced by a
+   scripts/import/ preflight (reuse fixtures.FORBIDDEN_SUBJECT_INPUTS);
+   output recorded in failure-source.json. Nothing in taskcheck checks this.
+3. TREE HYGIENE: no symlinks, no .git/__pycache__/.pyc anywhere in
+   public//reference//blind/; package at tree root (python -m works from
+   workspace root); no .gitignore that hides source from git add --all.
+4. BLIND SOLVE, required per candidate but ASYMMETRIC BY DESIGN: blindsolve
+   may use a stronger/different agent, its 900s timeout, and unlimited
+   pre-exposure retries. It proves the task is fairly solvable from public
+   text; it is NOT a difficulty filter — the candidates we want are exactly
+   those the 300s subject fails, so never discard a candidate because the
+   blind solve needed retries.
+5. PROBE HONESTY: text_absent probes on real tasks are solution-shaped
+   (a different-but-correct fix can look like an "omission"). Therefore:
+   omission/wrong-failure-mode labels are NOT evidence in Phase 3;
+   qualification uses only per-requirement/regression booleans + valid from
+   result.json. At least one requirement must be a contracted artifact
+   (e.g. a named regression test) with an honest probe. Salience config:
+   "enumerated", ≤3 requirements, quotes in .issue-contract.md (the
+   pragmatic route; noted openly: that is the high-salience condition —
+   real-code difficulty, not salience, is what Phase 3 tests).
+6. PROVENANCE: failure-source.json (started before admit, BYTE-FINAL before
+   admit — the manifest hashes it; any later edit bricks verify, and after
+   first exposure there is no re-admission; every task byte is final before
+   the null batch): source/issue URLs, base+fix SHAs, patch hashes, checker
+   command, SPDX id + preserved LICENSE/NOTICE files + hashes, removed
+   instruction paths, and (when authored) the treatment MD path + SHA-256.
+7. YIELD LEDGER (restored): count repos screened → issues considered →
+   candidates reconstructed → admitted → showing headroom. The counts are
+   recorded; extrapolating them to a population rate is forbidden. This is
+   the number the roadmap's Stage 1 task-source decision needs.
 
-| Yield after 3 attempts/task | Decision |
+AUTHORIZED ONE-LINE CODE FIX (audit finding, severity-critical): the subject
+env does not suppress bytecode and run_batch copies the final workspace with
+only ".git" ignored, so leftover __pycache__ makes taskcheck's checker run
+raise, the attempt scores invalid (not infrastructure — no replacement), and
+one dirty attempt voids a 1-task paired batch. Fix: run_batch.py workspace
+copy adds "__pycache__" and "*.pyc" to ignore_patterns. This is the sole
+Phase 3 edit to Phase 2 code; tests updated accordingly; everything else in
+taskcheck/run_batch/compare stays untouched.
+
+### 11.3 Treatment MD (one, post-selection, blinded author)
+
+After selection (§11.4), one agent authors ONE treatment MD for the selected
+task at controls/phase3/<task-id>.md. The author sees ONLY the pre-fix
+upstream tree and its ordinary public docs — never .issue-contract.md,
+requirements.json, check.py, reference/, blind/, the issue/PR/fix, private
+tests, or any scout evidence. Content: stable public repository knowledge
+(commands, architecture, source-of-truth locations, generated-file policy);
+MUST NOT name the task/issue/PR/commit, hidden test, intended patch, or a
+task-specific file/symbol; every concrete fact carries a public path+quote.
+Exactly one version, ever: no outcome-driven edit, replacement, or retry.
+Record in failure-source.json: MD sha256, its public supports, one predicted
+requirement id + binary prediction — REPORTED in the final write-up, never a
+pass/fail gate. Manual cross-check before the paired REQUEST (no tool does
+this): failure-source.json md_sha256 == sha256(controls/phase3/<id>.md) ==
+the REQUEST's arm-B sha256.
+
+### 11.4 Null scout — first STOP
+
+One batch: every admitted candidate × 3 null attempts (12-15 nominal calls;
+existing replacement policy). Runner: existing contract; --timeout-seconds
+may exceed 300 for a real suite ONLY if set identically for all Phase 3
+batches and recorded in the REQUEST. Write REQUEST.json, STOP for
+APPROVED.json.
+
+PROVISIONAL HEADROOM for a candidate = at least one TASK-CAUSAL
+nonresolution: result valid, every regression passes, a public checker
+requirement fails. Infra failures, checker defects, hidden requirements, or
+contamination never count. Qualification reads attempt result.json booleans
+plus disposition.json — raw trajectories/final messages/diffs may NOT be
+inspected before selection. Selection: most qualifying nonresolutions,
+tiebreak lexicographically smallest task id. Scout attempts are calibration
+evidence and are never reused as the paired bare arm.
+
+### 11.5 Decision gate (binding — what each outcome AUTHORIZES)
+
+| Scout outcome | Authorized without any new document |
 |---|---|
-| >=2 tasks with any failure (s<3) | HEADROOM EXISTS. Scale the lanes (same recipe, more agents/days), build the first challenge pack from band tasks, then run the MD contrast per §10.6.5b. Record measured yield rate — scaling math is now arithmetic. |
-| Exactly 1 | Weak signal: reconstruct 4-6 more from DIFFERENT repos before deciding (one more day max). |
-| 0 — model solves real tasks too | Completion headroom is dead for this model, full stop. The product pivots to cost + regression scoring (both already measurable), and the roadmap's task-source/import decision is made with this data. No further synthetic cohorts of any design. |
+| ≥2 tasks with task-causal nonresolutions | HEADROOM. (a) record yield; (b) run the §11.6 paired probe; (c) reconstruct a second cohort of 6-10 tasks from DIFFERENT repos under this identical frozen recipe, same two-stop pattern; (d) when ≥8 band tasks exist, queue the §10.6.5b contrast under its own preconditions. NOT authorized: pack/leaderboard/site work, generalized mining, population claims. |
+| Exactly 1 | Run the §11.6 probe on it; reconstruct 4-6 more candidates from different repos (one more day max) before any further decision. |
+| 0 | Record NO_HEADROOM_OBSERVED_IN_THIS_COHORT. Pre-authorized pivot: the product's measured dimensions become cost + regression detection (both already work). No further synthetic cohorts of any design. NOT authorized: the claim that headroom is dead for the model — 4-5 tasks is weak evidence; the pivot is a resource decision, not a scientific conclusion. |
 
-### 11.5 Repo extraction note
+### 11.6 Paired probe (conditional on headroom) — second STOP
 
-The tooling stays in this repo for now. Extraction trigger: preparing the
-Stage 1 open-source release (or a second consuming project), whichever comes
-first — it is a git subtree split, ~minutes, and doing it earlier just adds
-sync overhead while Phase 3 may still adjust the tools.
+One task, fresh attempts only: 3 bare + 3 MD, alternating order (automatic).
+REQUEST arm order is load-bearing: --arm bare controls/coder/null-m2.md
+--arm md controls/phase3/<id>.md, in that order, so compare records
+delta = s_MD − s_bare. REQUEST binds task manifest, both arm hashes, MD
+filename, runner, order seed, spend cap (6 nominal, 8 max). STOP for
+APPROVED.json.
+
+LOCAL_DEVELOPMENT_SIGNAL_SHOWN iff: all 6 usable attempts valid, all
+regressions pass, ≥1 task-causal nonresolution in the FRESH bare arm, and
+s_MD > s_bare. Otherwise HEADROOM_NOT_REPLICATED (bare arm ceilinged) or
+MD_SENSITIVITY_NOT_SHOWN (headroom recurred, MD didn't move it). The
+predicted-requirement outcome is reported alongside. compare's formal
+verdict stays INCONCLUSIVE (or INVALID if anything was excluded — report
+why). Forbidden in every outcome: a second MD, task substitution, selective
+retry, arm reuse, any general claim.
+
+### 11.7 Acceptance and boundaries
+
+1. Every candidate passes taskcheck admit + verify with fresh blind and
+   complete provenance BEFORE the null REQUEST; the eligibility, hygiene,
+   and instruction-neutrality scans are scripted and their outputs recorded.
+2. The only Phase 2 code change is the §11.2 authorized ignore_patterns fix
+   (plus its test); all suites green before the first REQUEST.
+3. Live subject calls occur only inside the two approved REQUESTs.
+4. Yield ledger and the terminal outcome label are written into
+   handoffs/PROCESS_FINDINGS (appended, dated) — findings survive sessions.
+5. Tooling extraction deferred to Stage 1 release prep or a second consumer.
