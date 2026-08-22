@@ -700,3 +700,60 @@ PR-to-task mining, game domains (PD/SF2), challenge/submission operations,
 CI packaging, the Stage-4 optimizer loop, any change to frozen confirmatory
 machinery, and any statistics beyond the §10.5 sign test. See roadmap.md
 "Tooling coverage note".
+
+## 11. PHASE 3 — Real-Issue Sourcing: the Headroom Hunt (hours-scale)
+
+Status: PROPOSED (flips to "Phase 3 ACTIVE as of <date>" on Wade's word).
+Branch: off task-tooling-v2-phase2 (Phase 2 code is required). Timebox: ONE
+working day of agent labor plus one approved live batch, then a decision.
+No new tooling code is required; helper scripts go under scripts/import/
+(budget-exempt). No new documents. ≤2 agents concurrent.
+
+### 11.1 Why (one paragraph, so nobody re-litigates)
+
+Synthetic tasks of every tested design saturate: the bare model solves 100%.
+Published benchmarks show the same model class failing 25-40% of REAL
+repository tasks. Phase 3 imports reality: agents reconstruct candidate tasks
+from real open-source repos (revert a test-covered bugfix; the repo's own
+tests anchor the checker), and the model's own runs filter them — keep what
+it fails. This is the scalable form of "failure-derived": failures are
+manufactured by running the model, not collected from history. Yield decides
+everything; essays don't.
+
+### 11.2 Deliverable A: 4-6 candidate tasks (agent labor, hours 0-3)
+
+- Source rule: real, dependency-light Python repos (stdlib-preferred; small
+  vendorable deps allowed — the runner sandbox has NO network). Pick a real
+  closed issue whose fix commit includes tests. public/ = repo at the
+  pre-fix commit, with .issue-contract.md adapted from the real issue text.
+  reference/ = the real fix applied. check.py wraps the repo's own test
+  commands (fix tests must fail on pristine, pass on reference).
+- Format: existing task-layout-v3. PRAGMATIC RELAXATIONS for this cohort,
+  recorded here so taskcheck expectations are clear: requirement keys map to
+  the fix's named tests; omission probes may be trivial (text_absent of a
+  fix identifier) because Phase 3 needs only resolved-counts (band
+  measurement), not omission classification. Blind solves are OPTIONAL for
+  null scouting but REQUIRED before any Phase 3 task is used in a treatment
+  comparison.
+- Provenance: failure-source.json per task (source repo, issue/commit ids,
+  license note). Only permissively-licensed repos.
+
+### 11.3 Deliverable B: null-scout batch (hours 3-5)
+
+Admit candidates via taskcheck; queue ONE batch: every admitted candidate x 3
+null attempts (12-18 calls). One REQUEST/APPROVED cycle. Read dispositions.
+
+### 11.4 Decision gate (binding; the point of the phase)
+
+| Yield after 3 attempts/task | Decision |
+|---|---|
+| >=2 tasks with any failure (s<3) | HEADROOM EXISTS. Scale the lanes (same recipe, more agents/days), build the first challenge pack from band tasks, then run the MD contrast per §10.6.5b. Record measured yield rate — scaling math is now arithmetic. |
+| Exactly 1 | Weak signal: reconstruct 4-6 more from DIFFERENT repos before deciding (one more day max). |
+| 0 — model solves real tasks too | Completion headroom is dead for this model, full stop. The product pivots to cost + regression scoring (both already measurable), and the roadmap's task-source/import decision is made with this data. No further synthetic cohorts of any design. |
+
+### 11.5 Repo extraction note
+
+The tooling stays in this repo for now. Extraction trigger: preparing the
+Stage 1 open-source release (or a second consuming project), whichever comes
+first — it is a git subtree split, ~minutes, and doing it earlier just adds
+sync overhead while Phase 3 may still adjust the tools.
