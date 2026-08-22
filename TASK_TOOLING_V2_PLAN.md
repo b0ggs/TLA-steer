@@ -902,3 +902,95 @@ retry, arm reuse, any general claim.
 4. Yield ledger and the terminal outcome label are written into
    handoffs/PROCESS_FINDINGS (appended, dated) — findings survive sessions.
 5. Tooling extraction deferred to Stage 1 release prep or a second consumer.
+
+## 12. OPERATIONAL-KNOWLEDGE PILOT (same-day; the mechanism-correct test)
+
+Status: PROPOSED (flips to "Pilot ACTIVE as of <date>" on Wade's word).
+Branch: off phase3. Timebox: REQUEST queued within ~2.5 hours of activation;
+ONE live batch (6 nominal calls, 8 max); ONE approval stop. One audit round
+maximum before build, and the audit report is SAVED to handoffs/ (Phase 3
+lesson: audits that live only in chat are unverifiable). No other documents.
+
+### 12.1 Why (binding context)
+
+Phase 3 failed by construct: it measured coding skill, which MDs do not
+improve. MDs supply OPERATIONAL KNOWLEDGE — commands, source-of-truth
+locations, conventions (see the advisory research landscape doc). This pilot
+tests that mechanism directly, at tripwire fidelity. The repo is FICTIONAL,
+built for this pilot — contamination-proof by construction.
+
+### 12.2 Deliverable A: one friction repo + one task (agent labor, ~90 min)
+
+One fictional Python repo: stdlib-only, ~10-15 files, multi-directory.
+Mandatory friction, both instances:
+1. NONSTANDARD TEST COMMAND: the correct verification runs via a runner
+   script (or equivalent) documented inside the repo; the obvious
+   `python -m unittest` discovers only a DECOY suite that passes on the
+   pristine tree. A solver that verifies with the obvious command believes
+   it is done.
+2. GENERATED FILE: one file is generated from a source-of-truth elsewhere in
+   the repo; editing the output directly (not the source) is a scored
+   regression (the checker regenerates and compares).
+
+One task: a small feature/fix whose correct completion REQUIRES both facts
+(the real suite exercises it; the change touches the generated artifact).
+
+BINDING MECHANISM GATE (the constraint Phase 3 lost — now an admission rule):
+- Every scored requirement is publicly stated (fairness rules unchanged).
+- Correct resolution must depend on the two operational facts above. A
+  solution produced with general coding skill plus the OBVIOUS commands must
+  fail at least one scored requirement or regression. The task author proves
+  this with a DECOY SOLUTION: a plausible solve that edits the generated
+  file directly and verifies via the decoy suite — check.py must REJECT it.
+  The decoy solution is stored in the task dir (private) and its rejection
+  is machine-verified at admission alongside pristine/reference/blind.
+- tasks/<id>/mechanism.json (structure machine-validated; semantics reviewed
+  once by the pre-build audit): {facts: [{fact, public_support_path,
+  predicted_bare_behavior, affected_requirement}], nondisclosure_note
+  (why .issue-contract.md does not reveal the facts or solution)}.
+- Fictional names/content only; no real project's code or identity.
+
+Blind solve: required as usual (fresh agent, public/ only, generous limits) —
+it proves the task is fairly solvable by a solver who READS EVERYTHING. The
+300s subject may not. That asymmetry is the experiment.
+
+### 12.3 Deliverable B: the blinded MD (~20 min)
+
+A fresh-context agent that sees ONLY the repo tree (never the task contract,
+checker, reference, decoy, or mechanism.json) writes CODER.md documenting
+the repo's commands, source-of-truth locations, and conventions — exactly
+what a real maintainer's MD contains. One version, hash-pinned in the
+REQUEST, no outcome-driven edits. Stored controls/pilot/<task-id>.md with a
+provenance file recording the author's input hash.
+
+### 12.4 Deliverable C: the batch — the ONE approval stop
+
+One two-arm batch: --arm bare controls/coder/null-m2.md --arm md
+controls/pilot/<task-id>.md (that order; delta = s_MD − s_bare), 3 usable
+attempts per arm, alternating, existing runner contract. Write REQUEST.json,
+STOP for Wade's APPROVED.json. After the run: run_batch verify (mandatory);
+report per-arm resolution, per-attempt durations, and token usage from the
+captured events (descriptive).
+
+### 12.5 Readings (tripwire, not verdict — stated caveat: a 3-v-3 win occurs
+by chance ~34% even for identical arms)
+
+| Result | Reading |
+|---|---|
+| Bare arm fails/stumbles on the friction (decoy verification, direct edit of generated file, budget exhaustion) AND MD arm avoids it | MECHANISM_SIGNAL. Standing permission (Wade-triggered, no new document): scale to the §12-recipe repository challenge — one repo, 3-5 sealed tasks, one MD, prospective sizing. |
+| Both arms resolve everything at ≈equal cost | MECHANISM_NOT_SHOWN_IN_PILOT. The model self-discovers friction inside 300s. The completion thesis is in genuine doubt; remaining honest products: harm + cost. Wade decides. |
+| MD arm WORSE than bare | Note as first live harm observation (aligns with published findings); report prominently. |
+| Any invalid/unverifiable evidence | EVIDENCE_INVALID; fix infra; the 6 calls answered nothing. |
+
+All outcomes append one dated entry to handoffs/PROCESS_FINDINGS. Forbidden
+in every outcome: second MD, task substitution, selective retry, general
+claims. Cost numbers are descriptive, not a measured product claim.
+
+### 12.6 Acceptance (binding on the implementing session)
+
+1. Task admitted via taskcheck INCLUDING the decoy-solution rejection check;
+   mechanism.json present and structurally valid; blind solve recorded.
+2. MD authored blind with provenance; REQUEST queued within the timebox.
+3. No live calls outside the approved batch; ≤2 agents; all suites green;
+   no new documents; helpers within existing scripts/import/ caps.
+4. The pre-build audit round's report is committed under handoffs/.
