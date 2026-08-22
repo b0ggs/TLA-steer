@@ -229,6 +229,47 @@ for index in range(1, 9): Path(f"output-{index}.txt").write_text("done\\n")
             with self.subTest(key=key), self.assertRaisesRegex(taskgen.TaskgenError, "values"):
                 taskgen.generate(recipe, self.root / "tasks", ["unused", "{prompt}"])
 
+    def add_mechanism(self, task):
+        decoys = task / "decoys"
+        for name in taskcheck.DECOY_NAMES:
+            shutil.copytree(task / "public", decoys / name)
+        value = {
+            "facts": [
+                {"fact": "nonstandard-test", "public_support_path": ".issue-contract.md",
+                 "required_md_substrings": ["Create solution.txt."],
+                 "predicted_bare_behavior": "Stops after the decoy check.",
+                 "affected_requirement": "R1"},
+                {"fact": "generated-file", "public_support_path": ".issue-contract.md",
+                 "required_md_substrings": ["solution.txt"],
+                 "predicted_bare_behavior": "Edits the derived output.",
+                 "affected_requirement": "R1"},
+            ],
+            "nondisclosure_note": "Private pilot mechanism metadata.",
+        }
+        (task / "mechanism.json").write_text(json.dumps(value))
+        return value
+
+    def test_mechanism_and_both_decoy_rejections_are_admitted(self):
+        task = self.make_task()
+        self.add_mechanism(task)
+        manifest = taskcheck.admit(task)
+        self.assertEqual(manifest["gate"]["mechanism"]["detail"], "2 facts validated")
+        self.assertEqual(set(manifest["gate"]["decoys"]["detail"]), set(taskcheck.DECOY_NAMES))
+
+    def test_mechanism_rejects_unsupported_fact_and_resolving_decoy(self):
+        task = self.make_task()
+        value = self.add_mechanism(task)
+        value["facts"][0]["required_md_substrings"] = ["not publicly supported"]
+        (task / "mechanism.json").write_text(json.dumps(value))
+        with self.assertRaisesRegex(taskcheck.TaskError, "lacks public support"):
+            taskcheck.admit(task)
+        value["facts"][0]["required_md_substrings"] = ["Create solution.txt."]
+        (task / "mechanism.json").write_text(json.dumps(value))
+        shutil.copy2(task / "reference" / "solution.txt",
+                     task / "decoys" / "wrong-layer" / "solution.txt")
+        with self.assertRaisesRegex(taskcheck.TaskError, "wrong-layer unexpectedly resolves"):
+            taskcheck.admit(task)
+
 
 if __name__ == "__main__":
     unittest.main()

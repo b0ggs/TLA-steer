@@ -28,6 +28,11 @@ BATCH_REQUEST_KEYS = {
     "batch_id", "tasks", "arms", "call_count", "replacement_call_cap",
     "max_total_calls", "md_filename", "task_order_seed", "runner",
 }
+MECHANISM_FACT_KEYS = {
+    "fact", "public_support_path", "required_md_substrings",
+    "predicted_bare_behavior", "affected_requirement",
+}
+DECOY_NAMES = ("wrong-layer", "wrong-verification")
 
 
 class TaskError(RuntimeError):
@@ -235,6 +240,49 @@ def _validate_requirements(task: Path, supplied: dict[str, Any], keys: set[str],
             "statement_files": distinct}
 
 
+def _validate_mechanism(task: Path, scored: set[str]) -> dict[str, Any] | None:
+    path = task / "mechanism.json"
+    decoys = task / "decoys"
+    if not path.exists():
+        if decoys.exists():
+            raise TaskError("decoys require mechanism.json")
+        return None
+    value = _json_file(path, "mechanism.json")
+    if set(value) != {"facts", "nondisclosure_note"}:
+        raise TaskError("mechanism.json has invalid keys")
+    facts, note = value["facts"], value["nondisclosure_note"]
+    if (not isinstance(facts, list) or len(facts) != 2
+            or not isinstance(note, str) or not note.strip()):
+        raise TaskError("mechanism.json requires two facts and a nondisclosure note")
+    names: set[str] = set()
+    for index, fact in enumerate(facts):
+        label = f"mechanism.json facts[{index}]"
+        if not isinstance(fact, dict) or set(fact) != MECHANISM_FACT_KEYS:
+            raise TaskError(f"{label} has invalid keys")
+        strings = (fact["fact"], fact["predicted_bare_behavior"])
+        if not all(isinstance(item, str) and item.strip() for item in strings):
+            raise TaskError(f"{label} text fields must be nonempty strings")
+        support = _safe_relative(fact["public_support_path"], f"{label}.public_support_path")
+        source = task / "public" / support
+        substrings = fact["required_md_substrings"]
+        if (source.is_symlink() or not source.is_file()
+                or not isinstance(substrings, list) or not substrings
+                or not all(isinstance(item, str) and item for item in substrings)
+                or len(set(substrings)) != len(substrings)):
+            raise TaskError(f"{label} support or required_md_substrings is invalid")
+        data = source.read_text(encoding="utf-8")
+        if any(item not in data for item in substrings):
+            raise TaskError(f"{label} required MD substring lacks public support")
+        if fact["affected_requirement"] not in scored or fact["fact"] in names:
+            raise TaskError(f"{label} affected requirement or fact name is invalid")
+        names.add(fact["fact"])
+    if (not decoys.is_dir() or decoys.is_symlink()
+            or {path.name for path in decoys.iterdir()} != set(DECOY_NAMES)
+            or not all((decoys / name).is_dir() for name in DECOY_NAMES)):
+        raise TaskError("mechanism decoys must be exactly wrong-layer and wrong-verification")
+    return value
+
+
 def _read_chain(path: Path, kind: str, *, required: bool = False) -> list[dict[str, Any]]:
     if not path.is_file():
         if required:
@@ -406,6 +454,8 @@ def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = N
     supplied = _json_file(task / "requirements.json", "requirements.json")
     spread = _validate_requirements(task, supplied, set(pristine["requirements"]),
                                     layout, salience, max_stated_per_file, min_statement_files)
+    mechanism = _validate_mechanism(
+        task, set(pristine["requirements"]) | set(pristine["regressions"]))
     provenance = _json_file(task / "blind.provenance.json", "blind.provenance.json")
     provenance_keys = {"solver_agent", "timestamp", "input_tree_sha256"}
     if layout == 3:
@@ -436,6 +486,17 @@ def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = N
         if not result["resolved"]:
             failed = [key for section in ("requirements", "regressions") for key, passed in result[section].items() if not passed]
             raise TaskError(f"{label} does not resolve: {failed}")
+    decoy_failures: dict[str, list[str]] = {}
+    if mechanism:
+        for name in DECOY_NAMES:
+            result, _ = run_checker(task / "check.py", task / "decoys" / name)
+            if (set(result["requirements"]), set(result["regressions"])) != expected_keys:
+                raise TaskError(f"decoy {name} checker keys differ from pristine")
+            failed = [key for section in ("requirements", "regressions")
+                      for key, passed in result[section].items() if not passed]
+            if result["resolved"] or not failed:
+                raise TaskError(f"decoy {name} unexpectedly resolves")
+            decoy_failures[name] = failed
     if tree_sha256(task / "public") != public_before:
         raise TaskError("original public/ changed during admission")
     manifest = {
@@ -460,6 +521,9 @@ def admit(task_dir: Path, ledger: Path | None = None, exposures: Path | None = N
         manifest["layout_version"] = layout
     if layout == 3:
         manifest["gate"]["spread"] = {"status": "pass", "detail": spread}
+    if mechanism:
+        manifest["gate"]["mechanism"] = {"status": "pass", "detail": "2 facts validated"}
+        manifest["gate"]["decoys"] = {"status": "pass", "detail": decoy_failures}
     manifest_path = task / "manifest.json"
     manifest_path.write_text(canonical(manifest) + "\n", encoding="utf-8")
     _append_chain(ledger, {
