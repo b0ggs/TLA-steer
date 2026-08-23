@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Added `pager → urgent` to the route catalog, regenerated the runtime table, and normalized surrounding whitespace in `resolve_route`.
+
+Verification passed:
+
+- `python3 tools/verify.py`
+- Existing smoke tests
+- Invalid-type regression checks
+- Byte-for-byte generated-table reproducibility check

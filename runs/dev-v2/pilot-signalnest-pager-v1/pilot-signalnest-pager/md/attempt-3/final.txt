@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Added `pager → urgent` to the routing catalog and regenerated the runtime table. `resolve_route` now handles surrounding whitespace and case-insensitive aliases. Added smoke coverage.
+
+Verification passed:
+
+- `python3 -m unittest`
+- `python3 tools/verify.py`
+- `git diff --check`

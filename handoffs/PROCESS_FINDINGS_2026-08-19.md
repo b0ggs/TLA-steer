@@ -158,3 +158,47 @@ a population claim. Under the binding Phase 3 decision gate, no task was selecte
 no treatment MD or paired probe was created, and no further synthetic cohort is
 authorized. The cost-and-regression pivot is Wade's decision; no follow-on work is
 pre-authorized by this result.
+
+## 7. Section 12 operational-knowledge pilot — 2026-08-22
+
+The hash-approved batch `pilot-signalnest-pager-v1` used REQUEST SHA-256
+`6b0259466369ba867390633589c9b0905625718b9850c4125abdcedf354b14db`,
+task manifest SHA-256
+`1272ad58867256785359ac8cb5b3b8f79ac3e7893e00f1db8b4a19c88de5d162`,
+and treatment SHA-256
+`10d28986b464ad91d879efc803c1ee46913b1255cc93bcb58696a23ed97331c8`.
+Treatment fidelity passed before launch. The batch used the recorded order seed
+`9658330171714277070`, exactly six subject calls, and no replacements.
+`run_batch verify` passed before outcome coding.
+
+The Section 12.5 mechanical predicates produced:
+
+- bare: `s=3`, 0/3 stumbles;
+- MD: `s=3`, 3/3 resolved and ran the real verifier with no wrong-layer edit;
+- delta `s_MD - s_bare = 0`;
+- terminal label: **MECHANISM_NOT_SHOWN_IN_PILOT**.
+
+Every attempt was valid, resolved, invoked `python3 tools/verify.py`, and had
+`wrong_layer=false`.
+
+| Arm | Attempt | Duration (s) | Input tokens | Cached input | Output tokens | Reasoning output |
+|---|---:|---:|---:|---:|---:|---:|
+| bare | 1 | 66.229403 | 149323 | 107776 | 2301 | 599 |
+| bare | 2 | 80.878189 | 163922 | 127744 | 2922 | 969 |
+| bare | 3 | 77.071056 | 129497 | 104704 | 3035 | 955 |
+| MD | 1 | 81.039393 | 207827 | 173056 | 3026 | 930 |
+| MD | 2 | 90.884956 | 211843 | 171264 | 3292 | 1002 |
+| MD | 3 | 75.436988 | 173192 | 137984 | 2884 | 689 |
+
+Descriptive arm totals: bare duration 224.178647 seconds (mean 74.726216),
+442742 input tokens, 340224 cached input tokens, 8258 output tokens, and 2523
+reasoning-output tokens; MD duration 247.361337 seconds (mean 82.453779), 592862
+input tokens, 482304 cached input tokens, 9202 output tokens, and 2621
+reasoning-output tokens. Cache-write input tokens were zero in every attempt.
+These timing and token figures are descriptive, not a measured product claim.
+
+The only defensible negative claim is: **the operational-knowledge mechanism was
+not shown on this task**. Both bare and MD arms self-discovered the friction within
+300 seconds. This result supports no general claim, no task substitution, no
+second MD, and no selective retry. Under Section 12.5, Wade decides whether any
+future work is limited to the remaining harm and cost products.

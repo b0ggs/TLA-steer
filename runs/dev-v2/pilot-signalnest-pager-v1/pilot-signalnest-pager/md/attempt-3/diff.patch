@@ -1,0 +1,47 @@
+diff --git a/catalog/routes.json b/catalog/routes.json
+index 0137ec6..d0dd3cb 100644
+--- a/catalog/routes.json
++++ b/catalog/routes.json
+@@ -1,4 +1,5 @@
+ {
+   "email": "standard",
++  "pager": "urgent",
+   "sms": "mobile"
+ }
+diff --git a/signalnest/generated_routes.py b/signalnest/generated_routes.py
+index 20230c1..b813cc2 100644
+--- a/signalnest/generated_routes.py
++++ b/signalnest/generated_routes.py
+@@ -3,5 +3,6 @@
+ 
+ ROUTES = {
+     "email": "standard",
++    "pager": "urgent",
+     "sms": "mobile",
+ }
+diff --git a/signalnest/router.py b/signalnest/router.py
+index e0f9160..65bf4be 100644
+--- a/signalnest/router.py
++++ b/signalnest/router.py
+@@ -12,6 +12,6 @@ def resolve_route(value: str) -> str:
+     if not isinstance(value, str):
+         raise TypeError("route alias must be a string")
+     try:
+-        return ROUTES[value.lower()]
++        return ROUTES[value.strip().lower()]
+     except KeyError as exc:
+         raise UnknownRoute(f"unknown route alias: {value}") from exc
+diff --git a/tests/test_smoke.py b/tests/test_smoke.py
+index bdf338f..60fada7 100644
+--- a/tests/test_smoke.py
++++ b/tests/test_smoke.py
+@@ -8,6 +8,9 @@ class SmokeTests(unittest.TestCase):
+         self.assertEqual(resolve_route("email"), "standard")
+         self.assertEqual(resolve_route("SMS"), "mobile")
+ 
++    def test_pager_alias(self):
++        self.assertEqual(resolve_route("  PaGeR  "), "urgent")
++
+     def test_unknown_alias(self):
+         with self.assertRaises(UnknownRoute):
+             resolve_route("carrier-pigeon")

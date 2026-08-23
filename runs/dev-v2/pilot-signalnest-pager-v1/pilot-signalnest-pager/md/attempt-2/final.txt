@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Added `pager → urgent` to the route catalog and regenerated the runtime table. Updated resolution to ignore surrounding whitespace while preserving case-insensitive behavior and existing errors.
+
+Verification passed:
+
+- `python3 -m unittest`
+- `python3 tools/verify.py`
+- `git diff --check`

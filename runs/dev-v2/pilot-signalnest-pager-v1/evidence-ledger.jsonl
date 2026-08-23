@@ -1,0 +1,8 @@
+{"attempt":"pilot-signalnest-pager/bare/attempt-1","manifest_sha256":"aa31fa88a36980376aee35715c86d30be637300c2d4bb698466825b346485e64","prev_sha256":"GENESIS"}
+{"attempt":"pilot-signalnest-pager/md/attempt-1","manifest_sha256":"4c0d4f935548ef23558bf53d3ab796a85aaf0315c82815b957657abcca3ba924","prev_sha256":"680f907b74cfa03f37a58882e7ffb75ea292f7dd68af8afd0e0b6272e8209083"}
+{"attempt":"pilot-signalnest-pager/md/attempt-2","manifest_sha256":"039118c80feb57cc6f24eb84582e8e3a3c710871076daddab2a80aca90adaa96","prev_sha256":"bb2fa4f585af9af49fb7532e1ace623e43ff8c53469f1019f31fb4fb1e918746"}
+{"attempt":"pilot-signalnest-pager/bare/attempt-2","manifest_sha256":"d27f7b6ffc65f597ad25d91b7199611fedcde556d1ecd110bacc9f5792bbac62","prev_sha256":"1027d3abdd90ebda325f1224bddc196d47d71176c3ab0b4349f871e4dfab861c"}
+{"attempt":"pilot-signalnest-pager/bare/attempt-3","manifest_sha256":"dccfe79e54b60f7d88a679c8407bc90c1ce28656df33e3dd821a731344342e9a","prev_sha256":"662e9cf1154de51f4dae7ca219d246e58c16f3bac85afe5c11554d66dbf14ed4"}
+{"attempt":"pilot-signalnest-pager/md/attempt-3","manifest_sha256":"3f1f6a31a0d677ed91c8ddc39f876861583038117871e38d2a3bcdaa64aa25aa","prev_sha256":"09788cf7cd32f116324993379e5cddfa9499dbb8b70d5400fc31b280a9a4c009"}
+{"arm":"bare","prev_sha256":"bb8ca3f1b83886280b3658ed538f27866f804af8eb9c18f450283885444b0f48","sha256":"11619b07d5a0bec85d95964f58e689b3d024bf8a42509eda55ddd2f96a312eeb","task_id":"pilot-signalnest-pager","type":"disposition"}
+{"arm":"md","prev_sha256":"b90567ad42d626ebc487cd15f43e37fbfb0488e4a44f7bf808b488a2f1a2f1f4","sha256":"91330efdc2ea728e6cbd17edb28c7bb0a381c3ed2ae0549ce1808c7114103bb5","task_id":"pilot-signalnest-pager","type":"disposition"}

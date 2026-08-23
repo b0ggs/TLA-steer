@@ -1,0 +1,8 @@
+IMPLEMENTED
+
+Added `pager → urgent` to the catalog and regenerated route table. Resolver now handles surrounding whitespace and case variations. Added smoke coverage.
+
+Verification passed:
+
+- `python3 -m unittest`
+- `python3 tools/verify.py`

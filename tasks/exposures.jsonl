@@ -8,3 +8,4 @@
 {"batch_id":"phase3-real-null-scout-v1","event":"exposed","prev_sha256":"364deab0a24b0e663f1638e77f54e9ca51370916557d87f2bcad1bd7b2b914eb","reason":null,"task_id":"real-boltons-indexed-slice"}
 {"batch_id":"phase3-real-null-scout-v1","event":"exposed","prev_sha256":"948952028d4388004c866bfefe03b049b0e187fa2ba1baf9581f1ace316629ee","reason":null,"task_id":"real-cpython-enum-lookup"}
 {"batch_id":"phase3-real-null-scout-v1","event":"exposed","prev_sha256":"86ff32bd1c70c0156825d6df098501b2422359af5332bb9bd3ac4393489aca13","reason":null,"task_id":"real-tomli-dotted-keys"}
+{"batch_id":"pilot-signalnest-pager-v1","event":"exposed","prev_sha256":"b9ededc6ec8ae51c5d58397cf3cf10d5436474449b5541bf59481561f7c02912","reason":null,"task_id":"pilot-signalnest-pager"}
