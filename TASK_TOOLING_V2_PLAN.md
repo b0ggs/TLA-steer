@@ -1033,3 +1033,102 @@ No further document audits precede implementation.
 3. No live calls outside the approved batch; ≤2 agents; all suites green;
    no new documents; helpers within existing scripts/import/ caps.
 4. The pre-build audit round's report is committed under handoffs/.
+
+## 13. SEALED EXECUTION + THE ISOLATED RERUN (the missing hills layer)
+
+Status: PROPOSED (flips to "ACTIVE as of <date>" on Wade's word). Branch:
+off pilot. One audit round: the OUTSIDE REVIEWER who found the leak reviews
+this section and the probe list; their report is committed under handoffs/
+before build. One live batch (12 nominal calls, 16 max), one approval stop.
+
+### 13.1 Why (binding context)
+
+Phase 3's ceilings are invalidated: traces show the subject reading the
+tasks' published fixes from this machine (installed Python stdlib and
+frameworks). The existing sandbox seals writes, network, and environment —
+those walls have a zero-failure record — but READS of the host were never
+sealed or verified. This section adds the missing layer and reruns the same
+four real tasks under it. This is CALIBRATION ONLY: it measures whether the
+model can fail real tasks when it cannot look up answers. It says nothing
+about MDs.
+
+### 13.2 Sealed execution requirement
+
+Every subject attempt and every blind solve runs in a CONTAINER whose
+filesystem contains ONLY:
+- the task workspace (bind-mounted, so host-side evidence capture is
+  unchanged — captured fields must be identical to current runs),
+- one pinned Python interpreter (per-task pin, see 13.3),
+- the agent runtime and its read-only auth (mounted outside the workspace;
+  status-quo risk, recorded).
+No host filesystem, no other interpreters, no site-packages beyond stdlib,
+no network (unchanged). The container image digest is recorded in every
+attempt's evidence. Implementation choice (Docker or equivalent) is the
+implementer's; the PROBES define correctness, not the technology.
+
+### 13.3 The stdlib trap (critical, audit this line hardest)
+
+Isolation from the host does NOT remove answers that ship inside the
+interpreter itself: any Python >=3.11 contains tomllib (tomli WITH the fix),
+and any recent Python contains the fixed enum.py and doctest.py. Therefore:
+- Each task's failure-source.json gains two fields: answer_bearing_modules
+  (e.g. ["tomllib", "enum"]) and fix_signature_strings (2-3 distinctive
+  literals from the real fix's diff).
+- Per task, the container's interpreter is PINNED to a version whose stdlib
+  PREDATES the fix (recorded per task). A task with no such available
+  interpreter is excluded and recorded as such.
+
+### 13.4 The contamination probe (mechanical; the build gate)
+
+A scripted probe runs INSIDE the container before each batch and its full
+output is committed as batch evidence. It must demonstrate, with failing
+output, that:
+1. The literal Phase 3 exploit fails: for each answer_bearing_module,
+   `inspect.getsource(<module>)` either fails or the retrieved source
+   contains NONE of the task's fix_signature_strings.
+2. Host paths are unreachable: /Library/Frameworks, /Users, and this
+   repository's absolute path all fail to list/read.
+3. No network: a socket attempt fails.
+4. No secondary interpreters or site-packages exist on PATH.
+THE BUILD DOES NOT EXIST UNTIL THE PROBE FAILS THE REAL ATTACK: acceptance
+requires running the probe against the OLD (host) runner configuration and
+showing it DETECTS the leak there (probe red on host, green in container).
+The probe is the permanent regression test for this leak class.
+
+### 13.5 The rerun batch — one approval stop
+
+The same four Phase 3 tasks, unmodified bytes (already exposed; this is a
+new batch under a corrected runner, recorded as such — task content
+unchanged, so no re-admission is required; the batch REQUEST records the
+container image digests). 3 null attempts per task, 12 nominal calls,
+existing REQUEST/APPROVED mechanism. Blind solves are NOT rerun (tasks
+already admitted; their contamination caveat stands recorded).
+
+Reporting: the batch summary now includes per-attempt duration AND token
+totals (input/cached/output/reasoning — already captured in evidence, now
+surfaced; <=40-line addition to the reporting path).
+
+### 13.6 Readings (mechanical)
+
+| Result | Label | Meaning |
+|---|---|---|
+| Probe fails in container | BUILD_REJECTED | No calls happen. Fix container. |
+| Any task drops below 3/3 | HEADROOM_CONFIRMED_ISOLATED | The band exists; Phase 3's ceilings were the leak. Standing permission (Wade-triggered): scale real-issue sourcing under sealed execution; the challenge-pack design becomes buildable. |
+| All tasks still 3/3, probes green | MEMORY_SUSPECTED | The model knows these public fixes from training. Sourcing must move to post-cutoff issues or planted bugs in real codebases — Wade decides which. |
+| Evidence fails verification | EVIDENCE_INVALID | The 12 calls answered nothing; fix and re-request. |
+
+All outcomes append a dated entry to handoffs/PROCESS_FINDINGS. Forbidden:
+task edits, selective retries, any MD claim, any general capability claim.
+
+### 13.7 Budgets and acceptance
+
+1. Container wrapper: scripts/contain/ <=250 lines total. run_batch.py may
+   grow <=60 lines (new cap 610) for the container execution path + token
+   reporting. taskcheck.py untouched. Probe script <=150 lines, lives in
+   scripts/contain/, runs identically on host (red) and container (green).
+2. Acceptance: probe red-on-host/green-in-container outputs committed;
+   image digests recorded; all suites green; evidence fields identical to
+   prior batches; reviewer report in handoffs/ before build; REQUEST queued
+   then STOP for Wade.
+3. No other machinery, documents, or experiments. §12's standing
+   permissions remain suspended until this section's result is recorded.
