@@ -1037,9 +1037,14 @@ No further document audits precede implementation.
 ## 13. SEALED EXECUTION + THE ISOLATED RERUN (the missing hills layer)
 
 Status: PROPOSED (flips to "ACTIVE as of <date>" on Wade's word). Branch:
-off pilot. One audit round: the OUTSIDE REVIEWER who found the leak reviews
-this section and the probe list; their report is committed under handoffs/
-before build. One live batch (12 nominal calls, 16 max), one approval stop.
+off pilot. One audit round: an isolated OUTSIDE REVIEWER reviews this section
+and the probe list; if the original leak reviewer is unavailable, a fresh
+reviewer must disclose that fact and the provenance of the leak finding in
+the report. STATUS: round COMPLETE —
+handoffs/SECTION_13_PROBE_LIST_REVIEW_2026-08-23.md (commit 03485ac), verdict
+GO ONLY AFTER EXACT CORRECTIONS; all five corrections (B1-B5) are
+incorporated in this revision. One live batch (12 nominal calls, 16 max),
+one approval stop.
 
 ### 13.1 Why (binding context)
 
@@ -1062,10 +1067,21 @@ commands (--sandbox workspace-write,
 sandbox_workspace_write.network_access=false), so agent commands stay
 network-free while the model client is not.
 
-Mounts are EXACTLY three:
-- the task workspace (rw),
-- the pinned interpreter,
-- $CODEX_HOME (auth.json + session dir only).
+Mounts (B1, mechanically defined): EXACTLY three EXTERNAL BIND MOUNTS at
+fixed canonical destinations and modes —
+- the task workspace (rw, canonical destination fixed by the wrapper),
+- the pinned interpreter (ro),
+- the agent home at a fixed destination which IS $HOME/$CODEX_HOME inside
+  the container: a non-symlink directory containing exactly a non-symlink
+  auth.json and one newly-empty non-symlink session directory; recursively
+  reject every other entry.
+Beyond these, only a CLOSED LIST of image/runtime mount classes is permitted
+(image rootfs, /proc, /sys, /dev, cgroup, runtime-provided files —
+enumerated exactly in the wrapper). Every other mountinfo row is REJECTED;
+no prefix matching. Mountinfo parse/traversal/stat errors FAIL CLOSED. The
+probe records the normalized mount table and the exact container runtime
+arguments, and attempts MUST launch through the same wrapper with the same
+security arguments the probe recorded.
 
 Isolation from the answer leak is delivered by the MOUNT SET, not the
 network layer. Acceptance must confirm codex's own command sandbox
@@ -1104,41 +1120,71 @@ pin it to 3.10.x (no tomllib); if its reference does not resolve under
 A scripted probe runs INSIDE the container before each batch and its full
 output is committed as batch evidence. It must demonstrate, with failing
 output, that:
-1. The literal Phase 3 exploit fails: for each answer_bearing_module,
-   `inspect.getsource(<module>)` either fails or the retrieved source
-   contains NONE of the task's fix_signature_strings; AND one recursive
-   walk over every reachable .py file from / (skipping /proc, /sys, /dev
-   and the workspace) finds no whitespace-normalized match for any
-   fix_signature_string.
-2. Host filesystem is unreachable: /proc/self/mountinfo is dumped and
-   asserted to contain no non-virtual mount beyond the allowlisted set;
-   /home, /root, /mnt, /media, /srv, /opt, $HOME, and this repository's
-   absolute path all fail to list; os.environ, sys.path, and
-   site.getsitepackages() are dumped and are free of host paths and of
+1. The literal Phase 3 exploit fails (B5, defined exactly): the probe
+   emits named per-check JSON records. The contamination spec is validated
+   first: exactly the batch's four task IDs, nonempty import/attribute
+   targets, nonempty discriminative signatures; the literal targets MUST
+   include `tomllib._parser` and `enum.Enum.__new__`, plus the doctest
+   filesystem search. For each target, `inspect.getsource` either fails or
+   the source contains no fix signature. AND one recursive walk over every
+   reachable regular .py file (from /, skipping /proc, /sys, /dev and the
+   exact workspace mount, never following symlinks) finds no
+   whitespace-normalized match for any fix_signature_string — where
+   normalization is PEP-263 decoding followed by removal of every Unicode
+   whitespace code point from both source and signature. Any unexpected
+   walk/stat/read/decode error FAILS CLOSED; every skipped root and the
+   file count are logged.
+2. Host filesystem is unreachable: /proc/self/mountinfo is dumped,
+   normalized, and asserted to contain ONLY the three §13.2 external bind
+   mounts at their canonical destinations plus rows belonging to the closed
+   permitted image/runtime class list — every other row fails the probe (no
+   prefix matching; parse errors fail closed). /home, /root, /mnt, /media,
+   /srv, /opt, and this repository's absolute path all fail to list; $HOME
+   resolves to the agent-home mount and nothing else; os.environ, sys.path,
+   and site.getsitepackages() are dumped and are free of host paths and of
    non-empty site-packages; no /var/run/docker.sock exists; the process
    runs non-root.
-3. No agent-command network: an AGENT-COMMAND socket attempt to any
-   non-model host fails, verified through the same confinement layer agent
-   commands use (a bare-container socket test would go red forever, since
-   the model client needs egress).
+3. No agent-command network (B2, zero-spend): a no-model Codex
+   sandbox-helper invocation replays the EXACT resolved workspace-write
+   policy the subject command uses, attempts a socket to a non-model host,
+   and records argv, resolved-policy hash, socket target, the denial, and
+   exit status. The recorded policy hash MUST equal the subject command's
+   policy hash. If the pinned Codex CLI cannot expose and replay that
+   policy without a model call: BUILD_REJECTED. A bare socket failure, DNS
+   failure, unroutable address, or container-level deny does NOT pass this
+   leg (and a bare-container socket test would go red forever, since the
+   model client needs egress).
 4. No secondary interpreters or site-packages exist on PATH.
-5. Environment check (before any spend): inside the container under the
-   pinned interpreter, per task: taskcheck verify passes, check.py fails
-   public/ (regressions passing), and check.py resolves reference/ twice
-   byte-identically. A task failing this is EXCLUDED and recorded, not
-   rerun.
+5. Environment check + scoring identity (B3, before any spend): BOTH the
+   pre-spend checks AND production attempt scoring run through the
+   container wrapper under the task's pinned interpreter — scoring never
+   falls back to the host interpreter. Per task, inside the container:
+   taskcheck verify passes; check.py fails public/ (all regressions true);
+   check.py resolves reference/ twice byte-identically (equal exit status,
+   stdout bytes, and stderr bytes, both parsed results resolved). The probe
+   records and compares — for subject commands and for check.py — the
+   canonical executable path, sys.version, executable SHA-256, image
+   digest, and PATH resolution; any mismatch is BUILD_REJECTED. A task
+   failing the environment check is EXCLUDED and recorded, not rerun.
 6. The mounted agent home contains no auto-loadable instruction file
    (AGENTS*.md, CLAUDE.md, *.rules — find to depth 2 returns empty) and
    nothing beyond auth.json + the codex session dir. This is also a launch
    precondition alongside run_batch's existing auth check.
 THE BUILD DOES NOT EXIST UNTIL THE PROBE FAILS THE REAL ATTACK: acceptance
 requires running the probe against the OLD (host) runner configuration and
-showing it DETECTS the leak there (probe red on host, green in container).
-The probe is the permanent regression test for this leak class.
+showing it DETECTS the leak there. The host control passes ONLY as
+EXPECTED_RED when at least one literal target or global signature scan
+produces an explicit CONTAMINATION_FOUND record — unrelated structural
+failures (e.g. mountinfo absent on macOS) do NOT prove the control. The
+container passes only when ALL legs are green. Both modes run the SAME
+probe code against the SAME hashed contamination spec, and the container
+mode uses the same wrapper and options as a real attempt. The probe is the
+permanent regression test for this leak class.
 
-The probe output records the image digest it ran against; launch REFUSES
-any attempt whose digest differs from the probe's digest and the approved
-REQUEST's digest — a mismatch is BUILD_REJECTED, not a retry. Read-only
+The probe output records, per task, the image digest it ran against;
+launch REFUSES any attempt whose container digest differs from the probe's
+recorded digest and the approved REQUEST's digest for that task — a
+mismatch is BUILD_REJECTED, not a retry. Read-only
 root filesystem: considered, NOT required (writes are already sealed with
 a zero-failure record).
 
@@ -1181,14 +1227,18 @@ task edits, selective retries, any MD claim, any general capability claim.
    reporting. taskcheck.py untouched. Probe script <=150 lines, lives in
    scripts/contain/, runs identically on host (red) and container (green).
 2. REQUEST stays v2; taskcheck.py untouched. run_batch._runner gains a
-   `container` sub-object inside `runner` — {image_digest, spec_sha256,
-   interpreter_pins: {task_id: version}} — validated in run_batch before
-   RunnerConfig construction and echoed verbatim into every attempt's
-   evidence (run_batch already copies runner into intent/launch/result).
-   Do NOT modify mdseval RunnerConfig (that breaks the v1 batch check).
-   One container image carries all pinned interpreters OR per-task images
-   are used with all digests recorded — implementer's choice; all digests
-   live in runner.container. Note for later: tooling/compare.py pins an
+   `container` sub-object inside `runner` with EXACTLY this schema (B4):
+   {"image_digests": {task_id: "sha256:<64 lowercase hex>"},
+   "spec_sha256": "<64 hex>", "interpreter_pins": {task_id: version}}.
+   The two maps' key sets MUST equal the REQUEST's task-id set exactly
+   (repeat one digest for all tasks when a single image is used). The
+   object is validated and REMOVED before RunnerConfig construction (never
+   passed to the dataclass; RunnerConfig is not modified — that breaks the
+   v1 batch check) and echoed verbatim into every attempt's
+   intent/launch/result. Queue, launch, every attempt, and verify compare
+   the same object verbatim; runtime inspection must equal that task's
+   approved content-addressed digest — tag equality is insufficient. Probe
+   output is per task. Note for later: tooling/compare.py pins an
    exact runner key set and needs a one-line allowance before any future
    two-arm sealed batch (not reached by this null batch). Line budget
    honesty: the run_batch cap of 610 leaves ~61 lines for the container
