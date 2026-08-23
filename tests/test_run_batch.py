@@ -161,6 +161,22 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
                 taskcheck.TaskError, "arm-neutral"):
             batch.queue_request("fake-batch", [task], [("a", arm)], self.root / "runs", md_filename="ALT.md")
 
+    def test_container_schema_is_exact_and_removed_before_runner_config(self):
+        task_ids = {"task-1", "task-2"}
+        digest = "sha256:" + "a" * 64
+        container = {"image_digests": {task: digest for task in task_ids},
+                     "spec_sha256": "b" * 64,
+                     "interpreter_pins": {task: "3.11.5" for task in task_ids}}
+        self.assertIs(batch._container(container, task_ids), container)
+        runner = batch.asdict(batch.RUNNER); runner["container"] = container
+        self.assertEqual(batch._runner(runner), batch.RUNNER)
+        invalid = dict(container); invalid["extra"] = True
+        with self.assertRaisesRegex(batch.BatchError, "container schema"):
+            batch._container(invalid, task_ids)
+        missing = dict(container); missing["image_digests"] = {"task-1": digest}
+        with self.assertRaisesRegex(batch.BatchError, "task binding"):
+            batch._container(missing, task_ids)
+
     def test_checker_ignores_subject_bytecode(self):
         task = self.task("task-1")
         workspace = self.root / "workspace"

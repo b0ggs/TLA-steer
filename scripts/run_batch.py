@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Queue, run, and verify one- or two-arm task-layout development batches."""
-
 import argparse
 import json
 import os
@@ -13,12 +12,10 @@ import time
 from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any, Callable
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-from mdseval.capture import Redactor, capture_git, redact_event_stream  # noqa: E402
+from mdseval.capture import Redactor, capture_git, parse_event_stream, redact_event_stream  # noqa: E402
 from mdseval.config import RunnerConfig  # noqa: E402
 from mdseval.fixtures import audit_final_subject_tree  # noqa: E402
 from mdseval.gitutils import init_repository, run_git  # noqa: E402
@@ -26,22 +23,19 @@ from mdseval.hashing import sha256_file, tree_sha256  # noqa: E402
 from mdseval.processutils import ProcessOutcome, run_process_group  # noqa: E402
 from mdseval.runner.codex_cli import build_codex_command, isolated_environment  # noqa: E402
 from mdseval.scout import classify_infrastructure_failure  # noqa: E402
+from scripts.contain import runtime as sealed  # noqa: E402
 from tooling import taskcheck  # noqa: E402
 
 RUNNER = RunnerConfig("codex-cli", "gpt-5.6-sol", "high", "workspace-write", "never",
                       False, True, False, 300, 1)
 WRAPPER_PATH = ROOT / "tooling" / "prompts" / "subject-wrapper-v1.txt"
 V1_KEYS = {"batch_id", "tasks", "arm", "call_count", "contingent_replacement_call_cap", "runner"}
-
 BatchError = RuntimeError
-
 def _ensure(condition: bool, message: str) -> None:
     if not condition:
         raise BatchError(message)
-
 def _bytes(value: Any) -> bytes:
     return (taskcheck.canonical(value) + "\n").encode()
-
 def _write_once(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -52,7 +46,6 @@ def _write_once(path: Path, data: bytes) -> None:
     except BaseException:
         path.unlink(missing_ok=True)
         raise
-
 def _json(path: Path, *, canonical: bool = True) -> dict[str, Any]:
     _ensure(not path.is_symlink() and path.is_file(), f"missing or unsafe JSON: {path}")
     raw = path.read_bytes()
@@ -63,26 +56,23 @@ def _json(path: Path, *, canonical: bool = True) -> dict[str, Any]:
     _ensure(isinstance(value, dict) and (not canonical or raw == _bytes(value)),
             f"noncanonical JSON object: {path}")
     return value
-
 def _relative(path: Path) -> str:
     try:
         return path.resolve().relative_to(ROOT).as_posix()
     except ValueError as exc:
         raise BatchError(f"path is outside repository: {path}") from exc
-
 def _resolve(relative: str) -> Path:
     path = (ROOT / relative).resolve()
     _ensure(_relative(path) == relative, f"unsafe repository-relative path: {relative}")
     return path
-
 def _sha(value: Any) -> bool:
     return isinstance(value, str) and bool(re.fullmatch(r"[0-9a-f]{64}", value))
-
 def _runner(value: Any) -> RunnerConfig:
     try:
         if not isinstance(value, dict):
             raise TypeError
-        runner = RunnerConfig(**value)
+        raw = dict(value); raw.pop("container", None)
+        runner = RunnerConfig(**raw)
     except TypeError as exc:
         raise BatchError("runner schema is invalid") from exc
     safe = ((runner.type, runner.sandbox, runner.approval_policy)
@@ -96,10 +86,23 @@ def _runner(value: Any) -> RunnerConfig:
                     for value in (runner.model, runner.reasoning_effort)))
     _ensure(safe, "runner weakens the development isolation contract")
     return runner
-
+def _container(value: Any, task_ids: set[str]) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    images = value.get("image_digests") if isinstance(value, dict) else None
+    pins = value.get("interpreter_pins") if isinstance(value, dict) else None
+    valid = (isinstance(value, dict) and set(value) == {"image_digests", "spec_sha256", "interpreter_pins"}
+             and isinstance(images, dict) and isinstance(pins, dict) and set(images) == set(pins) == task_ids
+             and _sha(value.get("spec_sha256")) and all(isinstance(item, str)
+             and re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in images.values())
+             and all(isinstance(item, str) and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", item)
+                     for item in pins.values()))
+    _ensure(valid, "runner.container schema or task binding is invalid")
+    return value
 def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]],
         runs_root: Path = ROOT / "runs" / "dev-v2", *, md_filename: str = "CODER.md",
-        task_order_seed: int | None = None, runner: RunnerConfig = RUNNER) -> Path:
+        task_order_seed: int | None = None, runner: RunnerConfig = RUNNER,
+        container: dict[str, Any] | None = None) -> Path:
     _ensure(bool(taskcheck.TASK_ID.fullmatch(batch_id)) and bool(tasks) and len(arms) in {1, 2},
             "batch id, tasks, or arm count is invalid")
     md_filename = taskcheck._md_filename(md_filename)
@@ -121,12 +124,18 @@ def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]]
     _ensure(len({row["name"] for row in arm_rows}) == len(arm_rows),
             "arm labels must be distinct")
     task_rows = taskcheck._batch_task_order(task_rows, seed)
+    container = _container(container, {row["id"] for row in task_rows})
+    runner_row = asdict(_runner(asdict(runner)))
+    if container is not None:
+        runner_row["container"] = container
+        for row in task_rows:
+            _launch_record(runs_root / batch_id, row["id"], container)
     nominal = 3 * len(task_rows) * len(arm_rows)
     replacement_cap = len(task_rows) * len(arm_rows)
     request = {"batch_id": batch_id, "tasks": task_rows, "arms": arm_rows,
                "call_count": nominal, "replacement_call_cap": replacement_cap,
                "max_total_calls": nominal + replacement_cap, "md_filename": md_filename,
-               "task_order_seed": seed, "runner": asdict(_runner(asdict(runner)))}
+               "task_order_seed": seed, "runner": runner_row}
     path = runs_root / batch_id / "REQUEST.json"
     data = _bytes(request)
     if path.exists():
@@ -134,7 +143,6 @@ def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]]
     else:
         _write_once(path, data)
     return path
-
 def _approved(batch: Path) -> tuple[dict[str, Any], int]:
     request_path = batch / "REQUEST.json"
     request = _json(request_path)
@@ -161,8 +169,36 @@ def _approved(batch: Path) -> tuple[dict[str, Any], int]:
         return request, 1
     taskcheck._validate_batch_request(request, batch.name, {1, 2})
     _runner(request.get("runner"))
+    _container(request["runner"].get("container"), {row["id"] for row in request["tasks"]})
     return request, 2
-
+def _launch_record(batch: Path, task_id: str, container: dict[str, Any]) -> dict[str, Any]:
+    paths = [batch / "preflight" / kind / f"{task_id}.{suffix}" for kind, suffix in
+             (("host", "jsonl"), ("container", "jsonl"), ("environment", "json"))]
+    files = [item for path in paths for item in (path, path.with_suffix(path.suffix + ".stderr"))]
+    for path in files:
+        _ensure(not path.is_symlink() and path.is_file(), f"missing sealed preflight evidence: {path}")
+        relative = _relative(path); run_git(ROOT, "ls-files", "--error-unmatch", "--", relative)
+        run_git(ROOT, "diff", "--quiet", "HEAD", "--", relative)
+    def summary(path: Path) -> dict[str, Any]:
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        _ensure(bool(rows) and all(isinstance(row, dict) for row in rows), "invalid probe event stream")
+        return rows[-1]
+    host, probe, environment = summary(paths[0]), summary(paths[1]), _json(paths[2])
+    common = {"task_id": task_id, "image_digest": container["image_digests"][task_id],
+              "spec_sha256": container["spec_sha256"]}
+    _ensure(all(row.get(key) == value for row in (host, probe, environment)
+                for key, value in common.items()), "sealed preflight binding mismatch")
+    policy = next((row for row in map(json.loads, paths[1].read_text().splitlines())
+                   if row.get("check") == "runtime_policy_identity"), {})
+    _ensure(host.get("status") == "EXPECTED_RED" and probe.get("status") == "ALL_GREEN"
+            and environment.get("status") == "ALL_GREEN" and policy.get("status") == "PASS"
+            and environment.get("interpreter_pin") == container["interpreter_pins"][task_id]
+            and environment.get("runtime_security_sha256") == probe.get("runtime_security_sha256")
+            and policy.get("identity", {}).get("subject") == environment.get("identity"),
+            "sealed preflight did not pass")
+    return {"files": {_relative(path): sha256_file(path) for path in files},
+            "runtime_security_sha256": probe["runtime_security_sha256"],
+            "policy_sha256": probe["policy_sha256"], "identity": environment["identity"]}
 def _ledger(batch: Path, *, required: bool = False) -> tuple[dict[str, str], dict[str, str]]:
     rows = taskcheck._read_chain(batch / "evidence-ledger.jsonl", "evidence ledger", required=required)
     attempts: dict[str, str] = {}
@@ -186,14 +222,12 @@ def _ledger(batch: Path, *, required: bool = False) -> tuple[dict[str, str], dic
             _ensure(valid, f"invalid disposition ledger row at line {number}")
             dispositions[key] = row["sha256"]
     return attempts, dispositions
-
 def _auth_home() -> str:
     value = os.environ.get("MDSEVAL_CODEX_HOME")
     auth = Path(value).expanduser() / "auth.json" if value else None
     _ensure(bool(auth) and not auth.is_symlink() and auth.is_file() and bool(auth.stat().st_size),
             "MDSEVAL_CODEX_HOME must contain a nonempty non-symlink auth.json")
     return str(auth.parent)
-
 def _expose(task: Path, batch_id: str) -> None:
     path = task.parent / "exposures.jsonl"
     rows = taskcheck._verify_exposures(path)
@@ -203,7 +237,6 @@ def _expose(task: Path, batch_id: str) -> None:
     if not events:
         taskcheck._append_chain(path, {"task_id": task.name, "event": "exposed",
                                 "batch_id": batch_id, "reason": None}, "exposures ledger")
-
 def _workspace(task: Path, arm: bytes, parent: Path, md_filename: str) -> tuple[Path, str]:
     workspace = parent / "workspace"
     shutil.copytree(task / "public", workspace)
@@ -213,14 +246,12 @@ def _workspace(task: Path, arm: bytes, parent: Path, md_filename: str) -> tuple[
                     ("add", "--all"), ("commit", "-q", "-m", "baseline")):
         run_git(workspace, *command)
     return workspace, str(run_git(workspace, "rev-parse", "HEAD")).strip()
-
 def _reserve(path: Path, intent: dict[str, Any]) -> None:
     try:
         path.mkdir(parents=True, exist_ok=False)
     except FileExistsError as exc:
         raise BatchError(f"exclusive-create collision: {path}") from exc
     _write_once(path / "intent.json", _bytes(intent))
-
 def _checker(task: Path, workspace: Path) -> tuple[dict[str, Any], bool, float]:
     with tempfile.TemporaryDirectory(prefix="final-tree-") as temporary:
         clean = Path(temporary) / "tree"
@@ -229,7 +260,6 @@ def _checker(task: Path, workspace: Path) -> tuple[dict[str, Any], bool, float]:
         first, raw = taskcheck.run_checker(task / "check.py", clean)
         second, raw_two = taskcheck.run_checker(task / "check.py", clean)
         return first, first == second and raw == raw_two, time.monotonic() - started
-
 def _attempt_manifest(attempt: Path, ledger: Path | None = None) -> str:
     target = attempt / "attempt-manifest.json"
     files = {path.relative_to(attempt).as_posix(): sha256_file(path)
@@ -243,7 +273,6 @@ def _attempt_manifest(attempt: Path, ledger: Path | None = None) -> str:
         taskcheck._append_chain(ledger, {"attempt": attempt.relative_to(ledger.parent).as_posix(),
                                         "manifest_sha256": sha256_file(target)}, "evidence ledger")
     return sha256_file(target)
-
 def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: int,
         batch: Path, process_runner: Callable[..., ProcessOutcome], codex_home: str) -> bool:
     verified = taskcheck.verify(task, md_filename=request["md_filename"])
@@ -253,12 +282,16 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
             "approved task manifest or arm hash changed")
     md_filename = request["md_filename"]
     runner = _runner(request["runner"])
+    container = request["runner"].get("container")
+    seal = _launch_record(batch, task.name, container) if container else None
     wrapper = WRAPPER_PATH.read_text(encoding="utf-8").replace("{md_filename}", md_filename)
     wrapper_sha = taskcheck.sha256_bytes(wrapper.encode())
     destination = batch / task.name / arm["name"] / f"attempt-{ordinal}"
     intent = {"task": task.name, "arm": arm["name"], "ordinal": ordinal,
               "task_manifest_sha256": expected, "arm_sha256": arm["sha256"],
               "md_filename": md_filename, "wrapper_sha256": wrapper_sha, "runner": request["runner"]}
+    if container:
+        intent.update({"container": container, "container_preflight": seal})
     redactor = Redactor()
     with tempfile.TemporaryDirectory(prefix=f"batch-{task.name}-") as temporary:
         workspace, baseline = _workspace(task, arm_path.read_bytes(), Path(temporary), md_filename)
@@ -274,16 +307,24 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
         _expose(task, request["batch_id"])
         started = time.monotonic()
         try:
-            outcome = process_runner(command, cwd=workspace, input_text=wrapper, timeout=runner.timeout_seconds,
-                                     environment=isolated_environment(codex_home))
+            outcome = (sealed.subject(command, workspace, final_temp, wrapper, runner.timeout_seconds,
+                       Path(codex_home), container["image_digests"][task.name],
+                       container["interpreter_pins"][task.name], seal) if container else
+                       process_runner(command, cwd=workspace, input_text=wrapper, timeout=runner.timeout_seconds,
+                                      environment=isolated_environment(codex_home)))
         except OSError as exc:
             _write_once(destination / "pre-spawn.json", _bytes({"error": f"{type(exc).__name__}: {exc}"}))
             raise BatchError("subject process did not spawn; preserved as pre-spawn failure") from exc
         duration = time.monotonic() - started
         final = final_temp.read_text(encoding="utf-8", errors="replace") if final_temp.is_file() else ""
-        _write_once(destination / "events.jsonl", redact_event_stream(outcome.stdout, redactor).encode())
+        events = destination / "events.jsonl"
+        _write_once(events, redact_event_stream(outcome.stdout, redactor).encode())
         _write_once(destination / "stderr.txt", redactor.text(outcome.stderr).encode())
         _write_once(destination / "final.txt", redactor.text(final).encode())
+        usage = parse_event_stream(events).usage
+        tokens = {"input_tokens": usage["input_tokens"], "cached_input_tokens": usage["cached_input_tokens"],
+                  "output_tokens": usage["output_tokens"], "reasoning_tokens": usage["reasoning_output_tokens"],
+                  "total_tokens": usage["total_tokens"], "usage_reported": usage["usage_reported"]}
         requirements = _json(task / "manifest.json")["requirements"]
         blank = {"requirements": {key: False for key in requirements}, "regressions": {}, "resolved": False}
         invalid, scoreable, changes, final_hash, checker_duration = "", True, (), "", 0.0
@@ -317,7 +358,13 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                 _write_once(destination / "infra-invalid.json", _bytes({"error": f"{type(exc).__name__}: {exc}"}))
                 return False
             try:
-                checked, deterministic, checker_duration = _checker(task, workspace)
+                if container:
+                    checked, deterministic, checker_duration, checker_evidence = sealed.checker(
+                        task, workspace, container["image_digests"][task.name],
+                        container["interpreter_pins"][task.name], Path(codex_home), seal["identity"])
+                    _write_once(destination / "checker-runtime.json", _bytes(checker_evidence))
+                else:
+                    checked, deterministic, checker_duration = _checker(task, workspace)
                 taskcheck.verify(task)
                 if not deterministic:
                     invalid = "checker result nondeterministic"
@@ -339,6 +386,8 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                   "omissions": omissions, "omission_only": bool(failed) and all(omissions.values())
                   and all(checked["regressions"].values()), "target_path_changes": target_changes,
                   "valid": not invalid, "invalid_reason": invalid}
+        if container:
+            result.update({"container": container, "container_preflight": seal, "token_totals": tokens})
         _write_once(destination / "checker.json", _bytes(checked))
         _write_once(destination / "result.json", _bytes(result))
         _attempt_manifest(destination, batch / "evidence-ledger.jsonl")
@@ -388,7 +437,9 @@ def _disposition(task: Path, arm: dict[str, str], results: list[dict[str, Any]],
         mismatch = any(row.get("runner") != request["runner"] or row.get("arm") != arm["name"]
                        or row.get("arm_sha256") != arm["sha256"]
                        or row.get("md_filename") != request["md_filename"]
-                       or row.get("wrapper_sha256") != wrapper_sha for row in results)
+                       or row.get("wrapper_sha256") != wrapper_sha
+                       or (request["runner"].get("container") is not None
+                           and row.get("container") != request["runner"]["container"]) for row in results)
         _ensure(not mismatch, "attempt runner/arm/wrapper evidence mismatch")
     requirement_count = len(_json(task / "manifest.json")["requirements"])
     passed = sum(sum(row["requirements"].values()) for row in results)
@@ -406,6 +457,10 @@ def _disposition(task: Path, arm: dict[str, str], results: list[dict[str, Any]],
                   "retired_ancestors": ancestors, "task_denominator": 1 + len(ancestors)})
     if not legacy:
         value.update({"arm": arm["name"], "runner": request["runner"]})
+        if request["runner"].get("container") is not None:
+            names = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens")
+            value.update({"token_totals": {key: sum(row["token_totals"][key] for row in results) for key in names},
+                          "token_evidence_complete": all(row["token_totals"]["usage_reported"] for row in results)})
     return value
 
 def _write_disposition(
@@ -493,12 +548,16 @@ def verify_batch(batch: Path) -> None:
                 "disposition evidence set differs from request")
     for row in tasks:
         task = _resolve(f"tasks/{row['id']}")
+        container = None if legacy else request["runner"].get("container")
+        seal = _launch_record(batch, task.name, container) if container else None
         verified = taskcheck.verify(task, md_filename=md_filename)
         _ensure(verified["manifest_sha256"] == row["manifest_sha256"],
                 f"request-bound task hash changed: {task.name}")
         for arm in arms:
             base = batch / task.name / arm["name"]
             results, infra, _, launched = _state(base)
+            _ensure(not container or all(item.get("container_preflight") == seal for item in results),
+                    f"container preflight evidence mismatch: {task.name}")
             path = base / "disposition.json"
             expected = _disposition(task, arm, results, infra, request, legacy=legacy)
             valid = (len(results) >= 3 or infra >= 2) and path.is_file() and _json(path) == expected
@@ -519,6 +578,7 @@ def main(argv: list[str] | None = None) -> int:
     queue.add_argument("--arm", action="append", nargs=2, metavar=("NAME", "PATH"), required=True)
     queue.add_argument("--md-filename", default="CODER.md")
     queue.add_argument("--task-order-seed", type=int)
+    queue.add_argument("--container", type=json.loads)
     for field in fields(RunnerConfig):
         default = getattr(RUNNER, field.name)
         queue.add_argument("--" + field.name.replace("_", "-"), default=default,
@@ -534,7 +594,7 @@ def main(argv: list[str] | None = None) -> int:
             runner = RunnerConfig(*(getattr(args, field.name) for field in fields(RunnerConfig)))
             arms = [(name, Path(path)) for name, path in args.arm]
             path = queue_request(args.batch_id, args.task, arms, args.runs_root, md_filename=args.md_filename,
-                                 task_order_seed=args.task_order_seed, runner=runner)
+                                 task_order_seed=args.task_order_seed, runner=runner, container=args.container)
             print(json.dumps({"request": str(path), "request_sha256": sha256_file(path)}, sort_keys=True))
         elif args.command == "run":
             launch(args.batch_id, args.runs_root)
