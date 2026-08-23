@@ -1036,7 +1036,7 @@ No further document audits precede implementation.
 
 ## 13. SEALED EXECUTION + THE ISOLATED RERUN (the missing hills layer)
 
-Status: PROPOSED (flips to "ACTIVE as of <date>" on Wade's word). Branch:
+Status: ACTIVE as of 2026-08-23. Branch:
 off pilot. One audit round: an isolated OUTSIDE REVIEWER reviews this section
 and the probe list; if the original leak reviewer is unavailable, a fresh
 reviewer must disclose that fact and the provenance of the leak finding in
