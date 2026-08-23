@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated [doctest.py](/workspace/doctest.py) to compare all exception notes while stripping SyntaxError-family source-location decoration.
+
+Added executable regression coverage in [test_doctest_notes_regression.py](/workspace/tests/test_doctest_notes_regression.py).
+
+Validation:
+
+- 4 regression tests passed.
+- Existing `doctest.py` self-tests passed.

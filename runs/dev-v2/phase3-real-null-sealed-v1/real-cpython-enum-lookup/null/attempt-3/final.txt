@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [enum.py](/workspace/enum.py:1162) to compare unhashable lookup values against hashable member values. Added executable regression coverage in [test_enum_lookup_regression.py](/workspace/tests/test_enum_lookup_regression.py:1).
+
+Tests could not be run because no Python interpreter is installed in the environment.

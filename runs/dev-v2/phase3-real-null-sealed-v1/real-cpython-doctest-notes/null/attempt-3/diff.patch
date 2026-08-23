@@ -1,0 +1,169 @@
+diff --git a/doctest.py b/doctest.py
+index 46b4dd6..1d576ef 100644
+--- a/doctest.py
++++ b/doctest.py
+@@ -1393,7 +1393,22 @@ class DocTestRunner:
+ 
+             # The example raised an exception:  check if it was expected.
+             else:
+-                exc_msg = traceback.format_exception_only(*exception[:2])[-1]
++                formatted_ex = traceback.format_exception_only(*exception[:2])
++                if issubclass(exception[0], SyntaxError):
++                    # SyntaxError and its subclasses include source-location
++                    # decoration before the exception message.  Ignore that
++                    # decoration, but retain the message and every note.
++                    exception_line_prefixes = (
++                        f"{exception[0].__qualname__}:",
++                        f"{exception[0].__module__}.{exception[0].__qualname__}:",
++                    )
++                    exc_msg_index = next(
++                        index
++                        for index, line in enumerate(formatted_ex)
++                        if line.startswith(exception_line_prefixes)
++                    )
++                    formatted_ex = formatted_ex[exc_msg_index:]
++                exc_msg = "".join(formatted_ex)
+                 if not quiet:
+                     got += _exception_traceback(exception)
+ 
+diff --git a/tests/test_doctest_notes_regression.py b/tests/test_doctest_notes_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_doctest_notes_regression.py
+@@ -0,0 +1,136 @@
++#!/usr/bin/env python3
++"""Regression tests for exception-note comparison in the local doctest."""
++
++import importlib.util
++from pathlib import Path
++import textwrap
++import unittest
++
++
++DOCTEST_PATH = Path(__file__).resolve().parents[1] / "doctest.py"
++SPEC = importlib.util.spec_from_file_location("local_doctest", DOCTEST_PATH)
++doctest = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(doctest)
++
++
++def exception_with_notes(exception_type, message, *notes):
++    exception = exception_type(message)
++    for note in notes:
++        exception.add_note(note)
++    return exception
++
++
++def syntax_error_with_notes(exception_type, *notes):
++    exception = exception_type(
++        "bad syntax",
++        ("decorated.py", 42, 2, "bad syntax\n"),
++    )
++    for note in notes:
++        exception.add_note(note)
++    return exception
++
++
++class ExceptionNoteComparisonTests(unittest.TestCase):
++    def run_doctest(self, source, globs=None):
++        source = textwrap.dedent(source)
++        test = doctest.DocTestParser().get_doctest(
++            source,
++            globs or {},
++            "exception_notes",
++            __file__,
++            0,
++        )
++        return doctest.DocTestRunner(verbose=False).run(
++            test,
++            out=lambda output: None,
++        )
++
++    def assert_doctest_passes(self, source, globs=None):
++        result = self.run_doctest(source, globs)
++        self.assertEqual(result.failed, 0)
++
++    def assert_doctest_fails(self, source, globs=None):
++        result = self.run_doctest(source, globs)
++        self.assertEqual(result.failed, 1)
++
++    def test_ordinary_exception_note_is_compared(self):
++        globs = {"make_exception": exception_with_notes}
++        self.assert_doctest_passes(
++            """
++            >>> raise make_exception(ValueError, "message", "correct note")
++            Traceback (most recent call last):
++            ValueError: message
++            correct note
++            """,
++            globs,
++        )
++        self.assert_doctest_fails(
++            """
++            >>> raise make_exception(ValueError, "message", "correct note")
++            Traceback (most recent call last):
++            ValueError: message
++            wrong note
++            """,
++            globs,
++        )
++
++    def test_multiple_notes_are_all_compared(self):
++        globs = {"make_exception": exception_with_notes}
++        self.assert_doctest_passes(
++            """
++            >>> raise make_exception(RuntimeError, "message", "first", "second")
++            Traceback (most recent call last):
++            RuntimeError: message
++            first
++            second
++            """,
++            globs,
++        )
++        self.assert_doctest_fails(
++            """
++            >>> raise make_exception(RuntimeError, "message", "first", "second")
++            Traceback (most recent call last):
++            RuntimeError: message
++            first
++            incorrect second note
++            """,
++            globs,
++        )
++
++    def test_syntax_error_family_ignores_location_but_compares_notes(self):
++        for exception_type in (SyntaxError, IndentationError, TabError):
++            with self.subTest(exception_type=exception_type.__name__):
++                globs = {
++                    "make_syntax_error": syntax_error_with_notes,
++                    "exception_type": exception_type,
++                }
++                expected = f"""
++                    >>> raise make_syntax_error(exception_type, "first", "second")
++                    Traceback (most recent call last):
++                    {exception_type.__name__}: bad syntax
++                    first
++                    second
++                """
++                self.assert_doctest_passes(expected, globs)
++
++                incorrect = f"""
++                    >>> raise make_syntax_error(exception_type, "first", "second")
++                    Traceback (most recent call last):
++                    {exception_type.__name__}: bad syntax
++                    first
++                    wrong second note
++                """
++                self.assert_doctest_fails(incorrect, globs)
++
++    def test_exception_without_notes_keeps_existing_behavior(self):
++        self.assert_doctest_passes(
++            """
++            >>> raise ValueError("message")
++            Traceback (most recent call last):
++            ValueError: message
++            """
++        )
++
++
++if __name__ == "__main__":
++    unittest.main()

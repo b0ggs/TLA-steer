@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Updated [doctest.py](/workspace/doctest.py) to compare complete exception messages and notes while stripping SyntaxError location decoration.
+
+Added executable [regression tests](/workspace/tests/test_doctest_notes_regression.py) covering ordinary exceptions, multiple notes, SyntaxError-family notes, and incorrect-note failures.
+
+Verification: 6 tests passed; vendored doctest self-tests passed.

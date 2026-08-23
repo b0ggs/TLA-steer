@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Updated [setutils.py](/workspace/boltons/setutils.py:392) so slice bounds use dead-slot-free indices while preserving negative-step semantics.
+
+Added focused `unittest` coverage in [test_indexed_slice_regression.py](/workspace/tests/test_indexed_slice_regression.py:1).
+
+Runtime tests could not run because no Python interpreter is installed; static checks passed.

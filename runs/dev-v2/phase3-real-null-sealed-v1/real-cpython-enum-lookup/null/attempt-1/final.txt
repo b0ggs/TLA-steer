@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `Enum.__new__` to compare unhashable lookup values against hashable stored values. Added `tests/test_enum_lookup_regression.py` covering the regression and existing alias behavior.
+
+Verification: 2 unittest tests passed; syntax compilation passed.

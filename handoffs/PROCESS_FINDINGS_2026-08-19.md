@@ -212,3 +212,32 @@ cohort is invalidated.
 Blind-solve caveat: the four real-* tasks' blind solves ran on the unsealed
 host with no captured trace. Their fair-solvability is UNPROVEN; the tasks
 hold calibration-only status.
+
+## 9. Section 13 sealed-runtime calibration — 2026-08-23
+
+The hash-approved batch `phase3-real-null-sealed-v1` used REQUEST SHA-256
+`718d4fa645b9a892f0d5a09b3c851af8355b67ec646ecea7faa03ca26d3eb8c9`,
+container image digest
+`sha256:cc5be9c0627c60dc857153239a97ef1699c0665b4fb4402d214ca42ec8f0f077`,
+and contamination-spec SHA-256
+`b18ec65cbd6f85ccf5db948540a6da88097ce747b61443c8c09669214e9783ac`.
+Every host control was `EXPECTED_RED`; every sealed probe and in-container
+environment check was `ALL_GREEN`. The batch used exactly 12 subject calls and
+no replacements. `run_batch verify` passed before interpretation; all attempts
+were valid and all token evidence was complete.
+
+| Task | Valid attempts | Resolved | q | Disposition | Duration (s) | Total tokens |
+|---|---:|---:|---:|---|---:|---:|
+| real-boltons-indexed-slice | 3/3 | 2/3 | 0.888889 | wrong-failure-mode | 476.730743 | 619721 |
+| real-cpython-doctest-notes | 3/3 | 3/3 | 1.000000 | ceiling | 552.531295 | 2038108 |
+| real-cpython-enum-lookup | 3/3 | 3/3 | 1.000000 | ceiling | 375.499485 | 805553 |
+| real-tomli-dotted-keys | 3/3 | 3/3 | 1.000000 | ceiling | 591.733381 | 2336852 |
+
+Terminal Section 13 outcome:
+**HEADROOM_OBSERVED_IN_SEALED_RUNTIME**. One boltons attempt was valid but
+unresolved and was not omission-only, producing the generic
+`wrong-failure-mode` task disposition. This is a three-attempt observation under
+a simultaneously changed runtime; it does not establish that the Phase 3
+ceilings were caused by host contamination and licenses no scaling until the
+same tasks and seal are replicated with fresh calls. The four tasks remain
+calibration-only because their blind solutions were not produced under the seal.

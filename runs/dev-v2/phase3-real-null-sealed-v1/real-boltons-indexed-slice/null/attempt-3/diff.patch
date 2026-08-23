@@ -1,0 +1,75 @@
+diff --git a/boltons/setutils.py b/boltons/setutils.py
+index 3ed5ab3..19c8c53 100644
+--- a/boltons/setutils.py
++++ b/boltons/setutils.py
+@@ -392,13 +392,18 @@ class IndexedSet(MutableSet):
+     def iter_slice(self, start, stop, step=None):
+         "iterate over a slice of the set"
+         iterable = self
+-        if start is not None:
+-            start = self._get_real_index(start)
+-        if stop is not None:
+-            stop = self._get_real_index(stop)
+         if step is not None and step < 0:
++            # Negative steps historically slice the reversed set using the
++            # absolute step, so only normalize their apparent-space bounds.
++            len_self = len(self)
++            if start is not None and start < 0:
++                start += len_self
++            if stop is not None and stop < 0:
++                stop += len_self
+             step = -step
+             iterable = reversed(self)
++        else:
++            start, stop, step = slice(start, stop, step).indices(len(self))
+         return islice(iterable, start, stop, step)
+ 
+     # list operations
+@@ -966,4 +971,3 @@ class _ComplementSet:
+         if self._included is not None:
+             return bool(self._included)
+         return True
+-
+diff --git a/tests/test_indexed_slice_regression.py b/tests/test_indexed_slice_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_indexed_slice_regression.py
+@@ -0,0 +1,38 @@
++import unittest
++
++from boltons.setutils import IndexedSet
++
++
++class IndexedSetSliceRegressionTest(unittest.TestCase):
++    def setUp(self):
++        self.indexed = IndexedSet(range(16))
++        self.indexed.remove(3)
++        self.current = list(self.indexed)
++
++    def test_post_removal_bounds_use_apparent_indices(self):
++        self.assertEqual(list(self.indexed[2:8]), self.current[2:8])
++        self.assertEqual(list(self.indexed[-10:-2]), self.current[-10:-2])
++
++    def test_positive_step_slices_agree_with_list(self):
++        slices = (
++            slice(None),
++            slice(1, 12, 2),
++            slice(-12, -1, 3),
++            slice(-100, 6, 2),
++            slice(10, 100, 2),
++        )
++
++        for item_slice in slices:
++            with self.subTest(item_slice=item_slice):
++                result = self.indexed[item_slice]
++                self.assertIsInstance(result, IndexedSet)
++                self.assertEqual(list(result), self.current[item_slice])
++
++    def test_negative_step_keeps_existing_semantics_with_apparent_bounds(self):
++        result = self.indexed[-12:-2:-2]
++        expected = list(reversed(self.current))[3:13:2]
++        self.assertEqual(list(result), expected)
++
++
++if __name__ == '__main__':
++    unittest.main()

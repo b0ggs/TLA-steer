@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Updated [tomli/_parser.py](/workspace/tomli/_parser.py) to reject dotted-key redefinitions beneath explicit tables and arrays-of-tables while preserving valid sibling dotted keys.
+
+Added both required `unittest` regressions in [test_dotted_keys_regression.py](/workspace/tests/test_dotted_keys_regression.py).
+
+Tests were not executed because no Python interpreter is installed in the evaluation environment; static checks passed.

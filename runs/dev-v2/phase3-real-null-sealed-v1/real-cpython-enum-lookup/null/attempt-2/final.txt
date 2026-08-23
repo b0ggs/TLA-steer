@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `Enum.__new__` to compare unhashable lookup values against hashable member values. Added executable regression coverage in `tests/test_enum_lookup_regression.py`.
+
+Tests were not run because no Python interpreter is available in the container.

@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Updated [tomli/_parser.py](/workspace/tomli/_parser.py) to reject dotted-key extensions beneath explicit table and array-of-tables namespaces while preserving valid same-table dotted keys.
+
+Added both regression cases in [tests/test_dotted_keys_regression.py](/workspace/tests/test_dotted_keys_regression.py).
+
+Tests were not run because no Python interpreter is installed in the environment.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `IndexedSet.iter_slice()` to use apparent, dead-slot-free bounds while preserving negative-step semantics. Added `tests/test_indexed_slice_regression.py` covering post-removal bounds, list-slice agreement, and result types.
+
+Tests could not run because no Python interpreter is installed in the evaluation environment.

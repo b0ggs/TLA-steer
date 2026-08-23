@@ -1,0 +1,165 @@
+diff --git a/doctest.py b/doctest.py
+index 46b4dd6..da12093 100644
+--- a/doctest.py
++++ b/doctest.py
+@@ -1393,7 +1393,23 @@ class DocTestRunner:
+ 
+             # The example raised an exception:  check if it was expected.
+             else:
+-                exc_msg = traceback.format_exception_only(*exception[:2])[-1]
++                formatted_ex = traceback.format_exception_only(*exception[:2])
++                if issubclass(exception[0], SyntaxError):
++                    # SyntaxError / IndentationError is special:
++                    # we don't care about the carets / suggestions / etc
++                    # We only care about the error message and notes.
++                    # They start with `SyntaxError:` (or any other class name)
++                    exception_line_prefixes = (
++                        f"{exception[0].__qualname__}:",
++                        f"{exception[0].__module__}.{exception[0].__qualname__}:",
++                    )
++                    exc_msg_index = next(
++                        index
++                        for index, line in enumerate(formatted_ex)
++                        if line.startswith(exception_line_prefixes)
++                    )
++                    formatted_ex = formatted_ex[exc_msg_index:]
++                exc_msg = "".join(formatted_ex)
+                 if not quiet:
+                     got += _exception_traceback(exception)
+ 
+diff --git a/tests/test_doctest_notes_regression.py b/tests/test_doctest_notes_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_doctest_notes_regression.py
+@@ -0,0 +1,131 @@
++#!/usr/bin/env python3
++"""Regression tests for doctest exception-note comparisons."""
++
++import importlib.util
++import io
++from pathlib import Path
++import unittest
++
++
++DOCTEST_PATH = Path(__file__).resolve().parents[1] / "doctest.py"
++SPEC = importlib.util.spec_from_file_location("repo_doctest", DOCTEST_PATH)
++doctest = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(doctest)
++
++
++def raise_with_notes(exception, *notes):
++    for note in notes:
++        exception.add_note(note)
++    raise exception
++
++
++def make_syntax_error(exception_type):
++    return exception_type(
++        "invalid syntax",
++        ("generated.py", 23, 4, "x +\n"),
++    )
++
++
++class ExceptionNoteComparisonTests(unittest.TestCase):
++    def run_doctest(self, source):
++        test = doctest.DocTestParser().get_doctest(
++            source,
++            {
++                "raise_with_notes": raise_with_notes,
++                "make_syntax_error": make_syntax_error,
++                "SyntaxError": SyntaxError,
++                "IndentationError": IndentationError,
++            },
++            "exception_notes",
++            __file__,
++            0,
++        )
++        output = io.StringIO()
++        result = doctest.DocTestRunner(verbose=False).run(
++            test,
++            out=output.write,
++        )
++        return result, output.getvalue()
++
++    def assert_doctest_passes(self, source):
++        result, output = self.run_doctest(source)
++        self.assertEqual(result.attempted, 1, output)
++        self.assertEqual(result.failed, 0, output)
++
++    def assert_doctest_fails(self, source):
++        result, output = self.run_doctest(source)
++        self.assertEqual(result.attempted, 1, output)
++        self.assertEqual(result.failed, 1, output)
++
++    def test_ordinary_exception_without_notes_is_unchanged(self):
++        self.assert_doctest_passes(
++            '''
++            >>> raise_with_notes(ValueError("plain message"))
++            Traceback (most recent call last):
++            ...
++            ValueError: plain message
++            '''
++        )
++
++    def test_ordinary_exception_note_is_compared(self):
++        self.assert_doctest_passes(
++            '''
++            >>> raise_with_notes(ValueError("plain message"), "a note")
++            Traceback (most recent call last):
++            ...
++            ValueError: plain message
++            a note
++            '''
++        )
++
++    def test_multiple_notes_are_compared_in_order(self):
++        self.assert_doctest_passes(
++            '''
++            >>> raise_with_notes(ValueError("plain message"), "first", "second")
++            Traceback (most recent call last):
++            ...
++            ValueError: plain message
++            first
++            second
++            '''
++        )
++
++    def test_incorrect_note_fails_comparison(self):
++        self.assert_doctest_fails(
++            '''
++            >>> raise_with_notes(ValueError("plain message"), "first", "second")
++            Traceback (most recent call last):
++            ...
++            ValueError: plain message
++            first
++            incorrect
++            '''
++        )
++
++    def test_syntax_error_family_ignores_location_and_compares_notes(self):
++        for exception_type in (SyntaxError, IndentationError):
++            with self.subTest(exception_type=exception_type.__name__):
++                self.assert_doctest_passes(
++                    f'''
++                    >>> raise_with_notes(make_syntax_error({exception_type.__name__}), "syntax note")
++                    Traceback (most recent call last):
++                    ...
++                    {exception_type.__name__}: invalid syntax
++                    syntax note
++                    '''
++                )
++
++    def test_incorrect_syntax_error_note_fails_comparison(self):
++        self.assert_doctest_fails(
++            '''
++            >>> raise_with_notes(make_syntax_error(SyntaxError), "actual note")
++            Traceback (most recent call last):
++            ...
++            SyntaxError: invalid syntax
++            incorrect note
++            '''
++        )
++
++
++if __name__ == "__main__":
++    unittest.main()
