@@ -202,3 +202,13 @@ not shown on this task**. Both bare and MD arms self-discovered the friction wit
 300 seconds. This result supports no general claim, no task substitution, no
 second MD, and no selective retry. Under Section 12.5, Wade decides whether any
 future work is limited to the remaining harm and cost products.
+
+## 8. Phase 3 contamination + blind-solve caveat — 2026-08-23
+
+Phase 3 contamination finding: 7 of 12 attempts read the installed fixes from
+the host — inspect.getsource of tomllib._parser, enum, and doctest. The Phase 3
+cohort is invalidated.
+
+Blind-solve caveat: the four real-* tasks' blind solves ran on the unsealed
+host with no captured trace. Their fair-solvability is UNPROVEN; the tasks
+hold calibration-only status.

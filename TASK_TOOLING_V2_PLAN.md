@@ -1054,29 +1054,50 @@ about MDs.
 
 ### 13.2 Sealed execution requirement
 
-Every subject attempt and every blind solve runs in a CONTAINER whose
-filesystem contains ONLY:
-- the task workspace (bind-mounted, so host-side evidence capture is
-  unchanged — captured fields must be identical to current runs),
-- one pinned Python interpreter (per-task pin, see 13.3),
-- the agent runtime and its read-only auth (mounted outside the workspace;
-  status-quo risk, recorded).
-No host filesystem, no other interpreters, no site-packages beyond stdlib,
-no network (unchanged). The container image digest is recorded in every
-attempt's evidence. Implementation choice (Docker or equivalent) is the
-implementer's; the PROBES define correctness, not the technology.
+Architecture: codex runs INSIDE the container; the host runs only
+run_batch's spawn/capture/scoring. The container's only egress is the
+model endpoint (egress allowlist or authenticated forward proxy;
+everything else DENY). Codex keeps its existing internal sandbox for agent
+commands (--sandbox workspace-write,
+sandbox_workspace_write.network_access=false), so agent commands stay
+network-free while the model client is not.
+
+Mounts are EXACTLY three:
+- the task workspace (rw),
+- the pinned interpreter,
+- $CODEX_HOME (auth.json + session dir only).
+
+Isolation from the answer leak is delivered by the MOUNT SET, not the
+network layer. Acceptance must confirm codex's own command sandbox
+actually engages inside the image (it can silently degrade on Linux) — if
+it does not, BUILD_REJECTED. Explicit note: the auditors'
+host-model-client/container-commands split was evaluated and REJECTED as
+infeasible — codex exec has no such mode, and it would break the pinned
+codex-cli runner type and comparability. The container image digest is
+recorded in every attempt's evidence. Implementation choice (Docker or
+equivalent) is the implementer's; the PROBES define correctness, not the
+technology.
 
 ### 13.3 The stdlib trap (critical, audit this line hardest)
 
-Isolation from the host does NOT remove answers that ship inside the
-interpreter itself: any Python >=3.11 contains tomllib (tomli WITH the fix),
-and any recent Python contains the fixed enum.py and doctest.py. Therefore:
-- Each task's failure-source.json gains two fields: answer_bearing_modules
-  (e.g. ["tomllib", "enum"]) and fix_signature_strings (2-3 distinctive
-  literals from the real fix's diff).
-- Per task, the container's interpreter is PINNED to a version whose stdlib
-  PREDATES the fix (recorded per task). A task with no such available
-  interpreter is excluded and recorded as such.
+answer_bearing_modules and fix_signature_strings DO NOT enter task
+directories: failure-source.json is manifest-hashed (taskcheck.py:78-83),
+so verify would fail every attempt, and re-admission is refused for
+exposed tasks. They live in one batch-scoped file,
+scripts/contain/contamination-spec.json, mapping
+task_id → {answer_bearing_modules, fix_signature_strings,
+interpreter_pin}; its SHA-256 is recorded in the REQUEST at
+runner.container.spec_sha256.
+
+Interpreter rule: the container interpreter and the interpreter running
+check.py MUST be the same.
+
+Measured facts: the host 3.11.5 stdlib is already pre-fix for doctest,
+enum, and boltons — pin those tasks to 3.11.5-equivalent. Only
+real-tomli-dotted-keys needs an older pin (3.11 tomllib carries the fix):
+pin it to 3.10.x (no tomllib); if its reference does not resolve under
+3.10.x, EXCLUDE the task and record it. The doctest task cannot pin below
+3.11 (its private tests use add_note/PEP 678).
 
 ### 13.4 The contamination probe (mechanical; the build gate)
 
@@ -1085,15 +1106,41 @@ output is committed as batch evidence. It must demonstrate, with failing
 output, that:
 1. The literal Phase 3 exploit fails: for each answer_bearing_module,
    `inspect.getsource(<module>)` either fails or the retrieved source
-   contains NONE of the task's fix_signature_strings.
-2. Host paths are unreachable: /Library/Frameworks, /Users, and this
-   repository's absolute path all fail to list/read.
-3. No network: a socket attempt fails.
+   contains NONE of the task's fix_signature_strings; AND one recursive
+   walk over every reachable .py file from / (skipping /proc, /sys, /dev
+   and the workspace) finds no whitespace-normalized match for any
+   fix_signature_string.
+2. Host filesystem is unreachable: /proc/self/mountinfo is dumped and
+   asserted to contain no non-virtual mount beyond the allowlisted set;
+   /home, /root, /mnt, /media, /srv, /opt, $HOME, and this repository's
+   absolute path all fail to list; os.environ, sys.path, and
+   site.getsitepackages() are dumped and are free of host paths and of
+   non-empty site-packages; no /var/run/docker.sock exists; the process
+   runs non-root.
+3. No agent-command network: an AGENT-COMMAND socket attempt to any
+   non-model host fails, verified through the same confinement layer agent
+   commands use (a bare-container socket test would go red forever, since
+   the model client needs egress).
 4. No secondary interpreters or site-packages exist on PATH.
+5. Environment check (before any spend): inside the container under the
+   pinned interpreter, per task: taskcheck verify passes, check.py fails
+   public/ (regressions passing), and check.py resolves reference/ twice
+   byte-identically. A task failing this is EXCLUDED and recorded, not
+   rerun.
+6. The mounted agent home contains no auto-loadable instruction file
+   (AGENTS*.md, CLAUDE.md, *.rules — find to depth 2 returns empty) and
+   nothing beyond auth.json + the codex session dir. This is also a launch
+   precondition alongside run_batch's existing auth check.
 THE BUILD DOES NOT EXIST UNTIL THE PROBE FAILS THE REAL ATTACK: acceptance
 requires running the probe against the OLD (host) runner configuration and
 showing it DETECTS the leak there (probe red on host, green in container).
 The probe is the permanent regression test for this leak class.
+
+The probe output records the image digest it ran against; launch REFUSES
+any attempt whose digest differs from the probe's digest and the approved
+REQUEST's digest — a mismatch is BUILD_REJECTED, not a retry. Read-only
+root filesystem: considered, NOT required (writes are already sealed with
+a zero-failure record).
 
 ### 13.5 The rerun batch — one approval stop
 
@@ -1101,8 +1148,12 @@ The same four Phase 3 tasks, unmodified bytes (already exposed; this is a
 new batch under a corrected runner, recorded as such — task content
 unchanged, so no re-admission is required; the batch REQUEST records the
 container image digests). 3 null attempts per task, 12 nominal calls,
-existing REQUEST/APPROVED mechanism. Blind solves are NOT rerun (tasks
-already admitted; their contamination caveat stands recorded).
+existing REQUEST/APPROVED mechanism. Blind solves are NOT rerun. The four
+tasks' blind solutions were produced on the unsealed host with no captured
+trace, so their fair-solvability is UNPROVEN, not merely caveated. These
+tasks are calibration material only: no admission, difficulty, or
+fair-solvability claim may cite their blind gate; sealed blind re-solves
+are a precondition for any future evidentiary use.
 
 Reporting: the batch summary now includes per-attempt duration AND token
 totals (input/cached/output/reasoning — already captured in evidence, now
@@ -1113,9 +1164,12 @@ surfaced; <=40-line addition to the reporting path).
 | Result | Label | Meaning |
 |---|---|---|
 | Probe fails in container | BUILD_REJECTED | No calls happen. Fix container. |
-| Any task drops below 3/3 | HEADROOM_CONFIRMED_ISOLATED | The band exists; Phase 3's ceilings were the leak. Standing permission (Wade-triggered): scale real-issue sourcing under sealed execution; the challenge-pack design becomes buildable. |
-| All tasks still 3/3, probes green | MEMORY_SUSPECTED | The model knows these public fixes from training. Sourcing must move to post-cutoff issues or planted bugs in real codebases — Wade decides which. |
+| Any task drops below 3/3 | HEADROOM_OBSERVED_IN_SEALED_RUNTIME | At least one task fell below 3/3 under the sealed runtime. A 3-attempt observation on a simultaneously changed runtime (container, pinned interpreter): it does NOT establish that Phase 3's ceilings were caused by the leak, and licenses no scaling until replicated (same tasks, same seal, fresh calls). |
+| All tasks still 3/3, probes green | NO_HEADROOM_OBSERVED_IN_SEALED_RUNTIME | All four tasks 3/3 with green probes. Does not distinguish memorization from competence; either way these four tasks are exhausted as headroom probes. |
 | Evidence fails verification | EVIDENCE_INVALID | The 12 calls answered nothing; fix and re-request. |
+
+Neither label grants standing permission; any follow-on requires a
+replication batch before a sourcing decision.
 
 All outcomes append a dated entry to handoffs/PROCESS_FINDINGS. Forbidden:
 task edits, selective retries, any MD claim, any general capability claim.
@@ -1126,9 +1180,24 @@ task edits, selective retries, any MD claim, any general capability claim.
    grow <=60 lines (new cap 610) for the container execution path + token
    reporting. taskcheck.py untouched. Probe script <=150 lines, lives in
    scripts/contain/, runs identically on host (red) and container (green).
-2. Acceptance: probe red-on-host/green-in-container outputs committed;
+2. REQUEST stays v2; taskcheck.py untouched. run_batch._runner gains a
+   `container` sub-object inside `runner` — {image_digest, spec_sha256,
+   interpreter_pins: {task_id: version}} — validated in run_batch before
+   RunnerConfig construction and echoed verbatim into every attempt's
+   evidence (run_batch already copies runner into intent/launch/result).
+   Do NOT modify mdseval RunnerConfig (that breaks the v1 batch check).
+   One container image carries all pinned interpreters OR per-task images
+   are used with all digests recorded — implementer's choice; all digests
+   live in runner.container. Note for later: tooling/compare.py pins an
+   exact runner key set and needs a one-line allowance before any future
+   two-arm sealed batch (not reached by this null batch). Line budget
+   honesty: the run_batch cap of 610 leaves ~61 lines for the container
+   path + token reporting + this change — if it does not fit, the
+   container invocation lives in scripts/contain/ and run_batch calls it.
+3. Acceptance: probe red-on-host/green-in-container outputs committed;
    image digests recorded; all suites green; evidence fields identical to
    prior batches; reviewer report in handoffs/ before build; REQUEST queued
    then STOP for Wade.
-3. No other machinery, documents, or experiments. §12's standing
-   permissions remain suspended until this section's result is recorded.
+4. No other machinery, documents, or experiments. This calibration
+   precedes any sealed MD experiment; §12's standing permissions remain
+   suspended until this section's result is recorded.
