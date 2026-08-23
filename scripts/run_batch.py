@@ -25,7 +25,6 @@ from mdseval.runner.codex_cli import build_codex_command, isolated_environment  
 from mdseval.scout import classify_infrastructure_failure  # noqa: E402
 from scripts.contain import runtime as sealed  # noqa: E402
 from tooling import taskcheck  # noqa: E402
-
 RUNNER = RunnerConfig("codex-cli", "gpt-5.6-sol", "high", "workspace-write", "never",
                       False, True, False, 300, 1)
 WRAPPER_PATH = ROOT / "tooling" / "prompts" / "subject-wrapper-v1.txt"
@@ -312,9 +311,10 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                        container["interpreter_pins"][task.name], seal) if container else
                        process_runner(command, cwd=workspace, input_text=wrapper, timeout=runner.timeout_seconds,
                                       environment=isolated_environment(codex_home)))
-        except OSError as exc:
-            _write_once(destination / "pre-spawn.json", _bytes({"error": f"{type(exc).__name__}: {exc}"}))
-            raise BatchError("subject process did not spawn; preserved as pre-spawn failure") from exc
+        except Exception as exc:
+            if container: _write_once(destination / "build-rejected.json", _bytes({"error": redactor.text(f"{type(exc).__name__}: {exc}")})); raise BatchError("BUILD_REJECTED: sealed runtime prelaunch failed") from exc
+            if not isinstance(exc, OSError): raise
+            _write_once(destination / "pre-spawn.json", _bytes({"error": f"{type(exc).__name__}: {exc}"})); raise BatchError("subject process did not spawn; preserved as pre-spawn failure") from exc
         duration = time.monotonic() - started
         final = final_temp.read_text(encoding="utf-8", errors="replace") if final_temp.is_file() else ""
         events = destination / "events.jsonl"
@@ -407,6 +407,7 @@ def _retired(task: Path) -> list[str]:
 
 def _state(base: Path) -> tuple[list[dict[str, Any]], int, int, int]:
     dirs = sorted(base.glob("attempt-*"), key=lambda path: int(path.name.split("-")[-1])) if base.exists() else []
+    _ensure(not any(os.path.lexists(path / "build-rejected.json") for path in dirs), "BUILD_REJECTED sealed attempt cannot be retried")
     anchored, _ = _ledger(base.parents[1])
     results = []
     for path in dirs:
@@ -428,7 +429,8 @@ def _state(base: Path) -> tuple[list[dict[str, Any]], int, int, int]:
                    for path in dirs)
     ordinal = max([int(path.name.split("-")[-1]) for path in dirs] or [0]) + 1
     return results, infra, ordinal, launched
-
+def _container_echo(attempt: Path, request: dict[str, Any]) -> bool:
+    paths=[attempt/name for name in ("intent.json","launch.json","result.json")]; expected=request["runner"].get("container"); return expected is None or paths[0].is_file() and all((not path.exists() and not path.is_symlink()) or ((row:=_json(path)).get("container")==expected and row.get("runner")==request["runner"]) for path in paths)
 def _disposition(task: Path, arm: dict[str, str], results: list[dict[str, Any]], infra: int,
         request: dict[str, Any], *, legacy: bool = False) -> dict[str, Any]:
     if not legacy:
@@ -459,10 +461,9 @@ def _disposition(task: Path, arm: dict[str, str], results: list[dict[str, Any]],
         value.update({"arm": arm["name"], "runner": request["runner"]})
         if request["runner"].get("container") is not None:
             names = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens")
-            value.update({"token_totals": {key: sum(row["token_totals"][key] for row in results) for key in names},
+            value.update({"attempt_metrics": [{"ordinal": row["ordinal"], "duration_seconds": row["duration_seconds"], "token_totals": row["token_totals"]} for row in results], "token_totals": {key: sum(row["token_totals"][key] for row in results) for key in names},
                           "token_evidence_complete": all(row["token_totals"]["usage_reported"] for row in results)})
     return value
-
 def _write_disposition(
         batch: Path, task: Path, arm: dict[str, str], results: list[dict[str, Any]],
         infra: int, request: dict[str, Any]) -> None:
@@ -482,7 +483,6 @@ def _write_disposition(
     taskcheck._append_chain(batch / "evidence-ledger.jsonl",
                             {"type": "disposition", "task_id": task.name, "arm": arm["name"], "sha256": digest},
                             "evidence ledger")
-
 def _launched_calls(batch: Path) -> int:
     return sum(path.name == "launch.json" and not (path.parent / "pre-spawn.json").exists()
                for path in batch.rglob("launch.json"))
@@ -556,6 +556,7 @@ def verify_batch(batch: Path) -> None:
         for arm in arms:
             base = batch / task.name / arm["name"]
             results, infra, _, launched = _state(base)
+            _ensure(all(_container_echo(attempt, request) for attempt in base.glob("attempt-*")), f"container echo evidence mismatch: {task.name}")
             _ensure(not container or all(item.get("container_preflight") == seal for item in results),
                     f"container preflight evidence mismatch: {task.name}")
             path = base / "disposition.json"
@@ -568,7 +569,6 @@ def verify_batch(batch: Path) -> None:
     if not legacy:
         _ensure(_launched_calls(batch) <= request["max_total_calls"],
                 "approved maximum subject-call count exceeded")
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)

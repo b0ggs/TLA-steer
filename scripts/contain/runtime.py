@@ -1,6 +1,4 @@
-"""Digest-pinned Docker boundary for the Section 13 sealed rerun."""
-import argparse,hashlib,json,os,secrets,shutil,subprocess,sys,tempfile,time
-from contextlib import contextmanager; from pathlib import Path; from typing import Any
+import argparse,hashlib,json,os,secrets,shutil,subprocess,sys,tempfile,time; from contextlib import contextmanager; from pathlib import Path; from typing import Any
 ROOT=Path(__file__).resolve().parents[2]; sys.path[:0]=[str(ROOT/"src"),str(ROOT)]
 from mdseval.processutils import ProcessOutcome,run_process_group
 from tooling import taskcheck
@@ -109,6 +107,7 @@ def environment(task:Path,image:str,pin:str,codex_home:Path)->dict[str,Any]:
 def main()->int:
  p=argparse.ArgumentParser(); p.add_argument("mode",choices=("probe","environment","host")); p.add_argument("task_id"); p.add_argument("image"); p.add_argument("pin"); p.add_argument("auth_home",type=Path); p.add_argument("output",type=Path); a=p.parse_args(); stderr=a.output.with_suffix(a.output.suffix+".stderr")
  if a.output.exists() or stderr.exists():raise RuntimeError("preflight evidence path already exists")
- value=probe(a.task_id,a.image,a.pin,a.auth_home) if a.mode=="probe" else (canonical(environment(ROOT/"tasks"/a.task_id,a.image,a.pin,a.auth_home))+"\n","",0) if a.mode=="environment" else ((host:=subprocess.run([sys.executable,str(ROOT/"scripts/contain/probe.py"),"host",a.task_id,a.image,str(ROOT/"scripts/contain/contamination-spec.json")],capture_output=True,text=True)),host.stdout,host.stderr,host.returncode)[1:]
+ try:value=probe(a.task_id,a.image,a.pin,a.auth_home) if a.mode=="probe" else (canonical(environment(ROOT/"tasks"/a.task_id,a.image,a.pin,a.auth_home))+"\n","",0) if a.mode=="environment" else ((host:=subprocess.run([sys.executable,str(ROOT/"scripts/contain/probe.py"),"host",a.task_id,a.image,str(ROOT/"scripts/contain/contamination-spec.json")],capture_output=True,text=True,env={**os.environ,"MDSEVAL_WORKSPACE":str(ROOT/"tasks"/a.task_id/"public")})),host.stdout,host.stderr,host.returncode)[1:]
+ except Exception as exc:status="EXCLUDED" if a.mode=="environment" else "BUILD_REJECTED" if a.mode=="probe" else "CONTROL_FAILED"; record={"task_id":a.task_id,"status":status,"image_digest":a.image,"interpreter_pin":a.pin,"spec_sha256":sha((ROOT/"scripts/contain/contamination-spec.json").read_bytes()),"error":f"{type(exc).__name__}: {exc}"}; record.update({"check":"summary"}) if a.mode!="environment" else None; value=canonical(record)+"\n",record["error"]+"\n",2
  a.output.parent.mkdir(parents=True,exist_ok=True); a.output.write_text(value[0],encoding="utf-8"); stderr.write_text(value[1],encoding="utf-8"); return value[2]
 if __name__=="__main__":raise SystemExit(main())

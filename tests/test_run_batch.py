@@ -176,6 +176,17 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         missing = dict(container); missing["image_digests"] = {"task-1": digest}
         with self.assertRaisesRegex(batch.BatchError, "task binding"):
             batch._container(missing, task_ids)
+        request = {"runner": {**batch.asdict(batch.RUNNER), "container": container}}
+        base = self.root / "runs" / "task-1" / "a"; attempt = base / "attempt-1"; attempt.mkdir(parents=True)
+        evidence = {"container": container, "runner": request["runner"]}
+        for name in ("intent.json", "launch.json", "result.json"):
+            (attempt / name).write_bytes(batch._bytes(evidence))
+        self.assertTrue(batch._container_echo(attempt, request))
+        (attempt / "launch.json").write_bytes(batch._bytes({**evidence, "container": {}}))
+        self.assertFalse(batch._container_echo(attempt, request))
+        (attempt / "build-rejected.json").write_text("{}\n")
+        with self.assertRaisesRegex(batch.BatchError, "BUILD_REJECTED"):
+            batch._state(base)
 
     def test_checker_ignores_subject_bytecode(self):
         task = self.task("task-1")
@@ -188,6 +199,26 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         result, deterministic, _ = batch._checker(task, workspace)
         self.assertTrue(result["resolved"])
         self.assertTrue(deterministic)
+
+    def test_sealed_disposition_surfaces_per_attempt_metrics(self):
+        task = self.task("task-1"); arm_path = self.arm("a", b""); arm = {"name": "a", "path": "controls/a.md", "sha256": batch.sha256_file(arm_path)}
+        container = {"image_digests": {task.name: "sha256:" + "a" * 64}, "spec_sha256": "b" * 64, "interpreter_pins": {task.name: "3.11.5"}}
+        runner = {**batch.asdict(batch.RUNNER), "container": container}; wrapper = batch.WRAPPER_PATH.read_text().replace("{md_filename}", "CODER.md")
+        tokens = {"input_tokens": 1, "cached_input_tokens": 2, "output_tokens": 3, "reasoning_tokens": 4, "total_tokens": 10, "usage_reported": True}
+        row = {"runner": runner, "container": container, "arm": "a", "arm_sha256": arm["sha256"], "md_filename": "CODER.md", "wrapper_sha256": taskcheck.sha256_bytes(wrapper.encode()), "requirements": {"R1": True}, "resolved": True, "valid": True, "omission_only": False, "invalid_reason": "", "ordinal": 1, "duration_seconds": 2.5, "token_totals": tokens}
+        with patch.object(batch, "ROOT", self.root.resolve()):
+            disposition = batch._disposition(task, arm, [row], 0, {"runner": runner, "md_filename": "CODER.md"})
+        self.assertEqual(disposition["attempt_metrics"], [{"ordinal": 1, "duration_seconds": 2.5, "token_totals": tokens}])
+
+    def test_sealed_wrapper_records_fail_closed_exceptions(self):
+        for mode, function, status, suffix in (("probe", "probe", "BUILD_REJECTED", "jsonl"), ("environment", "environment", "EXCLUDED", "json")):
+            with self.subTest(mode=mode):
+                output = self.root / f"{mode}.{suffix}"
+                argv = ["runtime.py", mode, "task-1", "sha256:" + "a" * 64, "3.11.5", str(self.root), str(output)]
+                with patch.object(batch.sealed, function, side_effect=RuntimeError("simulated failure")), patch.object(batch.sealed.sys, "argv", argv):
+                    self.assertEqual(batch.sealed.main(), 2)
+                self.assertEqual(json.loads(output.read_text())["status"], status)
+                self.assertIn("simulated failure", output.with_suffix(output.suffix + ".stderr").read_text())
 
     def test_unfinished_launched_attempt_consumes_replacement(self):
         request, runs = self.queued(["task-1"]); calls = []

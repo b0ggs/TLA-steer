@@ -50,7 +50,7 @@ def inspect_targets(item):
   except Exception as exc: mark("literal_target",True,target=target,source_available=False,error=f"{type(exc).__name__}: {exc}"); continue
   hit("literal_target",target=target,source_available=True,signature_sha256=matches) if matches else mark("literal_target",True,target=target,source_available=True,signature_sha256=[])
 def scan(item,workspace,mode):
- signatures=[(sha(x),norm(x)) for x in item["fix_signature_strings"]]; skip={"/proc","/sys","/dev",workspace}; errors=[]; matches=[]; doctests=[]; files=decoded=0
+ signatures=[(sha(x),norm(x)) for x in item["fix_signature_strings"]]; focus=os.path.abspath(os.path.join(os.path.dirname(__file__),"../..","tasks")); skip={"/proc","/sys","/dev",workspace}; errors=[]; matches=[]; doctests=[]; files=decoded=0
  if mode=="host" and CONTAM: emit("global_signature_scan","SKIPPED_AFTER_CONTAMINATION",decoded_file_count=0,file_count=0,matches=[],skipped_roots=sorted(skip)); return
  def walk_error(exc): errors.append(f"walk:{getattr(exc,'filename',None)}:{type(exc).__name__}:{exc}")
  for root,dirs,names in os.walk("/",topdown=True,onerror=walk_error,followlinks=False):
@@ -60,13 +60,14 @@ def scan(item,workspace,mode):
    try:
     if not stat.S_ISLNK(os.lstat(path).st_mode): kept.append(name)
    except Exception as exc: errors.append(f"stat:{path}:{type(exc).__name__}:{exc}")
-  dirs[:]=kept
+  dirs[:]=sorted(kept,key=lambda name:(not (focus==os.path.join(root,name) or focus.startswith(os.path.join(root,name)+os.sep)),name))
   for name in (x for x in names if x.endswith(".py")):
    path=os.path.join(root,name)
    try:
     if not stat.S_ISREG(os.lstat(path).st_mode): continue
     files+=1; text=norm(py_source(path)); decoded+=1; found=[digest for digest,needle in signatures if needle in text]
     doctests.append(path) if name=="doctest.py" else None; matches.append({"path":path,"signature_sha256":found}) if found else None
+    if mode=="host" and matches: fields={"decoded_file_count":decoded,"file_count":files,"skipped_roots":sorted(skip)}; hit("global_signature_scan",matches=matches,**fields); mark("global_scan_errors",not errors,error_count=len(errors),error_sha256=sha("\n".join(errors)),error_sample=errors[:20]); (hit("doctest_filesystem_search",candidates=doctests,matches=matches) if name=="doctest.py" else mark("doctest_filesystem_search",True,candidates=doctests,matches=[])) if "filesystem:doctest.py" in item["answer_bearing_modules"] else None; return
    except Exception as exc: errors.append(f"read:{path}:{type(exc).__name__}:{exc}")
  fields={"decoded_file_count":decoded,"file_count":files,"skipped_roots":sorted(skip)}; hit("global_signature_scan",matches=matches,**fields) if matches else mark("global_signature_scan",True,matches=[],**fields)
  mark("global_scan_errors",not errors,error_count=len(errors),error_sha256=sha("\n".join(errors)),error_sample=errors[:20])
