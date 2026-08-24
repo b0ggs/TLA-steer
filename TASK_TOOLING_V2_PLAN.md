@@ -1134,9 +1134,23 @@ output, that:
    exact workspace mount, never following symlinks) finds no
    whitespace-normalized match for any fix_signature_string — where
    normalization is PEP-263 decoding followed by removal of every Unicode
-   whitespace code point from both source and signature. Any unexpected
-   walk/stat/read/decode error FAILS CLOSED; every skipped root and the
-   file count are logged.
+   whitespace code point from both source and signature.
+   PROBE-MODE SPLIT (amendment 2026-08-23, resolving the malformed-fixture
+   contradiction the implementer correctly stopped on):
+   - CONTAINER mode: full scan from /, and ANY walk/stat/read/decode error
+     FAILS CLOSED — the image is ours, and an undecodable .py inside it is
+     itself a build defect. The zero-structural-failure requirement applies
+     to container mode ONLY.
+   - HOST-CONTROL mode: the scan covers a recorded root list (every
+     discovered interpreter's sys.prefix, /Library/Frameworks, and all
+     site-packages) rather than all of / (a full-host walk is a
+     multi-minute diagnostic with no control value). Files that fail
+     PEP-263 decoding are RECORDED as UNDECODABLE_FIXTURE findings (path +
+     error class — CPython intentionally ships such files in
+     Lib/test/, e.g. bad_coding.py) and neither abort the scan nor count
+     for or against contamination. Rationale: fail-closed exists to
+     guarantee nothing hides in the SEALED environment; the host control's
+     only job is to prove the detector fires on the real leak.
 2. Host filesystem is unreachable: /proc/self/mountinfo is dumped,
    normalized, and asserted to contain ONLY the three §13.2 external bind
    mounts at their canonical destinations plus rows belonging to the closed
@@ -1178,7 +1192,8 @@ requires running the probe against the OLD (host) runner configuration and
 showing it DETECTS the leak there. The host control passes ONLY as
 EXPECTED_RED when at least one literal target or global signature scan
 produces an explicit CONTAMINATION_FOUND record — unrelated structural
-failures (e.g. mountinfo absent on macOS) do NOT prove the control. The
+failures (e.g. mountinfo absent on macOS) do NOT prove the control, and
+recorded UNDECODABLE_FIXTURE findings do NOT block it. The
 container passes only when ALL legs are green. Both modes run the SAME
 probe code against the SAME hashed contamination spec, and the container
 mode uses the same wrapper and options as a real attempt. The probe is the
