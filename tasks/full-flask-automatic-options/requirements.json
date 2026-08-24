@@ -1,0 +1,30 @@
+{
+  "R1": {
+    "omission_probe": {
+      "path": "src/flask/sansio/app.py",
+      "text": "if provide_automatic_options:",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "If a function view sets its `provide_automatic_options` attribute to true while the global default is false, its rule must include `OPTIONS` and use Flask's automatic response."
+    },
+    "target_paths": [
+      "src/flask/sansio/app.py"
+    ]
+  },
+  "R2": {
+    "omission_probe": {
+      "path": "src/flask/sansio/app.py",
+      "text": "provide_automatic_options = (",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "If a class-based view sets its `provide_automatic_options` attribute to true while the global default is false, its rule must include `OPTIONS` and use Flask's automatic response."
+    },
+    "target_paths": [
+      "src/flask/sansio/app.py"
+    ]
+  }
+}

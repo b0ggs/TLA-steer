@@ -1,6 +1,4 @@
-import errno,hashlib,inspect,json,os,platform,pydoc,re,shutil,site,socket,stat,sys,tokenize
-IDS={"real-boltons-indexed-slice","real-cpython-doctest-notes","real-cpython-enum-lookup","real-tomli-dotted-keys"}
-LITERALS={"real-cpython-doctest-notes":"filesystem:doctest.py","real-cpython-enum-lookup":"enum.Enum.__new__","real-tomli-dotted-keys":"tomllib._parser"}
+import errno,hashlib,inspect,json,os,pathlib,platform,pydoc,re,shutil,site,socket,stat,subprocess,sys,tokenize
 RUNTIME={"/":"overlay","/proc":"proc","/dev":"tmpfs","/dev/pts":"devpts","/sys":"sysfs","/sys/fs/cgroup":"cgroup2","/dev/mqueue":"mqueue","/dev/shm":"tmpfs","/etc/resolv.conf":"ext4","/etc/hostname":"ext4","/etc/hosts":"ext4","/proc/bus":"proc","/proc/fs":"proc","/proc/irq":"proc","/proc/sys":"proc","/proc/sysrq-trigger":"proc","/proc/acpi":"tmpfs","/proc/interrupts":"tmpfs","/proc/kcore":"tmpfs","/proc/keys":"tmpfs","/proc/latency_stats":"tmpfs","/proc/timer_list":"tmpfs","/proc/scsi":"tmpfs","/sys/firmware":"tmpfs"}
 REQUIRED={"/","/proc","/dev","/dev/pts","/sys","/sys/fs/cgroup","/dev/mqueue","/dev/shm","/etc/resolv.conf","/etc/hostname","/etc/hosts"}; BINDS={"/workspace":"rw","/python":"ro","/agent-home":"rw"}; BAD=[]; CONTAM=[]
 def emit(check,status,**fields): print(json.dumps({"check":check,"status":status,**fields},sort_keys=True,separators=(",",":")),flush=True)
@@ -8,7 +6,7 @@ def mark(check,good,**fields): BAD.append(check) if not good else None; emit(che
 def hit(check,**fields): CONTAM.append(check); emit(check,"CONTAMINATION_FOUND",**fields)
 def sha(value): return hashlib.sha256(value if isinstance(value,bytes) else value.encode()).hexdigest()
 def norm(value): return "".join(c for c in value if not c.isspace())
-def file_sha(path): return sha(open(path,"rb").read())
+def file_sha(path): return sha(pathlib.Path(path).read_bytes())
 def py_source(path):
  fd=os.open(path,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
  with os.fdopen(fd,"rb") as stream: encoding,first=tokenize.detect_encoding(stream.readline); return (b"".join(first)+stream.read()).decode(encoding)
@@ -32,46 +30,63 @@ def policy_child():
  try: connection=socket.create_connection((target[0],target[1]),timeout=5); connection.close(); emit("policy_child","FAIL",**record,denial=None,exit_status=0); return 2
  except PermissionError as exc: explicit=exc.errno==errno.EPERM; emit("policy_child","DENIED" if explicit else "FAIL",**record,denial=f"PermissionError: {exc}",exit_status=exc.errno); return 0 if explicit else 2
  except Exception as exc: emit("policy_child","FAIL",**record,denial=f"{type(exc).__name__}: {exc}",exit_status=getattr(exc,"errno",2)); return 2
-def valid_item(item): return isinstance(item,dict) and set(item)=={"answer_bearing_modules","fix_signature_strings","interpreter_pin"} and isinstance(item["answer_bearing_modules"],list) and bool(item["answer_bearing_modules"]) and all(isinstance(x,str) and x and (x=="filesystem:doctest.py" or re.fullmatch(r"[A-Za-z_]\w*(\.[A-Za-z_]\w*)*",x)) for x in item["answer_bearing_modules"]) and isinstance(item["fix_signature_strings"],list) and bool(item["fix_signature_strings"]) and all(isinstance(x,str) and len(norm(x))>=20 for x in item["fix_signature_strings"]) and isinstance(item["interpreter_pin"],str) and re.fullmatch(r"\d+\.\d+\.\d+",item["interpreter_pin"])
+def valid_item(item): return isinstance(item,dict) and set(item)=={"answer_bearing_modules","fix_signature_strings","interpreter_pin"} and isinstance(item["answer_bearing_modules"],list) and bool(item["answer_bearing_modules"]) and all(isinstance(x,str) and (re.fullmatch(r"[A-Za-z_]\w*(\.[A-Za-z_]\w*)*",x) or re.fullmatch(r"filesystem:(?!/)(?!\.\.(?:/|$))(?!.*?/\.\.(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.py",x)) for x in item["answer_bearing_modules"]) and isinstance(item["fix_signature_strings"],list) and bool(item["fix_signature_strings"]) and all(isinstance(x,str) and len(norm(x))>=20 for x in item["fix_signature_strings"]) and isinstance(item["interpreter_pin"],str) and re.fullmatch(r"\d+\.\d+\.\d+",item["interpreter_pin"])
 def load_spec(path):
  try:
-  need(not stat.S_ISLNK(os.lstat(path).st_mode),"spec is symlink"); raw=open(path,"rb").read(); data=json.loads(raw); problems=[]
-  problems += ["task ids"] if not isinstance(data,dict) or set(data)!=IDS else []
-  problems += [task+": entry" for task in IDS if not valid_item(data.get(task) if isinstance(data,dict) else None)]
-  if isinstance(data,dict): problems += [task+": literal "+target for task,target in LITERALS.items() if target not in data.get(task,{}).get("answer_bearing_modules",[])]
-  digest=sha(raw); emit("spec_validation","PASS" if not problems else "FAIL",problems=problems,spec_sha256=digest,task_ids=sorted(data) if isinstance(data,dict) else []); return (data,digest) if not problems else (None,digest)
- except Exception as exc: emit("spec_validation","FAIL",error=f"{type(exc).__name__}: {exc}",spec_sha256=None); return None,None
+  need(not stat.S_ISLNK(os.lstat(path).st_mode),"spec is symlink"); raw=pathlib.Path(path).read_bytes(); data=json.loads(raw); problems=[]
+  ids=sorted(data) if isinstance(data,dict) and all(isinstance(x,str) for x in data) else []; problems += ["task ids"] if not isinstance(data,dict) or not 3<=len(data)<=5 or not all(re.fullmatch(r"[a-z0-9-]{1,40}",x) for x in data) else []
+  problems += [task+": entry" for task in ids if not valid_item(data[task])]
+  digest=sha(raw); emit("spec_validation","PASS" if not problems else "FAIL",problems=problems,spec_sha256=digest,task_ids=ids); return (data,digest,ids) if not problems else (None,digest,ids)
+ except Exception as exc: emit("spec_validation","FAIL",error=f"{type(exc).__name__}: {exc}",spec_sha256=None,task_ids=[]); return None,None,[]
 def resolve(target): return pydoc.locate(target) or need(False,target)
 def inspect_targets(item):
- signatures=[(sha(x),norm(x)) for x in item["fix_signature_strings"]]
+ signatures=[(sha(x),norm(x)) for x in item["fix_signature_strings"]]; results=[]
  for target in item["answer_bearing_modules"]:
   if target.startswith("filesystem:"): continue
-  try: source=norm(inspect.getsource(resolve(target))); matches=[digest for digest,needle in signatures if needle in source]
-  except Exception as exc: mark("literal_target",True,target=target,source_available=False,error=f"{type(exc).__name__}: {exc}"); continue
-  hit("literal_target",target=target,source_available=True,signature_sha256=matches) if matches else mark("literal_target",True,target=target,source_available=True,signature_sha256=[])
-def scan(item,workspace,mode):
- signatures=[(sha(x),norm(x)) for x in item["fix_signature_strings"]]; focus=os.path.abspath(os.path.join(os.path.dirname(__file__),"../..","tasks")); skip={"/proc","/sys","/dev",workspace}; errors=[]; matches=[]; doctests=[]; files=decoded=0
- if mode=="host" and CONTAM: emit("global_signature_scan","SKIPPED_AFTER_CONTAMINATION",decoded_file_count=0,file_count=0,matches=[],skipped_roots=sorted(skip)); return
- def walk_error(exc): errors.append(f"walk:{getattr(exc,'filename',None)}:{type(exc).__name__}:{exc}")
- for root,dirs,names in os.walk("/",topdown=True,onerror=walk_error,followlinks=False):
-  kept=[]
-  for name in dirs:
-   if (path:=os.path.normpath(os.path.join(root,name))) in skip: continue
-   try:
-    if not stat.S_ISLNK(os.lstat(path).st_mode): kept.append(name)
-   except Exception as exc: errors.append(f"stat:{path}:{type(exc).__name__}:{exc}")
-  dirs[:]=sorted(kept,key=lambda name:(not (focus==os.path.join(root,name) or focus.startswith(os.path.join(root,name)+os.sep)),name))
-  for name in (x for x in names if x.endswith(".py")):
-   path=os.path.join(root,name)
-   try:
-    if not stat.S_ISREG(os.lstat(path).st_mode): continue
-    files+=1; text=norm(py_source(path)); decoded+=1; found=[digest for digest,needle in signatures if needle in text]
-    doctests.append(path) if name=="doctest.py" else None; matches.append({"path":path,"signature_sha256":found}) if found else None
-    if mode=="host" and matches: fields={"decoded_file_count":decoded,"file_count":files,"skipped_roots":sorted(skip)}; hit("global_signature_scan",matches=matches,**fields); mark("global_scan_errors",not errors,error_count=len(errors),error_sha256=sha("\n".join(errors)),error_sample=errors[:20]); (hit("doctest_filesystem_search",candidates=doctests,matches=matches) if name=="doctest.py" else mark("doctest_filesystem_search",True,candidates=doctests,matches=[])) if "filesystem:doctest.py" in item["answer_bearing_modules"] else None; return
-   except Exception as exc: errors.append(f"read:{path}:{type(exc).__name__}:{exc}")
- fields={"decoded_file_count":decoded,"file_count":files,"skipped_roots":sorted(skip)}; hit("global_signature_scan",matches=matches,**fields) if matches else mark("global_signature_scan",True,matches=[],**fields)
+  try: source=norm(inspect.getsource(resolve(target))); matches=[digest for digest,needle in signatures if needle in source]; row={"target":target,"source_available":True,"signature_sha256":matches}
+  except Exception as exc: row={"target":target,"source_available":False,"signature_sha256":[],"error":f"{type(exc).__name__}: {exc}"}
+  hit("literal_target",**row) if row["signature_sha256"] else mark("literal_target",True,**row); results.append(row)
+ return results
+def exclusions(mode,workspace,task):
+ if mode!="host": return []
+ try:
+  value=json.loads(os.environ.get("MDSEVAL_PROBE_EXCLUSIONS","")); good=isinstance(value,dict) and set(value)=={"task","evidence"} and all(isinstance(x,str) and os.path.isabs(x) and os.path.normpath(x)==x and x!="/" and os.path.realpath(x)==x for x in value.values()) and len(set(value.values()))==2 and os.path.basename(value["task"])==task and os.path.commonpath([workspace,value["task"]])==value["task"]
+  mark("host_exclusions",good,excluded_roots=value if isinstance(value,dict) else None); return list(value.values()) if good else None
+ except Exception as exc: mark("host_exclusions",False,error=f"{type(exc).__name__}: {exc}"); return None
+def host_roots():
+ try: interpreters={os.path.realpath(sys.executable)}|{os.path.realpath(os.path.join(directory,name)) for directory in os.environ.get("PATH","").split(os.pathsep) if os.path.isdir(directory) for name in os.listdir(directory) if re.fullmatch(r"(?:python|pypy)(?:\d+(?:\.\d+)*)?",name) and os.access(os.path.join(directory,name),os.X_OK)}
+ except Exception as exc: mark("host_root_discovery",False,error=f"{type(exc).__name__}: {exc}",scan_roots=[]); return []
+ roots={"/Library/Frameworks"}; discoveries=[]; errors=[]; code="import json,os,site,sys;p=set(site.getsitepackages())|{x for x in sys.path if os.path.basename(x)=='site-packages'};u=site.getusersitepackages();p.update([u] if isinstance(u,str) else u);print(json.dumps({'prefix':sys.prefix,'site_packages':sorted(p)}))"
+ for executable in sorted(interpreters):
+  try: result=subprocess.run([executable,"-I","-c",code],capture_output=True,text=True,timeout=10); need(result.returncode==0,"interpreter query failed"); row=json.loads(result.stdout); need(set(row)=={"prefix","site_packages"} and isinstance(row["prefix"],str) and isinstance(row["site_packages"],list) and all(isinstance(x,str) and os.path.isabs(x) and x!="/" for x in [row["prefix"],*row["site_packages"]]),"invalid interpreter roots"); discoveries.append({"executable":executable,**row}); roots.update([row["prefix"],*row["site_packages"]])
+  except Exception as exc: errors.append(f"{executable}:{type(exc).__name__}:{exc}")
+ reported=sorted({os.path.realpath(x) for x in roots}); required=[path for path in reported if os.path.isdir(path)]; missing=[path for path in reported if path not in required]; scan_roots=[path for path in required if not any(path!=other and os.path.commonpath([path,other])==other for other in required)]; mark("host_root_discovery",not errors,discovered_interpreters=discoveries,errors=errors,missing_reported_roots=missing,reported_roots=reported,required_roots=required,scan_roots=scan_roots); return scan_roots
+def scan(item,workspace,extra,mode="container"):
+ signatures=[(sha(x),norm(x)) for x in item["fix_signature_strings"]]; skip={"/proc","/sys","/dev",workspace,*extra}; errors=[]; fixtures=[]; matches=[]; targets={x:[] for x in item["answer_bearing_modules"] if x.startswith("filesystem:")}; files=decoded=0; roots=host_roots() if mode=="host" else ["/"]
+ def problem(kind,path,exc): errors.append(f"{kind}:{path}:{type(exc).__name__}:{exc}")
+ mark("global_scan_roots",bool(roots),mode=mode,scan_roots=roots)
+ for root,dirs,names in (row for scan_root in roots if not any(scan_root==path or scan_root.startswith(path+os.sep) for path in skip) for row in os.walk(scan_root,topdown=True,onerror=lambda exc:problem("walk",getattr(exc,"filename",None),exc),followlinks=False)):
+   kept=[]
+   for name in dirs:
+    if (path:=os.path.normpath(os.path.join(root,name))) in skip: continue
+    try:
+     if not stat.S_ISLNK(os.lstat(path).st_mode): kept.append(name)
+    except Exception as exc: problem("stat",path,exc)
+   dirs[:]=sorted(kept)
+   for name in (x for x in names if x.endswith(".py")):
+    path=os.path.join(root,name)
+    try:
+     if not stat.S_ISREG(os.lstat(path).st_mode): continue
+     files+=1; text=norm(py_source(path)); decoded+=1; found=[digest for digest,needle in signatures if needle in text]
+     matches.append({"path":path,"signature_sha256":found}) if found else None
+     for target in targets:
+      suffix=target.split(":",1)[1].replace("/",os.sep); targets[target].append(path) if path==suffix or path.endswith(os.sep+suffix) else None
+    except Exception as exc: (fixtures.append(fixture:={"path":path,"error_class":type(exc).__name__}),emit("UNDECODABLE_FIXTURE","FINDING",**fixture)) if mode=="host" and isinstance(exc,(SyntaxError,UnicodeError)) else problem("read",path,exc)
+ fields={"decoded_file_count":decoded,"file_count":files,"scan_roots":roots,"skipped_roots":sorted(skip),"undecodable_fixtures":fixtures}; hit("global_signature_scan",matches=matches,**fields) if matches else mark("global_signature_scan",True,matches=[],**fields)
  mark("global_scan_errors",not errors,error_count=len(errors),error_sha256=sha("\n".join(errors)),error_sample=errors[:20])
- if "filesystem:doctest.py" in item["answer_bearing_modules"]: contaminated=[x for x in matches if os.path.basename(x["path"])=="doctest.py"]; hit("doctest_filesystem_search",candidates=doctests,matches=contaminated) if contaminated else mark("doctest_filesystem_search",True,candidates=doctests,matches=[])
+ for target,candidates in targets.items():
+  contaminated=[x for x in matches if x["path"] in candidates]; row={"target":target,"candidates":candidates,"matches":contaminated}; hit("filesystem_target",**row) if contaminated else mark("filesystem_target",True,**row)
+ return {"literal_scan":"global_signature_scan","decoded_file_count":decoded,"file_count":files,"filesystem_targets":targets,"scan_roots":roots,"skipped_roots":sorted(skip),"undecodable_fixtures":fixtures}
 def mount_check():
  try:
   rows=[]
@@ -89,6 +104,8 @@ def environment_check(item):
   for path in set(site.getsitepackages())|{p for p in sys.path if os.path.basename(p)=="site-packages"}: packages[path]=sorted(os.listdir(path)) if os.path.isdir(path) else []
   mark("environment",not hits and not any(packages.values()),environment=env,host_path_hits=hits,site_packages=packages,sys_path=sys.path)
  except Exception as exc: mark("environment",False,environment=env,error=f"{type(exc).__name__}: {exc}",host_path_hits=hits,sys_path=sys.path)
+ try: mode=os.lstat("/sealed-deps").st_mode; mark("sealed_deps",stat.S_ISDIR(mode) and not stat.S_ISLNK(mode) and os.environ.get("PYTHONPATH")=="/sealed-deps" and "/sealed-deps" in sys.path,path="/sealed-deps",pythonpath=os.environ.get("PYTHONPATH"))
+ except Exception as exc: mark("sealed_deps",False,error=f"{type(exc).__name__}: {exc}")
  home=os.environ.get("HOME"); code_home=os.environ.get("CODEX_HOME"); errors=[]; instructions=[]
  try:
   if home!="/agent-home" or code_home!=home or os.path.realpath(home)!=home or stat.S_ISLNK(os.lstat(home).st_mode): errors.append("HOME/CODEX_HOME")
@@ -111,7 +128,7 @@ def environment_check(item):
  mark("interpreter_set",current.startswith("/python/") and (shutil.which("python3") or "").startswith("/python/") and bool(candidates) and all(x["realpath"]==current and x["sha256"]==current_sha for x in candidates),candidates=candidates,current=current); mark("interpreter_pin",platform.python_version()==item["interpreter_pin"],actual=platform.python_version(),expected=item["interpreter_pin"])
 def runtime_check(path,image):
  try:
-  data=json.load(open(path,encoding="utf-8")); args=data["runtime_args"]; security=data["runtime_security_args"]; policy=data["policy"]; identity=data["identity"]; runtime_hash=sha(json.dumps(security,sort_keys=True,separators=(",",":"))); source,sp=policy_shape(policy["source_argv"]); replay,rp=policy_shape(policy["replay_argv"])
+  data=json.loads(pathlib.Path(path).read_text(encoding="utf-8")); args=data["runtime_args"]; security=data["runtime_security_args"]; policy=data["policy"]; identity=data["identity"]; runtime_hash=sha(json.dumps(security,sort_keys=True,separators=(",",":"))); source,sp=policy_shape(policy["source_argv"]); replay,rp=policy_shape(policy["replay_argv"])
   hashes=policy["source_sha256"]==policy["replay_sha256"]==argv_sha(source)==argv_sha(replay); denial=policy["denial"]; target=policy["socket_target"]; policy_good=source==replay and sp==rp and hashes and isinstance(target,list) and len(target)==2 and isinstance(target[0],str) and isinstance(target[1],int) and policy["bare_connect"] is True and policy["exit_status"]==errno.EPERM and "PermissionError" in denial and any(x in denial for x in ("EPERM","Errno 1","Operation not permitted"))
   current=globals()["identity"](image); identity_good=set(identity)=={"subject","checker"} and identity["subject"]==identity["checker"]==current
   good=all(isinstance(x,list) and x and all(isinstance(y,str) and y for y in x) for x in (args,security)) and data.get("runtime_security_sha256")==runtime_hash and data.get("policy_sha256")==policy["source_sha256"] and policy_good and identity_good and policy.get("source_identity")==policy.get("replay_identity")==current
@@ -120,12 +137,14 @@ def runtime_check(path,image):
 def main():
  if len(sys.argv)>=2 and sys.argv[1]=="policy-child": return policy_child()
  if len(sys.argv)>=2 and sys.argv[1]=="identity": emit("identity","PASS",**identity(sys.argv[2] if len(sys.argv)>2 else None)); return 0
- default=os.path.join(os.path.dirname(__file__),"contamination-spec.json"); spec_path=sys.argv[4] if len(sys.argv)>4 else os.environ.get("MDSEVAL_CONTAMINATION_SPEC",default); spec,spec_hash=load_spec(spec_path)
- if spec is None or len(sys.argv)<4 or sys.argv[1] not in {"host","container"} or sys.argv[2] not in IDS: emit("summary","BUILD_REJECTED",image_digest=sys.argv[3] if len(sys.argv)>3 else None,spec_sha256=spec_hash,task_id=sys.argv[2] if len(sys.argv)>2 else None); return 2
+ BAD.clear(); CONTAM.clear(); default=os.path.join(os.path.dirname(__file__),"contamination-spec.json"); spec_path=sys.argv[4] if len(sys.argv)>4 else os.environ.get("MDSEVAL_CONTAMINATION_SPEC",default); spec,spec_hash,spec_ids=load_spec(spec_path); guessed=sys.argv[1] if len(sys.argv)>1 else None
+ if spec is None or len(sys.argv)<4 or guessed not in {"host","container"} or sys.argv[2] not in spec: emit("summary","CONTROL_FAILED" if guessed=="host" else "BUILD_REJECTED",image_digest=sys.argv[3] if len(sys.argv)>3 else None,spec_sha256=spec_hash,spec_task_ids=spec_ids,task_id=sys.argv[2] if len(sys.argv)>2 else None,failure_count=1,contamination_count=0); return 2
  mode,task,image=sys.argv[1:4]; workspace=os.path.normpath(os.environ.get("MDSEVAL_WORKSPACE",os.path.abspath(os.path.join(os.path.dirname(__file__),"../..")) if mode=="host" else "/workspace")); item=spec[task]
- mark("invocation",mode=="host" or (workspace=="/workspace" and re.fullmatch(r"sha256:[0-9a-f]{64}",image) is not None),mode=mode,task_id=task,image_digest=image,spec_path=spec_path,workspace=workspace); inspect_targets(item); scan(item,workspace,mode); mount_check(); environment_check(item)
+ mark("invocation",mode=="host" or (workspace=="/workspace" and re.fullmatch(r"sha256:[0-9a-f]{64}",image) is not None),mode=mode,task_id=task,image_digest=image,spec_path=spec_path,workspace=workspace); roots=exclusions(mode,workspace,task); absence={}
+ if roots is not None: absence={"literal_targets":inspect_targets(item),"global_scan":scan(item,workspace,roots,mode)}
+ if mode=="container": mount_check(); environment_check(item)
  runtime_path=sys.argv[5] if len(sys.argv)>5 else os.environ.get("MDSEVAL_PROBE_RUNTIME_JSON"); runtime_hash=policy_hash=None
  if mode=="container": runtime_hash,policy_hash=runtime_check(runtime_path,image) if runtime_path else (mark("runtime_policy_identity",False,error="missing runtime JSON") or (None,None))
- status="EXPECTED_RED" if mode=="host" and CONTAM else "ALL_GREEN" if mode=="container" and not BAD and not CONTAM else "CONTROL_FAILED" if mode=="host" else "BUILD_REJECTED"; summary={"check":"summary","status":status,"task_id":task,"spec_sha256":spec_hash,"image_digest":image,"failure_count":len(BAD),"contamination_count":len(CONTAM)}
- summary.update(runtime_security_sha256=runtime_hash,policy_sha256=policy_hash) if mode=="container" else None; print(json.dumps(summary,sort_keys=True,separators=(",",":")),flush=True); return 0 if status in {"EXPECTED_RED","ALL_GREEN"} else 2
+ status="EXPECTED_RED" if mode=="host" and CONTAM and not BAD else "N/A" if mode=="host" and not BAD and not CONTAM else "ALL_GREEN" if mode=="container" and not BAD and not CONTAM else "CONTROL_FAILED" if mode=="host" else "BUILD_REJECTED"; summary={"check":"summary","status":status,"task_id":task,"spec_sha256":spec_hash,"spec_task_ids":spec_ids,"image_digest":image,"failure_count":len(BAD),"contamination_count":len(CONTAM)}
+ summary.update(runtime_security_sha256=runtime_hash,policy_sha256=policy_hash) if mode=="container" else summary.update(reason="configured fix signatures are absent from inspected targets and the recursive host-root scan",absence_evidence=absence) if status=="N/A" else None; print(json.dumps(summary,sort_keys=True,separators=(",",":")),flush=True); return 0 if status in {"EXPECTED_RED","N/A","ALL_GREEN"} else 2
 if __name__=="__main__": raise SystemExit(main())

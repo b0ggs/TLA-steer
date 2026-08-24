@@ -272,3 +272,100 @@ contamination caused the original Phase 3 ceilings, establishes no general
 model-capability or MD claim, and does not itself make a sourcing decision. The
 four tasks are exhausted as headroom probes and remain calibration-only because
 their blind solutions were not produced under the seal.
+
+## 11. Section 14 maximum-difficulty pre-Docker cohort — 2026-08-24
+
+Section 14 was authorized in commit `1e4f9ec` and the host/container probe-mode
+contradiction was resolved by plan amendment `becb1bc`. This entry records the
+development funnel through the pre-Docker gate only. No Docker command, admission,
+sealed probe, live subject call, REQUEST, or mechanical headroom reading has yet
+occurred. All blind solutions below are explicitly `UNSEALED` and
+`calibration-only`; they establish neither sealed fair-solvability nor difficulty.
+
+The exact funnel is: **31 repositories screened -> at least 83 documented
+substantive issues considered -> 11 candidates reconstructed -> 4 selected -> 0
+admitted**. The issue count is a lower bound because the original HTTPX screen did
+not preserve its pair count. Broad query-window inventories (327 packaging-tools
+rows, 204 Pallets/CLI rows, and 81 web-validation rows) are diagnostic and are not
+added to the substantive-issue denominator.
+
+| Source lane | Repositories | Substantive issues | Reconstructed |
+|---|---:|---:|---:|
+| Original maximum-difficulty screen | 10 | >=29 | 7 |
+| Async/HTTP contingency | 4 | 3 | 0 |
+| Django contingency | 1 | 5 | 0 |
+| Packaging-tools contingency | 4 | 19 | 1 |
+| Pallets/CLI contingency | 4 | 7 | 1 |
+| Web-validation contingency | 4 | 6 | 1 |
+| Developer-tools contingency | 4 | 14 | 1 |
+| **Total** | **31** | **>=83** | **11** |
+
+The 31 unique repositories were pypa/packaging, mahmoud/boltons,
+astanin/python-tabulate, hukkin/tomli, python-hyper/h11, pydantic/pydantic,
+pallets/click, encode/httpx, pytest-dev/pytest, python-attrs/attrs,
+urllib3/urllib3, agronholm/anyio, encode/httpcore, aio-libs/aiohttp,
+django/django, pypa/pip, pypa/virtualenv, pypa/build, pypa/installer,
+pallets/jinja, pallets/flask, Textualize/rich, fastapi/typer, Kludex/starlette,
+Kludex/uvicorn, python-jsonschema/jsonschema, marshmallow-code/marshmallow,
+tox-dev/tox, pytest-dev/pluggy, psf/black, and tox-dev/filelock.
+
+The selected four-task cohort is mechanically final-preflight green on the host:
+
+| Task | Issue closed | Upstream fix size | Full base files | Blind launches | Host calibration |
+|---|---|---:|---:|---:|---|
+| full-boltons-wraps-forwarding | 2026-07-18 | 3 paths | 111 | 1 | resolved |
+| full-click-stream-lifecycle | 2026-03-01 | 5 files, +587/-12 | 146 | 1 | resolved |
+| full-flask-automatic-options | 2026-02-12 | 7 files, +96/-86 | 235 | 1 | resolved |
+| full-starlette-websocket-denial | 2026-03-15 | 3 files, +100/-23 | 126 | 1 | resolved |
+
+Each selected public tree is the full pinned pre-fix repository, each reference
+tree differs only by the real non-test fix, each private overlay contains the
+exact changed/introduced upstream fix tests, and each checker is public-red,
+reference-green, blind-green, and regression-green. The final four-key
+contamination spec validates with SHA-256
+`129e6dd45d57c4c735e33b33e4b81e5404cd8249b64be8c65973047eba2749fc`.
+
+Blindsolve used exactly 22 launches. Interrupted and timed-out launches count:
+
+| Candidate | Launch dispositions | Final disposition |
+|---|---|---|
+| full-boltons-wraps-forwarding | 1 resolved | selected |
+| full-click-stream-lifecycle | 1 resolved | selected |
+| full-tabulate-jsonl-cli | completed unresolved; contradiction interrupt; trackability interrupt | dropped: tracked-byte hiding and cap |
+| full-packaging-marker-pickle | contradiction interrupt; xhigh 900s timeout; high completed R1/R2 true, R3 false, G1 true | dropped at 3-launch cap |
+| full-packaging-prerelease-bounds | contradiction interrupt; xhigh 900s timeout; high completed all requirements false, G1 true | dropped at 3-launch cap |
+| full-pytest-fixture-closure | high R1 true/R2 false/G1 true; xhigh same; max 900s timeout | dropped at 3-launch cap |
+| full-attrs-field-aliases | xhigh all requirements false/G1 true; max interrupted with no output; high same failure | dropped at 3-launch cap |
+| full-flask-automatic-options | 1 resolved | selected |
+| full-starlette-websocket-denial | 1 resolved | selected |
+| full-filelock-async-cancel-atomicity | xhigh 900s timeout; high R1/R3 true, R2 false, G1 true; high 900s timeout | dropped at 3-launch cap |
+| full-virtualenv-unsupported-seeding | no launch | rejected before blind |
+
+Swaps were mechanical rather than forced. Tabulate, urllib3, and virtualenv were
+rejected because upstream ignore rules hide required full-tree bytes. Django,
+Uvicorn, and jsonschema were rejected because their exact full trees contain
+tracked symlinks. Rich's strongest change depended on a large generated Unicode
+data update; Typer's strongest candidate had weak close-to-fix attribution. AnyIO
+and pip remained promising but unbuilt after stronger, mechanically complete
+fallbacks cleared the minimum. Filelock was repaired before exposure from an
+invalid 42-character ID and a bundled main squash to the exact public PR #652
+pre-stack head for issue #640; it was then dropped solely on the blind cap.
+
+Available rejected blind trees and provenance, plus the pytest final-timeout
+scratch tree, are preserved in
+`handoffs/SECTION14_REJECTED_BLIND_EVIDENCE_2026-08-24.tar.gz` (SHA-256
+`b257760588fb47ff9138a18a5b980a524dc565820f89ef74b2a041db78de9c65`).
+Filelock attempt 2 is separately preserved in
+`handoffs/SECTION14_FILELOCK_BLIND_ATTEMPT2_2026-08-24.tar.gz` (SHA-256
+`90ffaaddfe4a895757853b0291334db682be969b054af9ca27cb7870a009474b`).
+For earlier retries overwritten by the existing atomic blindsolve tool, only
+the launch dispositions are recorded here. The tool retained no raw tree,
+captured stdout/stderr, or durable output hash for those overwritten or
+no-output launches.
+
+The next gate is explicitly Docker-controlled: build and inspect the four sealed
+per-task images, run in-container admission/environment/scoring checks and both
+probe modes, commit image digests and evidence, then queue the single unapproved
+600-second REQUEST and stop. Until a verified usable live batch exists, neither
+`HEADROOM_OBSERVED_AT_FULL_DIFFICULTY` nor
+`NO_HEADROOM_OBSERVED_AT_FULL_DIFFICULTY` is available.

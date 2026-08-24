@@ -1,0 +1,1 @@
+{"input_tree_sha256":"671f6d62cb88583236172762e284dd6ffb7b097f3ff7caf01af30efbe0423642","sandbox_flags":["workspace-write","network-disabled","subagents-disabled","ephemeral"],"solver_agent":"codex-cli/0.146.0-alpha.9.2:gpt-5.6-sol:xhigh","solver_command_sha256":"06bfa1ca0db0ae89879c93d019944711a8185c4f4ea9132e6101b3d82a701d59","timestamp":"2026-08-24T12:06:29.604369+00:00"}

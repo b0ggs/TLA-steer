@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import hashlib
 import json
-import os
 import re
 import shutil
 import stat
+import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 
@@ -23,6 +24,7 @@ SOURCE_KEYS = {
     "solution_patch_sha256", "fix_test_patch_sha256", "checker_command",
     "spdx_id", "license_paths", "removed_instruction_paths", "extraction_note",
 }
+SOURCE_KEYS_V14 = SOURCE_KEYS | {"issue_closed_at"}
 SHA256 = re.compile(r"[0-9a-f]{64}")
 GIT_SHA = re.compile(r"[0-9a-f]{40}")
 INSTRUCTION_NAMES = set(FORBIDDEN_SUBJECT_INPUTS) | {"CODER.md"}
@@ -31,6 +33,7 @@ BUILD_NAMES = {
     "Pipfile", "Pipfile.lock", "poetry.lock", "uv.lock", ".gitmodules",
 }
 NATIVE_SUFFIXES = {".c", ".cc", ".cpp", ".h", ".hpp", ".so", ".dylib", ".dll", ".pyd", ".o", ".a"}
+CACHE_NAMES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", ".cache"}
 NETWORK_TEST_MARKERS = (
     "urllib.request", "http.client", "socket.", "urlopen(", "requests.",
 )
@@ -39,11 +42,17 @@ PREFLIGHT_NOTE = (
     "hooks, native code, pytest plugins, submodules, LFS pointers, symlinks, "
     "networked tests, bytecode, hidden Git trees, or hiding .gitignore files"
 )
+FULL_SCALE_NOTE = (
+    "section14-full-scale-preflight-v1: no inherited evaluator instructions, "
+    "hidden Git trees/submodules, cache artifacts, symlinks, LFS pointers, or "
+    "leaked private fix tests; full-repository build metadata, native content, "
+    "pytest/network-test source, .gitattributes, and non-hiding .gitignore "
+    "files are retained; every included task file passes git check-ignore"
+)
 
 
 class PreflightError(RuntimeError):
     pass
-
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -51,7 +60,6 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
 
 def load_object(path: Path) -> dict:
     try:
@@ -62,7 +70,6 @@ def load_object(path: Path) -> dict:
         raise PreflightError(f"JSON must be an object: {path}")
     return value
 
-
 def safe_relative(value: object, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise PreflightError(f"{label} must be a nonempty relative path")
@@ -70,7 +77,6 @@ def safe_relative(value: object, label: str) -> str:
     if path.is_absolute() or ".." in path.parts or path.as_posix() != value:
         raise PreflightError(f"unsafe {label}: {value!r}")
     return value
-
 
 def files(root: Path):
     if root.is_symlink() or not root.is_dir():
@@ -83,33 +89,33 @@ def files(root: Path):
         if path.is_file():
             yield path, relative
 
-
-def rejection_scan(task: Path, *, include_blind: bool = True) -> None:
+def rejection_scan(task: Path, *, include_blind: bool = True, full_scale: bool = False) -> None:
     private_relatives: set[str] = set()
     tree_names = ("public", "reference", "private") + (("blind",) if include_blind else ())
     for tree_name in tree_names:
         tree = task / tree_name
         for entry in tree.rglob("*"):
             relative = entry.relative_to(tree)
-            if set(relative.parts) & (INSTRUCTION_NAMES | {"__pycache__", ".git"}):
+            if set(relative.parts) & (INSTRUCTION_NAMES | CACHE_NAMES | {".git"}):
                 raise PreflightError(f"forbidden or junk path: {tree_name}/{relative}")
         for path, relative in files(tree):
             parts = set(relative.parts)
             name = path.name
             if name in INSTRUCTION_NAMES or parts & INSTRUCTION_NAMES:
                 raise PreflightError(f"forbidden subject input: {tree_name}/{relative}")
-            if name in {".gitignore", ".gitattributes"} or name in BUILD_NAMES:
+            if name == ".gitmodules" or (not full_scale and (
+                    name in {".gitignore", ".gitattributes"} or name in BUILD_NAMES)):
                 raise PreflightError(f"hiding/build/submodule file: {tree_name}/{relative}")
-            if name.startswith("requirements") and name.endswith((".txt", ".in")):
+            if not full_scale and name.startswith("requirements") and name.endswith((".txt", ".in")):
                 raise PreflightError(f"install input: {tree_name}/{relative}")
-            if name in {"__pycache__", ".git"} or path.suffix == ".pyc":
+            if name in CACHE_NAMES | {".git"} or path.suffix in {".pyc", ".pyo"}:
                 raise PreflightError(f"junk path: {tree_name}/{relative}")
-            if path.suffix.lower() in NATIVE_SUFFIXES:
+            if not full_scale and path.suffix.lower() in NATIVE_SUFFIXES:
                 raise PreflightError(f"native code: {tree_name}/{relative}")
             data = path.read_bytes()
             if data.startswith(b"version https://git-lfs.github.com/spec/v1"):
                 raise PreflightError(f"Git LFS pointer: {tree_name}/{relative}")
-            if path.suffix == ".py":
+            if path.suffix == ".py" and not full_scale:
                 text = data.decode("utf-8", errors="replace")
                 if name == "conftest.py" or "pytest_plugins" in text or re.search(
                     r"(^|\n)\s*(import pytest|from pytest\b)", text
@@ -121,26 +127,63 @@ def rejection_scan(task: Path, *, include_blind: bool = True) -> None:
                     raise PreflightError(f"networked test: {tree_name}/{relative}")
             if tree_name == "private":
                 private_relatives.add(relative.as_posix())
-    leaked = sorted(
-        relative for relative in private_relatives
-        if (task / "public" / relative).exists()
-    )
+    leaked = sorted(relative for relative in private_relatives
+                    if (task / "public" / relative).is_file()
+                    and (not full_scale or sha256(task / "private" / relative)
+                         == sha256(task / "public" / relative)))
     if leaked:
         raise PreflightError(f"private fix tests leaked into public: {leaked}")
 
+def validate_trackable(task: Path) -> None:
+    top = subprocess.run(["git", "-C", str(task), "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True, check=False)
+    if top.returncode:
+        raise PreflightError("full-scale task is not inside a Git worktree")
+    root = Path(top.stdout.strip()).resolve()
+    try:
+        included = [path for path, _ in files(task)]
+        if task / "manifest.json" not in included: included.append(task / "manifest.json")
+        relatives = [path.relative_to(root).as_posix() for path in included]
+    except ValueError as exc:
+        raise PreflightError("full-scale task files escape the Git worktree") from exc
+    checked = subprocess.run(
+        ["git", "-C", str(root), "check-ignore", "--no-index", "-z", "--stdin"],
+        input=("\0".join(relatives) + "\0").encode(), capture_output=True, check=False)
+    if (checked.returncode, bool(checked.stdout)) not in {(0, True), (1, False)}:
+        raise PreflightError(f"git check-ignore failed: {checked.stderr.decode(errors='replace').strip()}")
+    ignored = sorted(item.decode(errors="replace") for item in checked.stdout.split(b"\0") if item)
+    if ignored:
+        raise PreflightError(f".gitignore would omit task bytes: {ignored[:20]}")
 
-def validate_source(task: Path, *, finalize: bool) -> dict:
+def validate_source(task: Path, *, finalize: bool, section14: bool = False) -> dict:
     source_path = task / "failure-source.json"
     source = load_object(source_path)
-    if finalize and not str(source.get("extraction_note", "")).startswith(PREFLIGHT_NOTE):
+    full_scale = section14 or "issue_closed_at" in source
+    note = FULL_SCALE_NOTE if full_scale else PREFLIGHT_NOTE
+    expected = SOURCE_KEYS_V14 if full_scale else SOURCE_KEYS
+    if set(source) != expected:
+        raise PreflightError(f"failure-source keys differ: {sorted(set(source) ^ expected)}")
+    if finalize and not str(source.get("extraction_note", "")).startswith(note):
         detail = str(source.get("extraction_note", "")).strip()
-        source["extraction_note"] = PREFLIGHT_NOTE + (f"; {detail}" if detail else "")
+        if full_scale and detail.startswith(PREFLIGHT_NOTE):
+            detail = detail[len(PREFLIGHT_NOTE):].removeprefix(";").strip()
+        source["extraction_note"] = note + (f"; {detail}" if detail else "")
         source_path.write_text(
             json.dumps(source, sort_keys=True, separators=(",", ":")) + "\n",
             encoding="utf-8",
         )
-    if set(source) != SOURCE_KEYS:
-        raise PreflightError(f"failure-source keys differ: {sorted(set(source) ^ SOURCE_KEYS)}")
+    if full_scale:
+        closed = source["issue_closed_at"]
+        try:
+            if not isinstance(closed, str) or not re.fullmatch(
+                    r"\d{4}-\d{2}-\d{2}(?:T.*(?:Z|[+-]\d{2}:\d{2}))?", closed):
+                raise ValueError
+            parsed = (dt.datetime.fromisoformat(closed.replace("Z", "+00:00"))
+                      if "T" in closed else dt.date.fromisoformat(closed))
+            if isinstance(parsed, dt.datetime) and parsed.utcoffset() is None:
+                raise ValueError
+        except ValueError as exc:
+            raise PreflightError("issue_closed_at must be an ISO-8601 date or zoned timestamp") from exc
     for key in ("source_url", "issue_url"):
         if not isinstance(source[key], str) or not source[key].startswith("https://"):
             raise PreflightError(f"{key} must be an https URL")
@@ -167,26 +210,37 @@ def validate_source(task: Path, *, finalize: bool) -> dict:
     removed = source["removed_instruction_paths"]
     if not isinstance(removed, list) or not all(isinstance(item, str) for item in removed):
         raise PreflightError("removed_instruction_paths must be a string list")
-    if not isinstance(source["extraction_note"], str) or not source["extraction_note"].startswith(PREFLIGHT_NOTE):
+    if not isinstance(source["extraction_note"], str) or not source["extraction_note"].startswith(note):
         raise PreflightError("preflight output is not recorded in extraction_note")
     return source
 
 
-def preflight(task: Path, *, finalize: bool) -> dict:
+def preflight(task: Path, *, finalize: bool, section14: bool = False) -> dict:
     task = task.resolve()
-    rejection_scan(task)
-    source = validate_source(task, finalize=finalize)
+    source = validate_source(task, finalize=finalize, section14=section14)
+    full_scale = section14 or "issue_closed_at" in source
+    rejection_scan(task, full_scale=full_scale)
+    if full_scale:
+        validate_trackable(task)
     meta = load_object(task / "task-meta.json")
     requirements = load_object(task / "requirements.json")
     if meta != {"layout_version": 3, "parent_task_id": None, "salience": "enumerated"}:
         raise PreflightError("Phase 3 task-meta must be enumerated task-layout-v3")
     if not 1 <= len(requirements) <= 3:
         raise PreflightError("Phase 3 tasks require one to three requirements")
+    if full_scale and load_object(task / "blind-calibration.json") != {
+            "seal_status": "UNSEALED", "use": "calibration-only"}:
+        raise PreflightError("Section 14 blind-calibration.json contract is invalid")
     checker = (task / "check.py").read_text(encoding="utf-8")
     for token in ("TemporaryDirectory", "copytree", "copy2", "PYTHONDONTWRITEBYTECODE"):
         if token not in checker:
             raise PreflightError(f"checker lacks private-overlay mechanic: {token}")
-    return {"task_id": task.name, "preflight": "pass", "source": source}
+    result = {"task_id": task.name, "preflight": "pass", "source": source}
+    if full_scale:
+        result["full_scale"] = True
+    if section14:
+        result["section14_mode"] = True
+    return result
 
 
 def packet(task: Path, output: Path) -> dict:
@@ -213,16 +267,25 @@ def main() -> int:
     check.add_argument("--finalize", action="store_true")
     scan = commands.add_parser("scan")
     scan.add_argument("task", type=Path)
+    for command in (check, scan): command.add_argument(
+        "--section14", action="store_true", help="force Section 14 schema and gates")
     build = commands.add_parser("packet")
     build.add_argument("task", type=Path)
     build.add_argument("output", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "preflight":
-            result = preflight(args.task, finalize=args.finalize)
+            result = preflight(args.task, finalize=args.finalize, section14=args.section14)
         elif args.command == "scan":
-            rejection_scan(args.task.resolve(), include_blind=False)
+            task = args.task.resolve()
+            source = validate_source(task, finalize=False, section14=args.section14)
+            full_scale = args.section14 or "issue_closed_at" in source
+            rejection_scan(task, include_blind=False, full_scale=full_scale)
+            if full_scale:
+                validate_trackable(task)
             result = {"task_id": args.task.name, "pre_blind_scan": "pass"}
+            if args.section14:
+                result["section14_mode"] = True
         else:
             result = packet(args.task, args.output)
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))

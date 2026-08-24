@@ -1,0 +1,30 @@
+{
+  "R1": {
+    "omission_probe": {
+      "path": "src/click/testing.py",
+      "text": "def close(self) -> None:",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Closing one of Click's named text wrappers must leave the binary buffer it was given open and usable, including when multiple wrappers share that buffer."
+    },
+    "target_paths": [
+      "src/click/testing.py"
+    ]
+  },
+  "R2": {
+    "omission_probe": {
+      "path": "src/click/testing.py",
+      "text": "prevent the default __del__ implementation from closing that buffer.",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Garbage collection and finalization of `CliRunner`'s temporary streams must leave `StreamMixer`-owned stdout, stderr, and mixed-output buffers readable; repeated invocations involving logging, threads, or exceptions must continue to restore process streams and isolate output."
+    },
+    "target_paths": [
+      "src/click/testing.py"
+    ]
+  }
+}

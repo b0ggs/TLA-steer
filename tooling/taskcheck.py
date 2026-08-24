@@ -28,6 +28,7 @@ BATCH_REQUEST_KEYS = {
     "batch_id", "tasks", "arms", "call_count", "replacement_call_cap",
     "max_total_calls", "md_filename", "task_order_seed", "runner",
 }
+COMPARABILITY_NOTE = "The 600-second subject timeout creates a comparability boundary with prior 300-second batches."
 MECHANISM_FACT_KEYS = {
     "fact", "public_support_path", "required_md_substrings",
     "predicted_bare_behavior", "affected_requirement",
@@ -362,9 +363,13 @@ def _validate_batch_request(request: Any, batch_id: str, arm_counts: set[int]) -
     tasks = request.get("tasks") if isinstance(request, dict) else None
     arms = request.get("arms") if isinstance(request, dict) else None
     seed = request.get("task_order_seed") if isinstance(request, dict) else None
+    runner = request.get("runner") if isinstance(request, dict) else None
+    timeout = runner.get("timeout_seconds") if isinstance(runner, dict) else None
+    expected_keys = BATCH_REQUEST_KEYS | ({"comparability_note"} if timeout == 600 else set())
     pair_count = len(tasks) * len(arms) if isinstance(tasks, list) and isinstance(arms, list) else 0
     valid = (
-        isinstance(request, dict) and set(request) == BATCH_REQUEST_KEYS
+        isinstance(request, dict) and set(request) == expected_keys
+        and (timeout != 600 or request.get("comparability_note") == COMPARABILITY_NOTE)
         and request.get("batch_id") == batch_id and isinstance(tasks, list) and bool(tasks)
         and isinstance(arms, list) and len(arms) in arm_counts
         and all(isinstance(row, dict) and set(row) == {"id", "manifest_sha256"}

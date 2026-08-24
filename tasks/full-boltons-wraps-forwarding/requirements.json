@@ -1,0 +1,30 @@
+{
+  "R1": {
+    "omission_probe": {
+      "path": "boltons/funcutils.py",
+      "text": "kw_parts.append(arg + '=' + arg)",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Every regular parameter with a default and every keyword-only parameter that can legally be passed by keyword must reach the generated wrapper as `name=name`, so a value supplied by keyword remains in the wrapper's `**kwargs` instead of being flattened into `*args`."
+    },
+    "target_paths": [
+      "boltons/funcutils.py"
+    ]
+  },
+  "R2": {
+    "omission_probe": {
+      "path": "boltons/funcutils.py",
+      "text": "'posonlyargs': list",
+      "type": "text_absent"
+    },
+    "stated_in": {
+      "path": ".issue-contract.md",
+      "quote": "Generated invocations must keep positional-only parameters positional, and when a signature has `*args`, all regular parameters before it must remain positional so nonempty varargs cannot collide with keyword forwarding."
+    },
+    "target_paths": [
+      "boltons/funcutils.py"
+    ]
+  }
+}
