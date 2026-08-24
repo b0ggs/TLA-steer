@@ -1,0 +1,1 @@
+repo=/private/tmp/mdseval-section14-admission.8yY5f6gy/repo image=sha256:701fb29f189e057c591d6715256934aaa7597b58c589362e7e2cb50d3c550c33 task=full-boltons-wraps-forwarding interpreter=3.11.5 network=none

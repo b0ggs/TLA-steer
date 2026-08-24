@@ -369,3 +369,53 @@ probe modes, commit image digests and evidence, then queue the single unapproved
 600-second REQUEST and stop. Until a verified usable live batch exists, neither
 `HEADROOM_OBSERVED_AT_FULL_DIFFICULTY` nor
 `NO_HEADROOM_OBSERVED_AT_FULL_DIFFICULTY` is available.
+
+## 12. Section 14 sealed approval gate — 2026-08-24
+
+The post-Docker gate completed without a live subject call. The final requested
+yield ledger is **31 repositories screened -> at least 83 substantive issues
+considered -> 4 sealed image contexts built -> 4 admitted**. The fuller
+construction funnel retains the intermediate count of 11 candidates
+reconstructed before the four-task cohort was selected. No candidate exceeded
+the three-blind-launch cap: the selected four each resolved on launch one, six
+candidates were dropped at launch three, and the pre-blind virtualenv candidate
+was rejected at launch zero.
+
+Task admission produced four immutable manifest commits. Each admitted task's
+full pre-fix repository, complete pre-fix test tree, private upstream fix-test
+overlay, artifact hashes, issue close date, and `UNSEALED` / `calibration-only`
+blind record are manifest-bound. The accepted image and environment bindings
+are:
+
+| Task | Image digest | Host control | Container probe | Environment |
+|---|---|---|---|---|
+| full-boltons-wraps-forwarding | `sha256:701fb29f189e057c591d6715256934aaa7597b58c589362e7e2cb50d3c550c33` | N/A, absence shown | ALL_GREEN | ALL_GREEN |
+| full-click-stream-lifecycle | `sha256:701fb29f189e057c591d6715256934aaa7597b58c589362e7e2cb50d3c550c33` | N/A, absence shown | ALL_GREEN | ALL_GREEN |
+| full-flask-automatic-options | `sha256:6a93531a8fb34697294a0f869d074a4d75ee692a67a624ba4dee317e7e58be99` | N/A, absence shown | ALL_GREEN | ALL_GREEN |
+| full-starlette-websocket-denial | `sha256:391377b4628f194db028967f7c1e056edae72f89f3d68218057abcb3590a374d` | N/A, absence shown | ALL_GREEN | ALL_GREEN |
+
+All images use the pinned 3.11.5 interpreter. Every container structural leg is
+green with zero scan failures and zero contamination. Each host control records
+the same three intentional undecodable CPython syntax fixtures and positive
+absence evidence; no structural host failure is treated as red. Public scoring
+is deterministically unresolved with regressions green, while reference scoring
+is deterministically resolved with every requirement and regression green.
+
+Build-once/reuse-by-digest also passed. There was one successful Docker daemon
+build per task context and zero later builds through admission or the complete
+probe/environment sequence. Earlier bare-CLI exit-127 records never reached the
+daemon. No build used `--no-cache` or `--pull`. Task source is not copied into
+the image, so it cannot invalidate dependency layers; it is mounted only at
+runtime. Boltons and Click intentionally converge to one digest because their
+complete locks and unpacked dependency trees are byte-identical. Runtime and
+batch code have no build path: probes, attempts, the proxy, and scoring use the
+recorded digest, and a missing or mismatched image fails closed rather than
+rebuilding or falling back to a tag.
+
+The direct macOS repository bind and first temporary-clone admission failures
+remain preserved as ordinary pre-exposure evidence. Acceptance used a fresh
+full clone, non-root digest-pinned containers, no network, and the recorded Git
+safe-directory protected configuration. At this historical pre-REQUEST gate no
+REQUEST or APPROVED file existed. This entry makes no full-difficulty headroom
+reading; that reading is unavailable until a verified usable approved batch is
+complete.
