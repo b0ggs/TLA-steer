@@ -1254,3 +1254,83 @@ task edits, selective retries, any MD claim, any general capability claim.
 4. No other machinery, documents, or experiments. This calibration
    precedes any sealed MD experiment; §12's standing permissions remain
    suspended until this section's result is recorded.
+
+## 14. MAXIMUM-DIFFICULTY SEALED COHORT
+
+Status: AUTHORIZED by Wade on 2026-08-23 after §13 completed with
+NO_HEADROOM_OBSERVED_IN_SEALED_RUNTIME. Target: ONE day of parallel agent labor
+to the approval gate; §1.7 has no implementation concurrency cap. A genuine
+plan contradiction is a mandatory stop-and-report, never an exception invented
+by the implementer. §14 supersedes §11's conflicting cohort count, timebox,
+concurrency, source eligibility, blind-evidence status, live-batch sequence,
+and timeout; the protections retained below still bind. For this section,
+scripts/contain/ has a 450-line aggregate cap (superseding §13's 250-line cap)
+and runtime.py uses normal readable formatting; compressed multi-statement lines
+in runtime.py fail acceptance.
+
+### 14.1 Cohort and construction
+
+Build 3–5 task-layout-v3 tasks from real, permissively licensed Python repos at
+FULL scale. public/ is the complete pre-fix checkout and reference/ that same
+tree with the real source fix: no pruning or extraction, apart from .git/cache
+artifacts and §11's mandatory instruction removals. The complete pre-fix test
+tree stays public; fix-introduced test files/changes remain private and are
+overlaid only by check.py. The old rejection scan does not exclude full-repo
+dependency/build metadata, native content, or the real test framework. §11's
+private-test, neutrality, hygiene, provenance, admission, exposure, and freeze
+rules remain.
+
+Choose the hardest issues mechanically verified as closed and test-covered;
+prefer fixes touching 3+ files or 100+ lines, integration bugs, and issues
+closed AFTER 2026-01. The exact §14 failure-source schema is §11's key set plus
+required ISO-8601 `issue_closed_at`; amend the preflight validator accordingly.
+If offline image construction fails within reasonable effort, swap the repo
+without weakening/extracting it and record the rejection in the yield ledger.
+
+Each task has a sealed per-task image with dependency artifacts and its real
+test framework (pytest allowed) baked at fixed image-owned `/sealed-deps` and
+version/artifact-hash pinned in manifest-hashed `image-lock.json`. §13's pinned
+interpreter remains the read-only external mount and runs the checks offline;
+empty site-packages and no-secondary-interpreter checks remain literal.
+Admission, verify, environment checks, and scoring use that container/interpreter;
+check.py stays a stdlib wrapper around focused real-framework tests within the
+existing checker timeout.
+
+Run blindsolve with existing tooling, then create manifest-hashed
+`blind-calibration.json` exactly recording `seal_status: UNSEALED` and
+`use: calibration-only`. Per §13.5 it proves no sealed fair-solvability or
+difficulty and cannot support evidentiary use.
+
+### 14.2 Sealed gate, batch, and readings
+
+All §13 seal/probe machinery otherwise applies unchanged: contamination-spec
+entries with nonempty answer-bearing targets and discriminative fix signatures
+for every task; full mount, sandbox, global scan, network, home, interpreter,
+environment, and deterministic-reference probes; per-task content-addressed
+image digests; and scoring identity. For §14, replace §13's old four IDs and
+old task-specific literals with exactly the admitted batch IDs and appropriate
+targets/signatures; probe semantics do not change. Every container leg is green.
+
+The host control runs the same hashed probe/spec while excluding its own task
+and evidence trees. Per task it is EXPECTED_RED only on explicit
+CONTAMINATION_FOUND; if the fixed answer is positively shown absent from the
+host, record `N/A` plus reason and absence evidence. This narrowly supersedes
+§13's mandatory-red acceptance; structural failure is neither RED nor N/A.
+
+Queue ONE REQUEST: 3 attempts per task in one batch (nominal = 3 × tasks), the
+standard one-replacement-per-task cap, no selective retry, and exactly 600
+seconds applied to every attempt and recorded as `runner.timeout_seconds: 600`.
+REQUEST remains v2 but gains one exact top-level `comparability_note` stating
+that 600s creates a boundary with prior 300s batches; this narrowly supersedes
+§13.7.2's taskcheck-untouched rule only for the minimal key-set validator change.
+No live subject call occurs outside this hash-approved REQUEST; queue
+REQUEST.json, then STOP for Wade.
+
+For a verified usable batch the only readings are: any task below 3/3 =
+HEADROOM_OBSERVED_AT_FULL_DIFFICULTY; all tasks 3/3 =
+NO_HEADROOM_OBSERVED_AT_FULL_DIFFICULTY. Neither grants standing permission.
+BUILD_REJECTED/EVIDENCE_INVALID are operational failures, not readings. Append
+the dated result and yield ledger (repos screened → issues considered → built →
+admitted) to handoffs/PROCESS_FINDINGS; make no population, MD, or capability
+claim. Acceptance at the stop: 3–5 admitted immutable tasks, artifacts/digests
+committed, all probes and tests green, and the 600s REQUEST unapproved/unlaunched.
