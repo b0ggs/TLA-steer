@@ -472,3 +472,9 @@ The approved 600-second subject timeout was applied identically to every attempt
 This batch is not directly comparable on timeout exposure to prior 300-second
 batches: five valid attempts ran longer than 300 seconds, although none reached
 600 seconds. The preserved REQUEST records that boundary.
+
+## 14. CODER.md cost and web-search audit — 2026-08-24
+The only direct cost evidence is one unsealed-host task with three bare and three MD attempts; its median MD-minus-bare differences were −970 uncached input, +63,488 cached input, +104 output, −25 reasoning, and +3.968 seconds.
+The MD arm was descriptively cheaper on median uncached input and reasoning, while the bare arm was cheaper on cached input, output, total input, and wall time; three-run totals favored bare on every listed measure.
+Across 36 sealed null attempts, the pilot gaps were not cleanly beyond ordinary within-task or matched original-to-replication variation; this evidence does not generalize beyond the one pilot task.
+All 12 maximum-difficulty attempts were audited: 51 completed web-search calls appeared in seven attempts, no raw result body was serialized, but later PR/commit navigation and upstream-attributed summaries show non-inert behavior; full evidence is in `handoffs/COST_AND_WEBSEARCH_ANALYSIS_2026-08-24.md`.
