@@ -1,0 +1,2 @@
+2026-08-24T21:05:38.500276Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /workspace/boltons/funcutils.py:
+    assert expect_pair(wrappable_func)(1, 2) == (1, 2, 5)

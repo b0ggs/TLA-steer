@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Changed Click’s stream ownership so named text wrappers no longer close shared binary buffers, and removed `StreamMixer`’s unsafe destructor. Added regressions for shared buffers, garbage collection, logging, threads, exceptions, repeated invocation, stream restoration, and output isolation.
+
+Verification:
+
+- Focused: 29 passed
+- Full available suite: 1,314 passed, 21 skipped, 1 xfailed
+- 30 pager cases deselected because `less` is not installed
+- Compilation and diff checks passed

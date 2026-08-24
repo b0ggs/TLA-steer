@@ -419,3 +419,56 @@ safe-directory protected configuration. At this historical pre-REQUEST gate no
 REQUEST or APPROVED file existed. This entry makes no full-difficulty headroom
 reading; that reading is unavailable until a verified usable approved batch is
 complete.
+
+## 13. Section 14 maximum-difficulty sealed result — 2026-08-24
+
+Wade approved the single queued request bound to SHA-256
+`c4764baeef42b58c3f723707ad8af13515450f58bb3e342119a9e8767b59d244`;
+the exact approval was committed as `c0bad4a` before launch. The approved null-arm
+batch then completed all 12 nominal attempts: three attempts for each of four
+tasks. All 12 attempts were valid and usable. There were no replacement calls,
+timeouts, interruptions, pre-spawn failures, infrastructure-invalid attempts, or
+build-rejected attempts. The terminal batch verifier exited zero over 12 result
+files, 12 attempt manifests, four dispositions, and all 16 expected evidence-ledger
+rows.
+
+| Task | Mechanical result | Disposition | q | Subject durations (seconds) | Total tokens |
+|---|---:|---|---:|---|---:|
+| full-flask-automatic-options | 3/3 | ceiling | 1.0 | 135.20, 159.11, 142.74 | 1,160,640 |
+| full-click-stream-lifecycle | 3/3 | ceiling | 1.0 | 318.78, 280.16, 429.57 | 6,721,183 |
+| full-boltons-wraps-forwarding | 3/3 | ceiling | 1.0 | 427.81, 566.78, 334.02 | 2,741,762 |
+| full-starlette-websocket-denial | 2/3 | wrong-failure-mode | 1.0 | 175.00, 259.78, 263.16 | 3,886,675 |
+
+The Starlette task's second attempt was valid but unresolved: R1 and R2 were
+true, G1 was false, and the disposition label was `wrong-failure-mode`. The other
+11 attempts resolved. Aggregate subject duration was 3,492.13 seconds and
+aggregate checker duration was 217.01 seconds. Complete usage evidence records
+14,394,088 input tokens, including 13,294,848 cached input tokens; 116,172 output
+tokens, including 56,150 reasoning tokens; and 14,510,260 total tokens.
+These timing and token figures are descriptive only.
+
+The §14 reading is therefore exactly
+`HEADROOM_OBSERVED_AT_FULL_DIFFICULTY`: at least one admitted task scored below
+3/3. This is a mechanical reading of this four-task calibration cohort only. It
+does not establish a population estimate, an MD effect, or a general capability
+claim, and it grants no standing permission for another live call or batch.
+
+The required final yield ledger is **31 repositories screened -> at least 83
+substantive issues considered -> 4 sealed image contexts built -> 4 tasks
+admitted**. The fuller construction funnel separately records 11 candidates
+reconstructed. All four admitted tasks reached the approved batch; one task showed
+observed headroom under §14's rule. The candidate-specific swaps, drops, pre-blind
+rejections, and bounded blind-attempt dispositions remain recorded in Section 11
+above.
+
+Build-once/reuse-by-digest held through the live batch. The four task contexts had
+only their initial successful daemon builds; admission, probes, environment
+checks, all 12 live attempts, and in-container scoring caused zero further image
+builds. Every live attempt names the approved recorded digest, with no
+`--no-cache`, `--pull`, tag fallback, or rebuild path. Boltons and Click retain
+their intentionally identical content digest.
+
+The approved 600-second subject timeout was applied identically to every attempt.
+This batch is not directly comparable on timeout exposure to prior 300-second
+batches: five valid attempts ran longer than 300 seconds, although none reached
+600 seconds. The preserved REQUEST records that boundary.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds `OPTIONS` after resolving global and per-view settings. Added function/class coverage and verified custom `OPTIONS` dispatch remains intact.
+
+`git diff --check` passes. Tests could not run because no Python runtime is installed.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds `OPTIONS` for function and class-based views even when globally disabled. Regression tests were updated accordingly; explicit false and self-handled `OPTIONS` behavior remains intact.
+
+`git diff --check` passes. Tests could not run because no Python tooling is installed in the environment.

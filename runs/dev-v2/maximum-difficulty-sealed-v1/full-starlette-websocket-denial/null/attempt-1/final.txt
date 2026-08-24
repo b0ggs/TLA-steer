@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [responses.py](/workspace/starlette/responses.py) so streaming and file WebSocket denials emit valid denial events, preserve HTTP behavior, and run streaming background tasks exactly once. Added regression tests for streamed/file denial responses.
+
+`git diff --check` passes. Pytest could not run because this container has no Python or `uv`; `scripts/test` reports `uv: not found`.

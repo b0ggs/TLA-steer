@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `add_url_rule` so explicit automatic `OPTIONS` enablement overrides the disabled global default. Added function- and class-view regression coverage, preserving explicit disablement and self-handled `OPTIONS`.
+
+`git diff --check` passes. Tests could not run because no Python runtime or test runner is installed.

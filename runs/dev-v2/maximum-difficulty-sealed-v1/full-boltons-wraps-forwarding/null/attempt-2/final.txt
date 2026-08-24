@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding for defaulted, keyword-only, positional-only, `*args`, `**kwargs`, and `expected` signatures. Added regression coverage.
+
+Verification:
+
+- Targeted tests: 40 passed
+- Non-socket suite: 440 passed
+- 9 socket tests remain blocked by sandbox socket permissions
+- `git diff --check` passed

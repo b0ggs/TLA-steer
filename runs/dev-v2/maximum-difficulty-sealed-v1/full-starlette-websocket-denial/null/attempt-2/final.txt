@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [responses.py](/workspace/starlette/responses.py) to translate streamed/file HTTP events into valid WebSocket denial events and avoid HTTP-only scope assumptions. Added focused regressions in [test_websockets.py](/workspace/tests/test_websockets.py).
+
+`git diff --check` passes. Runtime pytest verification was unavailable because the container has no Python, pytest, or uv executable.

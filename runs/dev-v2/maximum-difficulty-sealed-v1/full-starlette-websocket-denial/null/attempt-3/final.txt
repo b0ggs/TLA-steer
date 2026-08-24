@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated WebSocket denial handling for `StreamingResponse` and `FileResponse`, preserving HTTP behavior and background-task execution. Added focused pytest regressions for streamed/file denial responses.
+
+`git diff --check` passes. Pytest could not run because this image lacks Python, pytest, and uv.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Corrected `funcutils.wraps` forwarding for defaulted, keyword-only, positional-only, and varargs parameters. Added regression coverage for ordinary and `expected` wrapping.
+
+`git diff --check` passes. Runtime tests were unavailable because the environment has no Python interpreter or test tooling.

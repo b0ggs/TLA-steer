@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding to preserve defaulted and keyword-only arguments as keywords, while correctly handling positional-only parameters and `*args`. Added regression coverage for ordinary wraps, `expected`, keyword-only targets, varargs, and positional-only signatures.
+
+Verification:
+
+- Focused tests: 41 passed
+- Non-socket suite: 441 passed
+- Full suite: 443 passed; 9 unrelated socket tests were blocked by sandbox permissions.

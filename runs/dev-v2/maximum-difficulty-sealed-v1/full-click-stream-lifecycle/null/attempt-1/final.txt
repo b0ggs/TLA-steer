@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated [testing.py](/workspace/src/click/testing.py) so named wrappers no longer close owned buffers and `StreamMixer` collection leaves output buffers readable. Added lifecycle regressions in [test_testing.py](/workspace/tests/test_testing.py).
+
+Verification:
+
+- Focused: 30 passed
+- Runnable full suite: 1,315 passed, 21 skipped, 1 xfailed
+- 30 pager tests excluded because `less` is unavailable
+- Diff and syntax checks passed
