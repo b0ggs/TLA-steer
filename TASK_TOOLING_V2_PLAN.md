@@ -1349,3 +1349,46 @@ the dated result and yield ledger (repos screened → issues considered → buil
 admitted) to handoffs/PROCESS_FINDINGS; make no population, MD, or capability
 claim. Acceptance at the stop: 3–5 admitted immutable tasks, artifacts/digests
 committed, all probes and tests green, and the 600s REQUEST unapproved/unlaunched.
+
+### 14.3 Maximum-difficulty replication
+
+Status: AUTHORIZED by Wade on 2026-08-24 after the first §14 batch recorded
+`HEADROOM_OBSERVED_AT_FULL_DIFFICULTY`. This subsection narrowly supersedes
+§14.2's one-REQUEST limit to authorize exactly one replication batch and one new
+hash-bound approval stop, with batch ID
+`maximum-difficulty-sealed-replication-v1`. Reuse the same four admitted
+immutable tasks, manifest hashes, null arm, contamination spec, interpreter
+pins, sealed runtime, exact REQUEST runner configuration and subject wrapper,
+and recorded image digests. Run fresh per-batch host, container, and environment
+probes before queueing, but perform zero image builds: every probe and later
+attempt must reuse the recorded digest and fail closed if it is unavailable or
+mismatched.
+
+Record one fresh task-order seed in the REQUEST without rerolling it. Queue 3
+attempts per task in one batch: 12 nominal calls, the standard
+one-replacement-per-task cap of 4, 16 calls maximum, and the identical
+600-second timeout and comparability note. After REQUEST creation and before the
+approval stop, append a dated replication-queue entry to
+`handoffs/PROCESS_FINDINGS_2026-08-19.md`; create no new report document or
+reporting infrastructure. Record the batch ID, REQUEST SHA-256, seed, unchanged
+task/manifest/image/spec/pin/runner bindings, 12 + 4 call bounds, and explicitly
+that the REQUEST is queued, APPROVED is absent, zero replication calls exist,
+and no replication reading exists. From committed evidence only, record that
+`full-starlette-websocket-denial/null/attempt-2` was valid and usable, returned
+zero without timeout or interruption after 259.7829792210832 seconds, reported
+1,303,832 input / 1,206,272 cached input / 9,906 output / 3,981 reasoning /
+1,313,738 total tokens, and scored R1/R2 true, G1 false, resolved false. The
+disposition was `wrong-failure-mode`. The bounded reading is that it completed
+an incorrect, regression-failing change rather than exhausting the 600-second
+budget; make no narrower causal claim.
+
+Queue the new REQUEST and STOP for its exact hash approval. This authorization
+and the first batch's APPROVED.json do not approve the replication's live calls.
+After a verified usable batch, apply the same §14 mechanical labels, append the
+replication's dated result and yield ledger separately to the same
+PROCESS_FINDINGS file without replacing the original reading, repeat the
+original yield funnel, and state that replication added zero screening, builds,
+or admissions. Until verification succeeds, neither replication label exists.
+Make no population, MD, or general capability claim. No outcome grants standing
+permission. No task edit, re-admission, blind solve, image rebuild, selective
+retry, additional report, or additional replication is authorized.
