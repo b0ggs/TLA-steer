@@ -53,7 +53,8 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
     def approve(self, request: Path) -> None:
         (request.parent / "APPROVED.json").write_text(json.dumps({
             "request_sha256": batch.sha256_file(request)}))
-    def runner(self, calls: list[tuple[str, bytes]], *, interrupt_first: bool = False):
+    def runner(self, calls: list[tuple[str, bytes]], *, interrupt_first: bool = False,
+               web_search_first: bool = False):
         def fake(command, *, cwd, **_kwargs):
             md_name = next(item for item in ("ALT.md", "CODER.md") if (cwd / item).is_file())
             arm = (cwd / md_name).read_bytes()
@@ -63,7 +64,9 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
                 (cwd / "solution.txt").write_text("done\n")
             Path(command[command.index("--output-last-message") + 1]).write_text("IMPLEMENTED\n")
             interrupted = interrupt_first and len(calls) == 1
-            return ProcessOutcome(0, '{"type":"turn.completed"}\n', "", False, interrupted)
+            search = ('{"type":"item.started","item":{"id":"search-1","type":"web_search","query":"upstream fix"}}\n'
+                      if web_search_first and len(calls) == 1 else "")
+            return ProcessOutcome(0, search + '{"type":"turn.completed"}\n', "", False, interrupted)
         return fake
     def queued(self, task_names: list[str], *, same_arm: bool = False,
                md_filename: str = "ALT.md", seed: int = 7):
@@ -110,8 +113,9 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
             self.assertIn(field, report)
         sample = json.loads(next(request.parent.glob("task-*/b/attempt-1/result.json")).read_text())
         self.assertEqual(sample["md_filename"], "ALT.md")
-        self.assertIn('project_doc_fallback_filenames=["ALT.md"]',
-                      " ".join(json.loads(next(request.parent.glob("task-*/b/attempt-1/launch.json")).read_text())["command"]))
+        launch_command = " ".join(json.loads(next(request.parent.glob("task-*/b/attempt-1/launch.json")).read_text())["command"])
+        self.assertIn('project_doc_fallback_filenames=["ALT.md"]', launch_command)
+        self.assertIn('web_search="disabled"', launch_command)
         first_task = json.loads(request.read_text())["tasks"][0]["id"]
         first = [arm for task_name, arm in calls if task_name == first_task]
         self.assertEqual(first, [b"", b"help\n", b"help\n", b"", b"", b"help\n"])
@@ -139,11 +143,24 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
             batch.verify_batch(request.parent)
         self.assertEqual(len(calls), 7)
         self.assertTrue(any(request.parent.glob("task-1/a/attempt-*/infra-invalid.json")))
+    def test_web_search_event_is_fatal_evidence_not_a_replacement(self):
+        request, runs = self.queued(["task-1"])
+        calls: list[tuple[str, bytes]] = []
+        with patch.object(batch, "ROOT", self.root.resolve()):
+            batch.launch("fake-batch", runs, self.runner(
+                calls, interrupt_first=True, web_search_first=True), require_auth=False)
+            batch.verify_batch(request.parent)
+        result = json.loads((request.parent / "task-1/a/attempt-1/result.json").read_text())
+        self.assertEqual((len(calls), result["valid"], result["invalid_reason"]),
+                         (6, False, "fatal evidence defect: web_search tool item in events"))
+        self.assertFalse((request.parent / "task-1/a/attempt-1/infra-invalid.json").exists())
+        self.assertEqual(json.loads((request.parent / "task-1/a/disposition.json").read_text())["label"], "invalid")
     def test_queue_rechecks_request_filename_neutrality(self):
         task, arm = self.task("task-1", alt_sensitive=True), self.arm("a", b"")
         with patch.object(batch, "ROOT", self.root.resolve()), self.assertRaisesRegex(taskcheck.TaskError, "arm-neutral"):
             batch.queue_request("fake-batch", [task], [("a", arm)], self.root / "runs", md_filename="ALT.md")
-        container = {"image_digests": {task.name: "sha256:" + "a" * 64}, "spec_sha256": "b" * 64, "interpreter_pins": {task.name: "3.11.5"}}
+        container = {"image_digests": {task.name: "sha256:" + "a" * 64}, "spec_sha256": "b" * 64,
+                     "interpreter_pins": {task.name: "3.11.5"}, "web_search": "disabled"}
         with patch.object(batch, "ROOT", self.root.resolve()), patch.object(batch, "_launch_record"), patch.object(
                 batch.taskcheck, "verify", wraps=taskcheck.verify) as verified:
             batch.queue_request("sealed-batch", [task], [("a", arm)], self.root / "runs", md_filename="ALT.md", container=container)
@@ -156,6 +173,10 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         container = {"image_digests": {task: digest for task in task_ids}, "spec_sha256": "b" * 64,
                      "interpreter_pins": {task: "3.11.5" for task in task_ids}}
         self.assertIs(batch._container(container, task_ids), container)
+        with self.assertRaisesRegex(batch.BatchError, "container schema"):
+            batch._container(container, task_ids, require_search_disabled=True)
+        sealed_container = {**container, "web_search": "disabled"}
+        self.assertIs(batch._container(sealed_container, task_ids, require_search_disabled=True), sealed_container)
         runner = batch.asdict(batch.RUNNER); runner["container"] = container
         self.assertEqual(batch._runner(runner), batch.RUNNER)
         invalid = dict(container); invalid["extra"] = True

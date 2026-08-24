@@ -426,7 +426,8 @@ Wade approved the single queued request bound to SHA-256
 `c4764baeef42b58c3f723707ad8af13515450f58bb3e342119a9e8767b59d244`;
 the exact approval was committed as `c0bad4a` before launch. The approved null-arm
 batch then completed all 12 nominal attempts: three attempts for each of four
-tasks. All 12 attempts were valid and usable. There were no replacement calls,
+tasks. Under the verifier then in force, all 12 attempts were marked valid and
+usable. There were no replacement calls,
 timeouts, interruptions, pre-spawn failures, infrastructure-invalid attempts, or
 build-rejected attempts. The terminal batch verifier exited zero over 12 result
 files, 12 attempt manifests, four dispositions, and all 16 expected evidence-ledger
@@ -447,11 +448,24 @@ aggregate checker duration was 217.01 seconds. Complete usage evidence records
 tokens, including 56,150 reasoning tokens; and 14,510,260 total tokens.
 These timing and token figures are descriptive only.
 
-The §14 reading is therefore exactly
+Under the §14 rule then in force, the historical reading was
 `HEADROOM_OBSERVED_AT_FULL_DIFFICULTY`: at least one admitted task scored below
-3/3. This is a mechanical reading of this four-task calibration cohort only. It
-does not establish a population estimate, an MD effect, or a general capability
-claim, and it grants no standing permission for another live call or batch.
+3/3. A subsequent provider-side search audit qualifies that reading:
+
+| Task | Search-contaminated attempts (completed calls) | Search-clean attempts |
+|---|---|---|
+| full-boltons-wraps-forwarding | None | 1–3 |
+| full-click-stream-lifecycle | 1 (6), 2 (10), 3 (16) | None |
+| full-flask-automatic-options | 1 (3) | 2–3 |
+| full-starlette-websocket-denial | 1 (4), 2 (7), 3 (5) | None |
+
+The sole unresolved/headroom witness was contaminated Starlette attempt 2.
+The label is retained only as the historical reading of a batch in which
+provider-side search was available; it is not clean evidence under the
+search-disabled seal. This batch alone now supports neither an unqualified
+HEADROOM nor NO_HEADROOM reading. All three Boltons attempts stand clean with
+respect to web-search contamination. These statements remain cohort-specific
+and make no population, MD-effect, or general capability claim.
 
 The required final yield ledger is **31 repositories screened -> at least 83
 substantive issues considered -> 4 sealed image contexts built -> 4 tasks
@@ -478,3 +492,29 @@ The only direct cost evidence is one unsealed-host task with three bare and thre
 The MD arm was descriptively cheaper on median uncached input and reasoning, while the bare arm was cheaper on cached input, output, total input, and wall time; three-run totals favored bare on every listed measure.
 Across 36 sealed null attempts, the pilot gaps were not cleanly beyond ordinary within-task or matched original-to-replication variation; this evidence does not generalize beyond the one pilot task.
 All 12 maximum-difficulty attempts were audited: 51 completed web-search calls appeared in seven attempts, no raw result body was serialized, but later PR/commit navigation and upstream-attributed summaries show non-inert behavior; full evidence is in `handoffs/COST_AND_WEBSEARCH_ANALYSIS_2026-08-24.md`.
+
+## 15. Provider-search correction and queued rerun — 2026-08-24
+
+The two Phase 3 sealed batches were also audited in full. The original has 35
+completed `web_search` calls in eight of 12 attempts; the replication has 40 in
+eight of 12. In each batch all three Boltons attempts are clean. No raw provider
+result was serialized, but later upstream-attributed conclusions make all eight
+original attempts and seven replication attempts demonstrably response-influenced;
+the exact contribution in replication Enum attempt 3 is not isolatable, though
+its provider-side tool activity is fatal under the new rule. Per-attempt
+queries, actions, and transcript-entry findings are recorded in
+`handoffs/COST_AND_WEBSEARCH_ANALYSIS_2026-08-24.md`.
+
+The runner now binds top-level `web_search="disabled"`. Its zero-spend
+`config/read` probe must show effective mode `disabled`, origin `sessionFlags`,
+and exactly one disabled session layer; any later `web_search` event finalizes
+that attempt as fatal evidence without replacement. All four fresh sealed
+probes recorded that projection, all four environment checks are `ALL_GREEN`,
+and all four host controls are clean `N/A` records.
+
+The unapproved batch `maximum-difficulty-search-disabled-v1` is queued for 12
+nominal null-arm calls (four-task replacement cap; 16 absolute maximum) with
+600 seconds applied uniformly. Fresh seed: `10499729457959130686`. REQUEST
+SHA-256: `416fcb5178f20c206c79fd2bf86d4ae3f94fa9c2d3258c2a79f880b5b8d2859d`.
+`APPROVED.json`, attempts, and the evidence ledger are absent: no live call has
+launched, and execution stops here for Wade's hash approval.

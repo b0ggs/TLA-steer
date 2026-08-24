@@ -433,6 +433,67 @@ Lines 28–29 inspect only local tests. Line 30 says:
 It then describes response-event translation, the WebSocket-specific streaming
 path, and HTTP-only `FileResponse` gates. No raw upstream response is present.
 
+## Web-search audit of both Phase 3 sealed batches
+
+The same item-level audit was run over all 24 Phase 3 attempts. The original
+batch contains 35 completed calls in eight of 12 attempts; the replication
+contains 40 in eight of 12. Every completed call has a same-ID started item.
+As in the maximum-difficulty batch, every completed item contains only `action`,
+`id`, `query`, and `type`; actions contain only `type`, `query`, or `queries`.
+No result body, snippet, page text, title, citation, status, or error was
+serialized, so the literal provider return cannot be reconstructed. In the
+tables, “metadata only” means exactly that—not that the provider returned no
+content to the model.
+
+### Phase 3 original — all 12 attempts
+
+Path prefix: `runs/dev-v2/phase3-real-null-sealed-v1/`.
+
+| Task / attempt | Calls | Exact completed actions | Preserved return; did response-derived content enter the later transcript? |
+|---|---:|---|---|
+| Boltons 1 | 0 | None | N/A; no web item. |
+| Boltons 2 | 0 | None | N/A; no web item. |
+| Boltons 3 | 0 | None | N/A; no web item. |
+| Doctest 1 | 5 | Search `site:github.com/python/cpython doctest "format_exception_only" "SyntaxError" notes` and `site:github.com/python/cpython/issues doctest exception notes SyntaxError`; empty Other; find `'format_exception_only(*exception[:2])'`; open `https://raw.githubusercontent.com/python/cpython/main/Lib/doctest.py`; find `'exc_msg = ''.join'`. | Metadata only. Yes: later, “The upstream fix confirms the intended shape,” followed by the exact trim/join design. |
+| Doctest 2 | 4 | Search `site:github.com/python/cpython doctest format_exception_only exception notes SyntaxError` and `site:github.com/python/cpython "format_exception_only" "exc_msg" doctest notes`; find `'format_exception_only(*exception[:2])'`; open the raw CPython `Lib/doctest.py`; find `'format_exception_only'`. | Metadata only. Yes: “Upstream confirms the robust shape,” followed by the implementation rule. |
+| Doctest 3 | 4 | Search `site:github.com/python/cpython doctest exception notes SyntaxError format_exception_only notes regression` and `site:github.com/python/cpython Lib/doctest.py exc_msg SyntaxError notes`; find `'format_exception_only'`; open the raw CPython file; find `'format_exception_only(*exception[:2])'`. | Metadata only. Yes: “Upstream’s fix confirms the intended shape,” followed by the same specific algorithm. |
+| Enum 1 | 0 | None | N/A; no web item. |
+| Enum 2 | 3 | Search `site:github.com/python/cpython Lib/enum.py "unhashable_values_map_" "do long search"`; open `https://raw.githubusercontent.com/python/cpython/main/Lib/enum.py`; find `'class Enum(metaclass=EnumType)'`. | Metadata only. Yes: “Upstream resolves this by…” followed by the fast-map/full-comparison design. |
+| Enum 3 | 1 | Search `site:github.com/python/cpython enum.py "for name, unhashable_values" "_value2member_map_"`. | Metadata only. Yes: the later message says the code shape matches CPython’s upstream correction. |
+| Tomli 1 | 4 | Search `site:github.com/hukkin/tomli "Reject dotted-key namespace redefinitions"` and a CPython `EXPLICIT_NEST` query; empty Other; search exact `Cannot redefine namespace`, dotted-key, and `relative_path_cont_keys` test phrases; search `extend-defined-aot.toml` and `extend-defined-table.toml`. | Metadata only. Yes: “The upstream-compatible fix is to defer dotted-path namespace flags…” |
+| Tomli 2 | 4 | Search reopened-table, `EXPLICIT_NEST`, and array-of-tables phrases; open `https://raw.githubusercontent.com/python/cpython/main/Lib/tomllib/_parser.py`; search commit/PR phrases including `add_pending`; search exact namespace/test phrases. | Metadata only. Yes: “I found the upstream-compatible state model,” followed by pending-container behavior. |
+| Tomli 3 | 10 | Search the upstream issue and reopened-table phrases; two empty Others; search `add_pending`/namespace and CPython-test phrases; open Tomli `CHANGELOG.md`; two empty Others; open `https://github.com/hukkin/tomli/pull/125`; search PR 125’s exact title, `Error when dotted keys define values outside current table`. | Metadata only. Yes: “The upstream-compatible fix uses ‘pending’ dotted-key namespace flags,” followed by upstream navigation and the exact state model. |
+
+Original-batch verdict: all three Boltons attempts and Enum attempt 1 are clean
+on this criterion. The other eight are non-inert and would be fatal evidence
+under the search-disabled rule.
+
+### Phase 3 replication — all 12 attempts
+
+Path prefix: `runs/dev-v2/phase3-real-null-sealed-replication-v1/`.
+
+| Task / attempt | Calls | Exact completed actions | Preserved return; did response-derived content enter the later transcript? |
+|---|---:|---|---|
+| Boltons 1 | 0 | None | N/A; no web item. |
+| Boltons 2 | 0 | None | N/A; no web item. |
+| Boltons 3 | 0 | None | N/A; no web item. |
+| Doctest 1 | 5 | Search CPython `Lib/doctest.py`/SyntaxError-note and `test_doctest`/`add_note` queries; find `'exc_msg = traceback.format_exception_only'`; open raw `Lib/doctest.py`; find `'format_exception_only(*exception[:2])'` and `'exc_msg ='`. | Metadata only. Yes: “The authoritative CPython implementation confirms the intended algorithm,” followed by exact trim/join behavior. |
+| Doctest 2 | 8 | Search two CPython formatter/note queries; find `'format_exception_only(*exception[:2])'` and `'format_exception_only'`; open raw `Lib/doctest.py`; empty Other; search CPython `add_note` tests; open raw `test_doctest.py`; find `'add_note'`. | Metadata only. Yes: “Current CPython’s fix matches the contract exactly”; later tests are said to mirror CPython’s scenarios. |
+| Doctest 3 | 5 | Search two CPython formatter/note queries; empty Other; find `'format_exception_only(*exception[:2])'`; search three general regression phrases, then three issue/title phrases. | Metadata only. Yes: the post-search message gives the precise safe normalization after announcing an upstream check. |
+| Enum 1 | 4 | Search CPython unhashable-to-hashable lookup queries; open raw `Lib/enum.py`; empty Other; search `_hashable_values_` commits, PRs, and issues. | Metadata only. Yes: “I found the matching upstream shape,” followed by fast dict lookup plus full comparison after `TypeError`. |
+| Enum 2 | 0 | None | N/A; no web item. |
+| Enum 3 | 6 | Search `site:github.com/python/cpython enum unhashable frozenset _unhashable_values_map_ regression`; empty Other; find `'for hashable values, try the fast way first'`; open raw `Lib/enum.py`; find `'_hashable_values_'`; empty Other. | Metadata only. No response-derived statement can be isolated in the later transcript; provider-side tool activity nevertheless occurred and is fatal under the item rule. |
+| Tomli 1 | 2 | Search the exact upstream issue plus `EXPLICIT_NEST`; search CPython `Cannot redefine namespace` tests and Tomli dotted-key phrasing. | Metadata only. Yes: “Upstream confirms the intended fix uses deferred namespace flags…” |
+| Tomli 2 | 4 | Search exact issue and `set_for_relative_key`/`EXPLICIT_NEST`; open raw Tomli `_parser.py`; search exact test phrases; search version/test/namespace phrases. | Metadata only. Yes: after announcing an authoritative-history check, the later message reports the exact deferred-flag design. |
+| Tomli 3 | 6 | Search `set_for_relative_key`/`key_value_rule`; open raw current `_parser.py`; search namespace/`finalize_pending` phrases; open raw `_parser.py` at tags `1.2.3` and `2.0.0`; open the `2.0.1/tests` tree. | Metadata only. Yes: “Upstream confirms the minimal compatible design,” followed by pending/finalized namespace behavior. |
+
+Replication verdict: all three Boltons attempts and Enum attempt 2 are clean on
+this criterion. The other eight are contaminated by provider-side tool use.
+Seven record explicit or strong response-derived conclusions; Enum attempt 3's
+precise downstream contribution is not isolatable. Under the new event rule,
+all eight are fatal evidence regardless of whether the exact contribution can
+be reconstructed.
+
 ## Caveats
 
 - The only direct with-MD versus without-MD evidence is one task with three
@@ -452,6 +513,10 @@ path, and HTTP-only `FileResponse` gates. No raw upstream response is present.
   task manifests, null arm, model label, reasoning effort, wrapper, container
   digest/spec/interpreter bindings, and 300-second runner settings. They are
   still only four task-level comparisons and can include between-batch drift.
+- Each Phase 3 batch also has provider-side search in eight of 12 attempts.
+  Their time/token spread therefore includes variation in search use and the
+  trajectories that followed it; it is natural-run context, not a clean
+  search-disabled variance estimate.
 - Within-run behavior is stochastic. Whole-run cumulative token usage reflects
   both static context and the agent's chosen trajectory, repeated context,
   commands, and messages. It cannot isolate the direct ingestion cost of the

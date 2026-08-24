@@ -15,7 +15,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from mdseval.capture import Redactor, capture_git, parse_event_stream, redact_event_stream  # noqa: E402
+from mdseval.capture import Redactor, capture_git, redact_event_stream  # noqa: E402
 from mdseval.config import RunnerConfig  # noqa: E402
 from mdseval.fixtures import audit_final_subject_tree  # noqa: E402
 from mdseval.gitutils import init_repository, run_git  # noqa: E402
@@ -85,17 +85,16 @@ def _runner(value: Any) -> RunnerConfig:
                     for value in (runner.model, runner.reasoning_effort)))
     _ensure(safe, "runner weakens the development isolation contract")
     return runner
-def _container(value: Any, task_ids: set[str]) -> dict[str, Any] | None:
+def _container(value: Any, task_ids: set[str], *, require_search_disabled: bool = False) -> dict[str, Any] | None:
     if value is None:
         return None
-    images = value.get("image_digests") if isinstance(value, dict) else None
-    pins = value.get("interpreter_pins") if isinstance(value, dict) else None
-    valid = (isinstance(value, dict) and set(value) == {"image_digests", "spec_sha256", "interpreter_pins"}
+    images = value.get("image_digests") if isinstance(value, dict) else None; pins = value.get("interpreter_pins") if isinstance(value, dict) else None
+    valid = (isinstance(value, dict) and frozenset(value) in sealed.CONTAINER_KEYSETS
              and isinstance(images, dict) and isinstance(pins, dict) and set(images) == set(pins) == task_ids
              and _sha(value.get("spec_sha256")) and all(isinstance(item, str)
              and re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in images.values())
              and all(isinstance(item, str) and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", item)
-                     for item in pins.values()))
+                     for item in pins.values()) and sealed.container_web_search_valid(value, require_search_disabled))
     _ensure(valid, "runner.container schema or task binding is invalid")
     return value
 def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]],
@@ -109,7 +108,7 @@ def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]]
     seed = secrets.randbits(64) if task_order_seed is None else task_order_seed
     _ensure(isinstance(seed, int) and not isinstance(seed, bool) and seed >= 0,
             "task order seed must be a nonnegative integer")
-    container = _container(container, {task.name for task in tasks})
+    container = _container(container, {task.name for task in tasks}, require_search_disabled=container is not None)
     task_rows = [{"id": task.name, "manifest_sha256": taskcheck.verify(
         task, md_filename=None if container else md_filename)["manifest_sha256"]} for task in tasks]
     arm_rows = []
@@ -203,8 +202,8 @@ def _launch_record(batch: Path, task_id: str, container: dict[str, Any], manifes
             and environment.get("runtime_security_sha256") == probe.get("runtime_security_sha256")
             and policy.get("identity", {}).get("subject") == environment.get("identity"),
             "sealed preflight did not pass")
-    return {"files": {_relative(path): sha256_file(path) for path in files},
-            "runtime_security_sha256": probe["runtime_security_sha256"], "policy_sha256": probe["policy_sha256"], "identity": environment["identity"]}
+    return sealed.bind_web_search_evidence({"files": {_relative(path): sha256_file(path) for path in files},
+            "runtime_security_sha256": probe["runtime_security_sha256"], "policy_sha256": probe["policy_sha256"], "identity": environment["identity"]}, container, policy)
 def _ledger(batch: Path, *, required: bool = False) -> tuple[dict[str, str], dict[str, str]]:
     rows = taskcheck._read_chain(batch / "evidence-ledger.jsonl", "evidence ledger", required=required)
     attempts: dict[str, str] = {}
@@ -305,6 +304,7 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
         _write_once(destination / "wrapper.txt", wrapper.encode())
         final_temp = Path(temporary) / "final.txt"
         command = build_codex_command(runner, workspace, final_temp)
+        command[command.index("--cd"):command.index("--cd")] = ["--config", sealed.WEB_SEARCH_DISABLED_CONFIG]
         marker = 'project_doc_fallback_filenames=["CODER.md"]'
         _ensure(command.count(marker) == 1, "frozen project-document argument is missing")
         command[command.index(marker)] = (
@@ -328,7 +328,7 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
         _write_once(events, redact_event_stream(outcome.stdout, redactor).encode())
         _write_once(destination / "stderr.txt", redactor.text(outcome.stderr).encode())
         _write_once(destination / "final.txt", redactor.text(final).encode())
-        usage = parse_event_stream(events).usage
+        usage, web_search_seen = sealed.event_usage_and_web_search(events)
         tokens = {"input_tokens": usage["input_tokens"], "cached_input_tokens": usage["cached_input_tokens"],
                   "output_tokens": usage["output_tokens"], "reasoning_tokens": usage["reasoning_output_tokens"],
                   "total_tokens": usage["total_tokens"], "usage_reported": usage["usage_reported"]}
@@ -348,10 +348,10 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                 changes = capture.changed_paths
                 _write_once(destination / "capture.json", _bytes(asdict(capture)))
                 _write_once(destination / "diff.patch", capture.diff.encode())
-                if outcome.interrupted or classify_infrastructure_failure(
+                if not web_search_seen and (outcome.interrupted or classify_infrastructure_failure(
                         spawn_error=None, timed_out=outcome.timed_out, returncode=outcome.returncode,
                         events_jsonl=outcome.stdout, stderr=outcome.stderr, final_text=final,
-                        changed_paths=capture.changed_paths, untracked=capture.untracked):
+                        changed_paths=capture.changed_paths, untracked=capture.untracked)):
                     _write_once(destination / "infra-invalid.json", _bytes({"error": "runner infrastructure failure"}))
                     return False
                 md_path = workspace / md_filename
@@ -362,8 +362,8 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                         or capture.unauthorized_commit):
                     invalid = "protected input changed or subject committed"
             except Exception as exc:
-                _write_once(destination / "infra-invalid.json", _bytes({"error": f"{type(exc).__name__}: {exc}"}))
-                return False
+                if not web_search_seen: _write_once(destination / "infra-invalid.json", _bytes({"error": f"{type(exc).__name__}: {exc}"})); return False
+                invalid, scoreable, checked = f"capture failed: {type(exc).__name__}: {exc}", False, blank
             try:
                 if container:
                     checked, deterministic, checker_duration, checker_evidence = sealed.checker(
@@ -392,7 +392,7 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                   "regressions": checked["regressions"], "resolved": checked["resolved"],
                   "omissions": omissions, "omission_only": bool(failed) and all(omissions.values())
                   and all(checked["regressions"].values()), "target_path_changes": target_changes,
-                  "valid": not invalid, "invalid_reason": invalid}
+                  "valid": not invalid and not web_search_seen, "invalid_reason": "fatal evidence defect: web_search tool item in events" if web_search_seen else invalid}
         if container:
             result.update({"container": container, "container_preflight": seal, "token_totals": tokens})
         _write_once(destination / "checker.json", _bytes(checked))

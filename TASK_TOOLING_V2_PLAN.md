@@ -1171,6 +1171,16 @@ output, that:
    failure, unroutable address, or container-level deny does NOT pass this
    leg (and a bare-container socket test would go red forever, since the
    model client needs egress).
+   PROVIDER-SEARCH AMENDMENT (2026-08-24): command-network denial does not
+   govern Codex's provider-side `web_search` tool. Every new sealed REQUEST
+   binds `runner.container.web_search: "disabled"`; the subject command passes
+   top-level `web_search="disabled"`, and the zero-spend app-server probe's
+   `config/read` must resolve `disabled` from exactly one session-flags layer.
+   That projection is committed and rebound before every attempt. Any event
+   whose `item.type` is `web_search` is a fatal evidence defect: finalize the
+   attempt invalid, consume its nominal call, and never replace it. Historical
+   three-key container bindings remain replayable for audit only; this narrowly
+   supersedes §13.7.2's exact container key set for new sealed requests.
 4. No secondary interpreters or site-packages exist on PATH.
 5. Environment check + scoring identity (B3, before any spend): BOTH the
    pre-spend checks AND production attempt scoring run through the

@@ -122,6 +122,21 @@ class ProbeSummaryTests(unittest.TestCase):
 
 
 class ScanAndRuntimeTests(unittest.TestCase):
+    def test_resolved_web_search_requires_effective_session_flag(self):
+        result = {"config": {"web_search": "disabled"},
+                  "origins": {"web_search": {"name": {"type": "sessionFlags"}}},
+                  "layers": [{"name": {"type": "sessionFlags"},
+                              "config": {"web_search": "disabled"}}]}
+        self.assertEqual(runtime._resolved_web_search({"result": result}),
+                         runtime.WEB_SEARCH_DISABLED_EVIDENCE)
+        for key, value in (("config", {"web_search": "cached"}),
+                           ("origins", {}), ("layers", [])):
+            bad = {name: item.copy() if isinstance(item, dict) else list(item)
+                   for name, item in result.items()}
+            bad[key] = value
+            with self.assertRaisesRegex(RuntimeError, "web search"):
+                runtime._resolved_web_search({"result": bad})
+
     def test_host_and_container_use_asymmetric_recorded_scan_roots(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()

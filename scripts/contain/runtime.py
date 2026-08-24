@@ -6,6 +6,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = ROOT / "scripts/contain/contamination-spec.json"
 sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
+from mdseval.capture import parse_event_stream
 from mdseval.processutils import ProcessOutcome, run_process_group
 from tooling import taskcheck
 
@@ -14,6 +15,10 @@ PINS = Path(os.environ.get("MDSEVAL_INTERPRETERS", "/private/tmp/mdseval-interpr
 SECURITY = ("--cap-drop", "ALL", "--security-opt", "no-new-privileges=true", "--security-opt", "seccomp=unconfined", "--pids-limit", "256")
 FIXED_ENV = ("HOME=/agent-home", "CODEX_HOME=/agent-home", "PYTHONHOME=/python", "PYTHONPATH=/sealed-deps", "PYTHONDONTWRITEBYTECODE=1", "PYTHONNOUSERSITE=1", "LANG=C.UTF-8", "PATH=/usr/lib/codex/bin:/usr/lib/codex/codex-path:/python/bin:/usr/bin:/bin")
 PROXY_ENV = ("HTTPS_PROXY=http://model-proxy:8888", "HTTP_PROXY=http://model-proxy:8888")
+WEB_SEARCH_DISABLED_CONFIG = 'web_search="disabled"'
+WEB_SEARCH_DISABLED_EVIDENCE = {"mode": "disabled", "origin_type": "sessionFlags", "session_layer_modes": ["disabled"]}
+CONTAINER_KEYSETS = {frozenset({"image_digests", "spec_sha256", "interpreter_pins"}),
+                     frozenset({"image_digests", "spec_sha256", "interpreter_pins", "web_search"})}
 
 def canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -99,6 +104,41 @@ def _identity(image: str, pin: str, workspace: Path, codex_home: Path, network: 
         raise RuntimeError("interpreter identity failed")
     return row
 
+def _resolved_web_search(reply: dict[str, Any]) -> dict[str, Any]:
+    result = reply.get("result") if isinstance(reply, dict) else None
+    config = result.get("config") if isinstance(result, dict) else None
+    origins = result.get("origins") if isinstance(result, dict) else None
+    layers = result.get("layers") if isinstance(result, dict) else None
+    origin = origins.get("web_search") if isinstance(origins, dict) else None
+    name = origin.get("name") if isinstance(origin, dict) else None
+    session_modes = [layer.get("config", {}).get("web_search") for layer in layers
+                     if isinstance(layer, dict) and layer.get("name") == {"type": "sessionFlags"}
+                     and isinstance(layer.get("config"), dict)] if isinstance(layers, list) else []
+    evidence = {"mode": config.get("web_search") if isinstance(config, dict) else None,
+                "origin_type": name.get("type") if isinstance(name, dict) else None,
+                "session_layer_modes": session_modes}
+    if evidence != WEB_SEARCH_DISABLED_EVIDENCE:
+        raise RuntimeError("resolved web search is not disabled by the session flag")
+    return evidence
+
+def container_web_search_valid(value: dict[str, Any], required: bool) -> bool:
+    return (("web_search" not in value or value["web_search"] == "disabled")
+            and (not required or value.get("web_search") == "disabled"))
+
+def bind_web_search_evidence(result: dict[str, Any], container: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+    if container.get("web_search") != "disabled":
+        return result
+    evidence = policy.get("policy", {}).get("web_search")
+    if evidence != WEB_SEARCH_DISABLED_EVIDENCE:
+        raise RuntimeError("sealed preflight does not prove web search disabled")
+    return {**result, "web_search": evidence}
+
+def event_usage_and_web_search(path: Path) -> tuple[dict[str, int], bool]:
+    parsed = parse_event_stream(path)
+    seen = any(isinstance(item := event.get("item"), dict) and item.get("type") == "web_search"
+               for event in parsed.events)
+    return parsed.usage, seen
+
 def _policy(image: str, pin: str, workspace: Path, codex_home: Path, network: str, ip: str) -> dict[str, Any]:
     child = ["/python/bin/python3", "/usr/lib/mdseval/probe.py", "policy-child", ip, "8888", image]
     retry = "import socket,sys,time\nfor i in range(30):\n try:\n  socket.create_connection((sys.argv[1],int(sys.argv[2])),3).close()\n  break\n except OSError:\n  if i==29: raise\n  time.sleep(.1)"
@@ -107,9 +147,11 @@ def _policy(image: str, pin: str, workspace: Path, codex_home: Path, network: st
     messages = [
         {"method": "initialize", "id": 1, "params": {"clientInfo": {"name": "mdseval_policy_probe", "title": "MD Eval policy probe", "version": "1"}, "capabilities": {"experimentalApi": True}}},
         {"method": "initialized", "params": {}},
-        {"method": "command/exec", "id": 2, "params": {"command": child, "cwd": "/workspace", "disableOutputCap": True, "timeoutMs": 10000}}]
+        {"method": "config/read", "id": 2, "params": {"cwd": "/workspace", "includeLayers": True}},
+        {"method": "command/exec", "id": 3, "params": {"command": child, "cwd": "/workspace", "disableOutputCap": True, "timeoutMs": 10000}}]
     with _home(codex_home) as app_home:
         app_argv = [*_args(image, pin, workspace, app_home, network), "/usr/lib/codex/bin/codex",
+                    "--strict-config", "-c", WEB_SEARCH_DISABLED_CONFIG,
                     "-c", 'sandbox_mode="workspace-write"', "-c",
                     "sandbox_workspace_write.network_access=false", "app-server"]
         process = subprocess.Popen(app_argv, cwd=workspace, stdin=subprocess.PIPE,
@@ -120,9 +162,13 @@ def _policy(image: str, pin: str, workspace: Path, codex_home: Path, network: st
         time.sleep(8)
         stdout, stderr = process.communicate(timeout=20)
         app = ProcessOutcome(process.returncode, stdout, stderr, False, False)
-    reply = next((row for row in map(json.loads, app.stdout.splitlines()) if row.get("id") == 2), None)
-    if bare.returncode or app.returncode or not reply or "result" not in reply:
-        raise RuntimeError("policy export failed: " + canonical({"bare": [bare.returncode, bare.stderr[-1000:]], "app": [app.returncode, app.stdout[-1000:], app.stderr[-1000:]], "reply": reply}))
+    rows = list(map(json.loads, app.stdout.splitlines()))
+    config_replies = [row for row in rows if row.get("id") == 2]
+    replies = [row for row in rows if row.get("id") == 3]
+    if bare.returncode or app.returncode or len(config_replies) != 1 or len(replies) != 1 or "result" not in replies[0]:
+        raise RuntimeError("policy export failed: " + canonical({"bare": [bare.returncode, bare.stderr[-1000:]], "app": [app.returncode, app.stdout[-1000:], app.stderr[-1000:]], "config_replies": config_replies, "replies": replies}))
+    web_search = _resolved_web_search(config_replies[0])
+    reply = replies[0]
     source = _json_line(reply["result"]["stdout"])
     profile = source.get("permission_profile")
     if not profile:
@@ -142,7 +188,7 @@ def _policy(image: str, pin: str, workspace: Path, codex_home: Path, network: st
             "denial": replay_row["denial"], "exit_status": replay_row["exit_status"],
             "identity": source["identity"], "bare_argv": bare_argv,
             "export_container_argv": app_argv, "replay_container_argv": replay_argv,
-            "process_returncode": replay.returncode}
+            "process_returncode": replay.returncode, "web_search": web_search}
 
 def probe(task_id: str, image: str, pin: str, codex_home: Path) -> tuple[str, str, int]:
     image_id(image)
@@ -166,6 +212,8 @@ def probe(task_id: str, image: str, pin: str, codex_home: Path) -> tuple[str, st
 
 def subject(command: list[str], workspace: Path, final_path: Path, stdin: str, timeout: int, codex_home: Path, image: str, pin: str, seal: dict[str, Any]) -> ProcessOutcome:
     image_id(image)
+    if command.count(WEB_SEARCH_DISABLED_CONFIG) != 1:
+        raise RuntimeError("subject command does not disable web search exactly once")
     if seal.get("runtime_security_sha256") != security_sha256(image, pin):
         raise RuntimeError("approved runtime security mismatch")
     rewritten = list(command)
@@ -175,7 +223,8 @@ def subject(command: list[str], workspace: Path, final_path: Path, stdin: str, t
     rewritten[rewritten.index("--output-last-message") + 1] = "/workspace/.mdseval-final"
     with _network(image) as (network, ip):
         policy = _policy(image, pin, workspace, codex_home, network, ip)
-        if policy["source_sha256"] != seal.get("policy_sha256") or policy["identity"] != seal.get("identity"):
+        if (policy["source_sha256"] != seal.get("policy_sha256") or policy["identity"] != seal.get("identity")
+                or seal.get("web_search") is not None and policy["web_search"] != seal["web_search"]):
             raise RuntimeError("subject policy or identity mismatch")
         result, _ = _run(image, pin, workspace, codex_home, network, rewritten,
                          stdin=stdin, timeout=timeout)
