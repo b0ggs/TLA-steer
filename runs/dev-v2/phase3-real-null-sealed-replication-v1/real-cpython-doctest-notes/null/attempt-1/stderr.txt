@@ -1,0 +1,4 @@
+2026-08-24T00:02:57.136770Z ERROR codex_core::tools::router: error=exec_command failed for `/usr/bin/bash -lc "rm -f /workspace/__pycache__/doctest.cpython-311.pyc /workspace/tests/__pycache__/test_doctest_notes_regression.cpython-311.pyc
+rmdir /workspace/__pycache__ /workspace/tests/__pycache__
+PYTHONDONTWRITEBYTECODE=1 /python/bin/python3.11 -m unittest discover -s tests -v
+find . -maxdepth 3 -type f -printf '%p\\n' | sort"`: CreateProcess { message: "Rejected(\"`/usr/bin/bash -lc \\\"rm -f /workspace/__pycache__/doctest.cpython-311.pyc /workspace/tests/__pycache__/test_doctest_notes_regression.cpython-311.pyc\\nrmdir /workspace/__pycache__ /workspace/tests/__pycache__\\nPYTHONDONTWRITEBYTECODE=1 /python/bin/python3.11 -m unittest discover -s tests -v\\nfind . -maxdepth 3 -type f -printf '%p\\\\\\\\n' | sort\\\"` rejected: rm -f style commands are not permitted. Use a safer approach\")" }

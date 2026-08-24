@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `IndexedSet.iter_slice()` to use visible indices after removals while preserving negative-step semantics. Added `tests/test_indexed_slice_regression.py` covering bounds, positive-step list agreement, result types, and negative steps.
+
+Tests were not run because the repository environment has no Python executable.

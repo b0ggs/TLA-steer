@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Updated [boltons/setutils.py](/workspace/boltons/setutils.py:392) so post-removal slices use apparent indices while preserving negative-step semantics.
+
+Added [tests/test_indexed_slice_regression.py](/workspace/tests/test_indexed_slice_regression.py:1) covering bounds, list agreement, result type, and reverse slicing.
+
+All regression tests, doctests, and exhaustive slice checks pass.

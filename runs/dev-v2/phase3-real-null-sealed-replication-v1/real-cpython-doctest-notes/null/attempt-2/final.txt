@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [doctest.py](/workspace/doctest.py:1396) to compare complete exception messages and notes while stripping SyntaxError location decoration.
+
+Added executable regression coverage in [test_doctest_notes_regression.py](/workspace/tests/test_doctest_notes_regression.py:1). Runtime tests could not run because no Python interpreter is installed; static checks passed.

@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Updated `tomli/_parser.py` to reject dotted-key extensions beneath explicitly defined tables and arrays-of-tables while preserving valid sibling dotted keys.
+
+Added `tests/test_dotted_keys_regression.py` with both required `unittest` cases.
+
+Tests could not be executed because no Python interpreter is installed in the evaluation environment.

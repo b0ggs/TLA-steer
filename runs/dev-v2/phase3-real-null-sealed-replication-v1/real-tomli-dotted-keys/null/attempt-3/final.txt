@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated the parser to reject dotted-key extensions beneath previously explicit table and array-of-tables namespaces while preserving same-section dotted keys.
+
+Added [test_dotted_keys_regression.py](/workspace/tests/test_dotted_keys_regression.py) covering both invalid forms. Static checks passed; runtime tests were unavailable because the environment has no Python interpreter.

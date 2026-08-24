@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [tomli/_parser.py](/workspace/tomli/_parser.py) to reject dotted-key redefinitions across table sections. Added both regressions and a valid-behavior check in [test_dotted_keys_regression.py](/workspace/tests/test_dotted_keys_regression.py).
+
+Tests could not run because the repository environment has no Python interpreter.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [enum.py](/workspace/enum.py:1173) to compare unhashable lookup values against all enum members. Added executable unittest coverage in [test_enum_lookup_regression.py](/workspace/tests/test_enum_lookup_regression.py).
+
+Tests were not run because no Python interpreter is installed in the environment.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [doctest.py](/workspace/doctest.py) to compare all exception notes while ignoring `SyntaxError`-family location decoration. Added executable regression coverage in [test_doctest_notes_regression.py](/workspace/tests/test_doctest_notes_regression.py).
+
+All 4 unittest tests pass, including incorrect-note failures and unchanged no-note behavior.

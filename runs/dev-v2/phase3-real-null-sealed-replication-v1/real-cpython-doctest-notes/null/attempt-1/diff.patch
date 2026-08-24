@@ -1,0 +1,158 @@
+diff --git a/doctest.py b/doctest.py
+index 46b4dd6..ca8696d 100644
+--- a/doctest.py
++++ b/doctest.py
+@@ -1393,7 +1393,22 @@ class DocTestRunner:
+ 
+             # The example raised an exception:  check if it was expected.
+             else:
+-                exc_msg = traceback.format_exception_only(*exception[:2])[-1]
++                formatted_ex = traceback.format_exception_only(*exception[:2])
++                if issubclass(exception[0], SyntaxError):
++                    # SyntaxError / IndentationError is special:
++                    # we don't care about the carets / suggestions / etc.
++                    # We only care about the error message and notes.
++                    exception_line_prefixes = (
++                        f"{exception[0].__qualname__}:",
++                        f"{exception[0].__module__}.{exception[0].__qualname__}:",
++                    )
++                    exc_msg_index = next(
++                        index
++                        for index, line in enumerate(formatted_ex)
++                        if line.startswith(exception_line_prefixes)
++                    )
++                    formatted_ex = formatted_ex[exc_msg_index:]
++                exc_msg = "".join(formatted_ex)
+                 if not quiet:
+                     got += _exception_traceback(exception)
+ 
+diff --git a/tests/test_doctest_notes_regression.py b/tests/test_doctest_notes_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_doctest_notes_regression.py
+@@ -0,0 +1,125 @@
++#!/usr/bin/env python3
++
++import importlib.util
++from pathlib import Path
++import unittest
++
++
++ROOT = Path(__file__).resolve().parents[1]
++SPEC = importlib.util.spec_from_file_location("local_doctest", ROOT / "doctest.py")
++doctest = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(doctest)
++
++
++class DoctestExceptionNotesRegressionTests(unittest.TestCase):
++    def run_doctest(self, source, globs=None):
++        test = doctest.DocTestParser().get_doctest(
++            source, globs or {}, "exception_notes", __file__, 0
++        )
++        output = []
++        result = doctest.DocTestRunner().run(test, out=output.append)
++        return result, "".join(output)
++
++    def assert_doctest_passes(self, source, globs=None):
++        result, output = self.run_doctest(source, globs)
++        self.assertEqual(result.failed, 0, output)
++
++    def assert_doctest_fails(self, source, globs=None):
++        result, _ = self.run_doctest(source, globs)
++        self.assertEqual(result.failed, 1)
++
++    def test_ordinary_exception_note_is_compared(self):
++        self.assert_doctest_passes(
++            """
++            >>> error = ValueError("bad value")
++            >>> error.add_note("ordinary note")
++            >>> raise error
++            Traceback (most recent call last):
++            ...
++            ValueError: bad value
++            ordinary note
++            """
++        )
++        self.assert_doctest_fails(
++            """
++            >>> error = ValueError("bad value")
++            >>> error.add_note("actual note")
++            >>> raise error
++            Traceback (most recent call last):
++            ...
++            ValueError: bad value
++            incorrect note
++            """
++        )
++
++    def test_multiple_notes_are_compared_in_order(self):
++        self.assert_doctest_passes(
++            """
++            >>> error = RuntimeError("failure")
++            >>> error.add_note("first note")
++            >>> error.add_note("second note")
++            >>> raise error
++            Traceback (most recent call last):
++            ...
++            RuntimeError: failure
++            first note
++            second note
++            """
++        )
++        self.assert_doctest_fails(
++            """
++            >>> error = RuntimeError("failure")
++            >>> error.add_note("first note")
++            >>> error.add_note("second note")
++            >>> raise error
++            Traceback (most recent call last):
++            ...
++            RuntimeError: failure
++            second note
++            first note
++            """
++        )
++
++    def test_syntax_error_family_ignores_location_but_compares_notes(self):
++        def raise_indentation_error():
++            error = IndentationError(
++                "bad indentation", ("decorated.py", 7, 3, "  broken\n")
++            )
++            error.add_note("syntax note")
++            raise error
++
++        globs = {"raise_indentation_error": raise_indentation_error}
++        self.assert_doctest_passes(
++            """
++            >>> raise_indentation_error()
++            Traceback (most recent call last):
++            ...
++            IndentationError: bad indentation
++            syntax note
++            """,
++            globs,
++        )
++        self.assert_doctest_fails(
++            """
++            >>> raise_indentation_error()
++            Traceback (most recent call last):
++            ...
++            IndentationError: bad indentation
++            incorrect syntax note
++            """,
++            globs,
++        )
++
++    def test_exception_without_notes_keeps_existing_behavior(self):
++        self.assert_doctest_passes(
++            """
++            >>> raise LookupError("missing")
++            Traceback (most recent call last):
++            ...
++            LookupError: missing
++            """
++        )
++
++
++if __name__ == "__main__":
++    unittest.main()

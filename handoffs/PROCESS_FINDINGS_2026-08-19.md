@@ -241,3 +241,34 @@ a simultaneously changed runtime; it does not establish that the Phase 3
 ceilings were caused by host contamination and licenses no scaling until the
 same tasks and seal are replicated with fresh calls. The four tasks remain
 calibration-only because their blind solutions were not produced under the seal.
+
+## 10. Section 13 sealed-runtime replication — 2026-08-23
+
+The hash-approved batch `phase3-real-null-sealed-replication-v1` used REQUEST
+SHA-256
+`976f8e30748c6c742a0015fca42837efdd081b3ebc99835db12fb4ea7c985b1e`,
+container image digest
+`sha256:cc5be9c0627c60dc857153239a97ef1699c0665b4fb4402d214ca42ec8f0f077`,
+and contamination-spec SHA-256
+`b18ec65cbd6f85ccf5db948540a6da88097ce747b61443c8c09669214e9783ac`.
+Every fresh host control was `EXPECTED_RED`; every fresh sealed probe and
+in-container environment check was `ALL_GREEN`. The batch used exactly 12
+subject calls and no replacements. `run_batch verify` passed before
+interpretation; all attempts were valid and all token evidence was complete.
+
+| Task | Valid attempts | Resolved | q | Disposition | Duration (s) | Total tokens |
+|---|---:|---:|---:|---|---:|---:|
+| real-boltons-indexed-slice | 3/3 | 3/3 | 1.000000 | ceiling | 554.441175 | 817593 |
+| real-cpython-doctest-notes | 3/3 | 3/3 | 1.000000 | ceiling | 702.037063 | 2799243 |
+| real-cpython-enum-lookup | 3/3 | 3/3 | 1.000000 | ceiling | 402.211310 | 1221829 |
+| real-tomli-dotted-keys | 3/3 | 3/3 | 1.000000 | ceiling | 697.028454 | 1788184 |
+
+Terminal replication outcome:
+**NO_HEADROOM_OBSERVED_IN_SEALED_RUNTIME**. The original batch's single valid
+but unresolved boltons attempt did not recur under the same seal with fresh
+calls: boltons moved from 2/3 to 3/3, and every other task remained 3/3. This
+does not distinguish memorization from competence, does not establish that host
+contamination caused the original Phase 3 ceilings, establishes no general
+model-capability or MD claim, and does not itself make a sourcing decision. The
+four tasks are exhausted as headroom probes and remain calibration-only because
+their blind solutions were not produced under the seal.

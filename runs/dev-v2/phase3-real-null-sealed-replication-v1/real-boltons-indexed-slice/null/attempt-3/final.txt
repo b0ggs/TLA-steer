@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `IndexedSet` slicing to use apparent indices after removals while preserving negative-step semantics. Added `tests/test_indexed_slice_regression.py` covering list agreement and result types.
+
+Tests were not run because no Python runtime is installed in the environment.

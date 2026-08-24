@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [enum.py](/workspace/enum.py:1167) to scan all members when an unhashable lookup misses the hash map. Added executable unittest coverage in [test_enum_lookup_regression.py](/workspace/tests/test_enum_lookup_regression.py:1).
+
+Tests were not run because no Python interpreter is available in the container.

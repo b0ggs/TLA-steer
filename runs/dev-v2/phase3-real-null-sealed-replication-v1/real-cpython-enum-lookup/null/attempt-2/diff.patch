@@ -1,0 +1,49 @@
+diff --git a/enum.py b/enum.py
+index 17d7273..7de5b67 100644
+--- a/enum.py
++++ b/enum.py
+@@ -1169,6 +1169,9 @@ class Enum(metaclass=EnumType):
+             for name, values in cls._unhashable_values_map_.items():
+                 if value in values:
+                     return cls[name]
++            for name, member in cls._member_map_.items():
++                if value == member._value_:
++                    return cls[name]
+         # still not found -- verify that members exist, in-case somebody got here mistakenly
+         # (such as via super when trying to override __new__)
+         if not cls._member_map_:
+diff --git a/tests/test_enum_lookup_regression.py b/tests/test_enum_lookup_regression.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_enum_lookup_regression.py
+@@ -0,0 +1,30 @@
++import unittest
++
++from enum import Enum
++
++
++class Directions(Enum):
++    DOWN_ONLY = frozenset({"sc"})
++    SOUTHBOUND = frozenset({"sc"})
++
++
++class UnhashableDirections(Enum):
++    DOWN_ONLY = {"sc"}
++    SOUTHBOUND = {"sc"}
++
++
++class EnumLookupRegressionTests(unittest.TestCase):
++    def test_unhashable_value_matches_hashable_member_value(self):
++        self.assertIs(Directions({"sc"}), Directions.DOWN_ONLY)
++
++    def test_hashable_value_lookup_and_alias_are_preserved(self):
++        self.assertIs(Directions(frozenset({"sc"})), Directions.DOWN_ONLY)
++        self.assertIs(Directions.SOUTHBOUND, Directions.DOWN_ONLY)
++
++    def test_unhashable_value_lookup_and_alias_are_preserved(self):
++        self.assertIs(UnhashableDirections({"sc"}), UnhashableDirections.DOWN_ONLY)
++        self.assertIs(UnhashableDirections.SOUTHBOUND, UnhashableDirections.DOWN_ONLY)
++
++
++if __name__ == "__main__":
++    unittest.main()
