@@ -73,7 +73,10 @@ queuing the first probe part of acceptance — the goal is load-bearing.
    test pattern; must cover: exposure refusal, approval hash mismatch refusal,
    exclusive-create collision, omission-vs-incorrect classification).
    Total target ≤1,300, hard cap 1,600. Over cap ⇒ cut scope; never expand.
-7. At most 2 sub-agents run concurrently, ever.
+7. Sub-agent concurrency: UNLIMITED for implementing sessions (Wade,
+   2026-08-23: the old 2-agent cap existed only for the planning session's
+   own usage budget, not for implementers). Historical ≤2 wording elsewhere
+   in this plan is superseded by this line.
 
 ## 2. Task layout (one directory per task, under tasks/<task-id>/)
 
