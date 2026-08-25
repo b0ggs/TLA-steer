@@ -512,9 +512,37 @@ that attempt as fatal evidence without replacement. All four fresh sealed
 probes recorded that projection, all four environment checks are `ALL_GREEN`,
 and all four host controls are clean `N/A` records.
 
-The unapproved batch `maximum-difficulty-search-disabled-v1` is queued for 12
+At the approval stop, the unapproved batch
+`maximum-difficulty-search-disabled-v1` was queued for 12
 nominal null-arm calls (four-task replacement cap; 16 absolute maximum) with
 600 seconds applied uniformly. Fresh seed: `10499729457959130686`. REQUEST
 SHA-256: `416fcb5178f20c206c79fd2bf86d4ae3f94fa9c2d3258c2a79f880b5b8d2859d`.
-`APPROVED.json`, attempts, and the evidence ledger are absent: no live call has
-launched, and execution stops here for Wade's hash approval.
+At that stop, `APPROVED.json`, attempts, and the evidence ledger were absent and
+no live call had launched.
+
+## 16. Search-disabled rerun authentication failure — 2026-08-24
+
+Wade approved the exact request above; its hash-bound approval was committed as
+`beffde9` before launch. The selected isolated evaluator profile's access token
+had expired on August 23, and the sealed model proxy correctly denied the
+client's attempted connection to the separate authentication-refresh host.
+The runner was stopped after five launch records. No `turn.completed` event,
+reported token usage, model response, or `web_search` item appears in the
+preserved evidence.
+
+Click attempts 1 and 2 ended with provider `token_expired` errors but were
+incorrectly finalized as usable results because their structured events carried
+only a generic request-send error while the decisive `401 Unauthorized` and
+`token_expired` strings were in stderr. Click attempt 3 was finalized invalid
+after its checker became unscoreable during the halt, so Click's disposition is
+invalid. Starlette attempt 1 is preserved as infrastructure-invalid and attempt
+2 as incomplete. The batch is `EVIDENCE_INVALID`; it supplies no HEADROOM or
+NO_HEADROOM reading and will not be resumed or selectively retried.
+
+The sealed batch driver now feeds the exact paired stderr signature
+`401 Unauthorized` plus `token_expired` into the existing narrow pre-output
+infrastructure classifier without altering the preserved event stream. The
+frozen classifier itself is unchanged. A regression test proves that such an
+attempt is preserved as infrastructure-invalid and replaced, while the search
+fatal-evidence precedence remains unchanged. A fresh batch requires fresh
+zero-spend preflights, REQUEST, and hash-bound approval.

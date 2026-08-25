@@ -1,0 +1,4 @@
+{"attempt":"full-click-stream-lifecycle/null/attempt-1","manifest_sha256":"e916e123653eace53c579b9f9c51864f2448793bc2e916a3dab63423150925b8","prev_sha256":"GENESIS"}
+{"attempt":"full-click-stream-lifecycle/null/attempt-2","manifest_sha256":"98cbcce3955dcc82f219e35922982392d8cabb5cb535f7e5dac0591f443361dc","prev_sha256":"7f7cb764b1d873cdf1afcfb7f0808e63a9ede24a5a286fa9e3ce4e6be3f14473"}
+{"attempt":"full-click-stream-lifecycle/null/attempt-3","manifest_sha256":"7d87b7ff53feec2523f85c464d239c19a1659b3450924f9a6af1176705c2529a","prev_sha256":"31b1cd892954244294543a32f52232f66bc51a037782a4d4ada5b66198bc1604"}
+{"arm":"null","prev_sha256":"9ee2be4bfc89254783cdcc767e610f153594a51b35c1bfa4e5fa5ce8f0293003","sha256":"08eac34d69b0919b5141a00a5ae43dcd6352080584f3cfc6999fd03faba7b003","task_id":"full-click-stream-lifecycle","type":"disposition"}

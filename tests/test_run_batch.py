@@ -54,12 +54,17 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         (request.parent / "APPROVED.json").write_text(json.dumps({
             "request_sha256": batch.sha256_file(request)}))
     def runner(self, calls: list[tuple[str, bytes]], *, interrupt_first: bool = False,
-               web_search_first: bool = False):
+               web_search_first: bool = False, expired_auth_first: bool = False):
         def fake(command, *, cwd, **_kwargs):
             md_name = next(item for item in ("ALT.md", "CODER.md") if (cwd / item).is_file())
             arm = (cwd / md_name).read_bytes()
             task_name = (cwd / ".issue-contract.md").read_text().split()[-1].rstrip(".\n")
             calls.append((task_name, arm))
+            if expired_auth_first and len(calls) == 1:
+                events = ('{"type":"thread.started"}\n{"type":"turn.started"}\n'
+                          '{"type":"error","message":"error sending request for url"}\n'
+                          '{"type":"turn.failed","error":{"message":"error sending request for url"}}\n')
+                return ProcessOutcome(1, events, "401 Unauthorized: token_expired", False, False)
             if arm:
                 (cwd / "solution.txt").write_text("done\n")
             Path(command[command.index("--output-last-message") + 1]).write_text("IMPLEMENTED\n")
@@ -143,6 +148,17 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
             batch.verify_batch(request.parent)
         self.assertEqual(len(calls), 7)
         self.assertTrue(any(request.parent.glob("task-1/a/attempt-*/infra-invalid.json")))
+    def test_expired_provider_token_is_replaced_without_altering_raw_events(self):
+        request, runs = self.queued(["task-1"])
+        calls: list[tuple[str, bytes]] = []
+        with patch.object(batch, "ROOT", self.root.resolve()):
+            batch.launch("fake-batch", runs, self.runner(calls, expired_auth_first=True), require_auth=False)
+            batch.verify_batch(request.parent)
+        attempt = request.parent / "task-1/a/attempt-1"
+        self.assertEqual(len(calls), 7)
+        self.assertTrue((attempt / "infra-invalid.json").is_file())
+        self.assertFalse((attempt / "result.json").exists())
+        self.assertNotIn("unauthorized token_expired", (attempt / "events.jsonl").read_text())
     def test_web_search_event_is_fatal_evidence_not_a_replacement(self):
         request, runs = self.queued(["task-1"])
         calls: list[tuple[str, bytes]] = []

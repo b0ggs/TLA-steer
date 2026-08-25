@@ -329,6 +329,11 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
         _write_once(destination / "stderr.txt", redactor.text(outcome.stderr).encode())
         _write_once(destination / "final.txt", redactor.text(final).encode())
         usage, web_search_seen = sealed.event_usage_and_web_search(events)
+        infra_events = outcome.stdout
+        stderr_lower = outcome.stderr.lower()
+        if "401 unauthorized" in stderr_lower and "token_expired" in stderr_lower:
+            infra_events += ("" if not infra_events or infra_events.endswith("\n") else "\n")
+            infra_events += '{"type":"error","message":"unauthorized token_expired"}\n'
         tokens = {"input_tokens": usage["input_tokens"], "cached_input_tokens": usage["cached_input_tokens"],
                   "output_tokens": usage["output_tokens"], "reasoning_tokens": usage["reasoning_output_tokens"],
                   "total_tokens": usage["total_tokens"], "usage_reported": usage["usage_reported"]}
@@ -350,7 +355,7 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                 _write_once(destination / "diff.patch", capture.diff.encode())
                 if not web_search_seen and (outcome.interrupted or classify_infrastructure_failure(
                         spawn_error=None, timed_out=outcome.timed_out, returncode=outcome.returncode,
-                        events_jsonl=outcome.stdout, stderr=outcome.stderr, final_text=final,
+                        events_jsonl=infra_events, stderr=outcome.stderr, final_text=final,
                         changed_paths=capture.changed_paths, untracked=capture.untracked)):
                     _write_once(destination / "infra-invalid.json", _bytes({"error": "runner infrastructure failure"}))
                     return False
