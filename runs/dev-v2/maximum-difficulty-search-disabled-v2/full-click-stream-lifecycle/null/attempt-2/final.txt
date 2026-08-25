@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated Click stream ownership so text wrappers detach without closing shared binary buffers, and `StreamMixer` finalization preserves capture buffers. Added regression tests for both behaviors.
+
+`git diff --check` passes. Runtime tests could not run because no Python or pytest executable is available.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `StreamingResponse` and `FileResponse` to emit valid WebSocket denial events while preserving HTTP behavior. Added regression tests for streamed bodies, background execution, file status/body delivery, and path-send isolation.
+
+Verification: direct ASGI checks passed, syntax/diff checks passed, and the asyncio streaming regression passed. Trio/TestClient runs were limited by sandbox socket/thread restrictions.

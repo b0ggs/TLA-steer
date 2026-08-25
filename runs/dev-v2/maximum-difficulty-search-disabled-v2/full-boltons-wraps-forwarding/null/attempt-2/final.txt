@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding to:
+
+- Preserve defaulted and keyword-only arguments as keywords.
+- Keep positional-only and pre-`*args` parameters positional.
+- Support `expected` and keyword-only wrapped signatures.
+
+Added regression tests and updated obsolete assertions. `git diff --check` passes; runtime tests could not run because no Python interpreter is installed.

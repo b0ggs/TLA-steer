@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds automatic `OPTIONS` handling even when globally disabled. Updated function and class-view coverage; explicit false and self-handled `OPTIONS` behavior remain unchanged.
+
+`git diff --check` passes. Tests could not run because no Python interpreter is installed.

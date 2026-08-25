@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Corrected `funcutils.wraps` keyword forwarding, including defaults, keyword-only arguments, varargs safety, `expected`, and positional-only signatures. Updated regression tests.
+
+Verification:
+
+- 41 focused tests passed
+- 51 doctests passed
+- 441 non-socket repository tests passed
+- 9 socket tests remain sandbox-blocked by `PermissionError`

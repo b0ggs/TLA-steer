@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream lifecycles so named text wrappers detach without closing borrowed buffers, and `StreamMixer` finalization no longer closes captured streams. Added regression tests for shared buffers and garbage collection.
+
+`git diff --check` passes. Pytest could not run because this container lacks Python and pytest executables.

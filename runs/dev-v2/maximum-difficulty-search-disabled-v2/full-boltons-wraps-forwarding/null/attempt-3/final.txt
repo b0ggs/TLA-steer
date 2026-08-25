@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Corrected `wraps` keyword forwarding, including `expected`, keyword-only, positional-only, `*args`, and `**kwargs` cases. Updated regression tests accordingly.
+
+`git diff --check` passes. Tests could not run because Python/pytest is unavailable.

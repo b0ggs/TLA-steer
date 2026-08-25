@@ -1,0 +1,270 @@
+diff --git a/starlette/responses.py b/starlette/responses.py
+index 03d82ac..b3b51b8 100644
+--- a/starlette/responses.py
++++ b/starlette/responses.py
+@@ -241,10 +241,10 @@ class StreamingResponse(Response):
+             if message["type"] == "http.disconnect":
+                 break
+ 
+-    async def stream_response(self, send: Send) -> None:
++    async def stream_response(self, send: Send, prefix: str = "") -> None:
+         await send(
+             {
+-                "type": "http.response.start",
++                "type": prefix + "http.response.start",
+                 "status": self.status_code,
+                 "headers": self.raw_headers,
+             }
+@@ -252,28 +252,31 @@ class StreamingResponse(Response):
+         async for chunk in self.body_iterator:
+             if not isinstance(chunk, bytes | memoryview):
+                 chunk = chunk.encode(self.charset)
+-            await send({"type": "http.response.body", "body": chunk, "more_body": True})
++            await send({"type": prefix + "http.response.body", "body": chunk, "more_body": True})
+ 
+-        await send({"type": "http.response.body", "body": b"", "more_body": False})
++        await send({"type": prefix + "http.response.body", "body": b"", "more_body": False})
+ 
+     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+-        spec_version = tuple(map(int, scope.get("asgi", {}).get("spec_version", "2.0").split(".")))
+-
+-        if spec_version >= (2, 4):
+-            try:
+-                await self.stream_response(send)
+-            except OSError:
+-                raise ClientDisconnect()
++        if scope["type"] == "websocket":
++            await self.stream_response(send, prefix="websocket.")
+         else:
+-            with collapse_excgroups():
+-                async with anyio.create_task_group() as task_group:
++            spec_version = tuple(map(int, scope.get("asgi", {}).get("spec_version", "2.0").split(".")))
+ 
+-                    async def wrap(func: Callable[[], Awaitable[None]]) -> None:
+-                        await func()
+-                        task_group.cancel_scope.cancel()
++            if spec_version >= (2, 4):
++                try:
++                    await self.stream_response(send)
++                except OSError:
++                    raise ClientDisconnect()
++            else:
++                with collapse_excgroups():
++                    async with anyio.create_task_group() as task_group:
+ 
+-                    task_group.start_soon(wrap, partial(self.stream_response, send))
+-                    await wrap(partial(self.listen_for_disconnect, receive))
++                        async def wrap(func: Callable[[], Awaitable[None]]) -> None:
++                            await func()
++                            task_group.cancel_scope.cancel()
++
++                        task_group.start_soon(wrap, partial(self.stream_response, send))
++                        await wrap(partial(self.listen_for_disconnect, receive))
+ 
+         if self.background is not None:
+             await self.background()
+@@ -334,8 +337,10 @@ class FileResponse(Response):
+         self.headers.setdefault("etag", etag)
+ 
+     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+-        send_header_only: bool = scope["method"].upper() == "HEAD"
+-        send_pathsend: bool = "http.response.pathsend" in scope.get("extensions", {})
++        prefix = "websocket." if scope["type"] == "websocket" else ""
++        is_http = scope["type"] == "http"
++        send_header_only: bool = is_http and scope["method"].upper() == "HEAD"
++        send_pathsend: bool = is_http and "http.response.pathsend" in scope.get("extensions", {})
+ 
+         if self.stat_result is None:
+             try:
+@@ -355,7 +360,7 @@ class FileResponse(Response):
+         http_if_range = headers.get("if-range")
+ 
+         if http_range is None or (http_if_range is not None and not self._should_use_range(http_if_range)):
+-            await self._handle_simple(send, send_header_only, send_pathsend)
++            await self._handle_simple(send, send_header_only, send_pathsend, prefix)
+         else:
+             try:
+                 ranges = self._parse_range_header(http_range, stat_result.st_size)
+@@ -367,17 +372,19 @@ class FileResponse(Response):
+ 
+             if len(ranges) == 1:
+                 start, end = ranges[0]
+-                await self._handle_single_range(send, start, end, stat_result.st_size, send_header_only)
++                await self._handle_single_range(send, start, end, stat_result.st_size, send_header_only, prefix)
+             else:
+-                await self._handle_multiple_ranges(send, ranges, stat_result.st_size, send_header_only)
++                await self._handle_multiple_ranges(send, ranges, stat_result.st_size, send_header_only, prefix)
+ 
+         if self.background is not None:
+             await self.background()
+ 
+-    async def _handle_simple(self, send: Send, send_header_only: bool, send_pathsend: bool) -> None:
+-        await send({"type": "http.response.start", "status": self.status_code, "headers": self.raw_headers})
++    async def _handle_simple(
++        self, send: Send, send_header_only: bool, send_pathsend: bool, prefix: str = ""
++    ) -> None:
++        await send({"type": prefix + "http.response.start", "status": self.status_code, "headers": self.raw_headers})
+         if send_header_only:
+-            await send({"type": "http.response.body", "body": b"", "more_body": False})
++            await send({"type": prefix + "http.response.body", "body": b"", "more_body": False})
+         elif send_pathsend:
+             await send({"type": "http.response.pathsend", "path": str(self.path)})
+         else:
+@@ -386,17 +393,17 @@ class FileResponse(Response):
+                 while more_body:
+                     chunk = await file.read(self.chunk_size)
+                     more_body = len(chunk) == self.chunk_size
+-                    await send({"type": "http.response.body", "body": chunk, "more_body": more_body})
++                    await send({"type": prefix + "http.response.body", "body": chunk, "more_body": more_body})
+ 
+     async def _handle_single_range(
+-        self, send: Send, start: int, end: int, file_size: int, send_header_only: bool
++        self, send: Send, start: int, end: int, file_size: int, send_header_only: bool, prefix: str = ""
+     ) -> None:
+         headers = MutableHeaders(raw=list(self.raw_headers))
+         headers["content-range"] = f"bytes {start}-{end - 1}/{file_size}"
+         headers["content-length"] = str(end - start)
+-        await send({"type": "http.response.start", "status": 206, "headers": headers.raw})
++        await send({"type": prefix + "http.response.start", "status": 206, "headers": headers.raw})
+         if send_header_only:
+-            await send({"type": "http.response.body", "body": b"", "more_body": False})
++            await send({"type": prefix + "http.response.body", "body": b"", "more_body": False})
+         else:
+             async with await anyio.open_file(self.path, mode="rb") as file:
+                 await file.seek(start)
+@@ -405,7 +412,7 @@ class FileResponse(Response):
+                     chunk = await file.read(min(self.chunk_size, end - start))
+                     start += len(chunk)
+                     more_body = len(chunk) == self.chunk_size and start < end
+-                    await send({"type": "http.response.body", "body": chunk, "more_body": more_body})
++                    await send({"type": prefix + "http.response.body", "body": chunk, "more_body": more_body})
+ 
+     async def _handle_multiple_ranges(
+         self,
+@@ -413,6 +420,7 @@ class FileResponse(Response):
+         ranges: list[tuple[int, int]],
+         file_size: int,
+         send_header_only: bool,
++        prefix: str = "",
+     ) -> None:
+         # In firefox and chrome, they use boundary with 95-96 bits entropy (that's roughly 13 bytes).
+         boundary = token_hex(13)
+@@ -422,22 +430,28 @@ class FileResponse(Response):
+         headers = MutableHeaders(raw=list(self.raw_headers))
+         headers["content-type"] = f"multipart/byteranges; boundary={boundary}"
+         headers["content-length"] = str(content_length)
+-        await send({"type": "http.response.start", "status": 206, "headers": headers.raw})
++        await send({"type": prefix + "http.response.start", "status": 206, "headers": headers.raw})
+         if send_header_only:
+-            await send({"type": "http.response.body", "body": b"", "more_body": False})
++            await send({"type": prefix + "http.response.body", "body": b"", "more_body": False})
+         else:
+             async with await anyio.open_file(self.path, mode="rb") as file:
+                 for start, end in ranges:
+-                    await send({"type": "http.response.body", "body": header_generator(start, end), "more_body": True})
++                    await send(
++                        {
++                            "type": prefix + "http.response.body",
++                            "body": header_generator(start, end),
++                            "more_body": True,
++                        }
++                    )
+                     await file.seek(start)
+                     while start < end:
+                         chunk = await file.read(min(self.chunk_size, end - start))
+                         start += len(chunk)
+-                        await send({"type": "http.response.body", "body": chunk, "more_body": True})
+-                    await send({"type": "http.response.body", "body": b"\r\n", "more_body": True})
++                        await send({"type": prefix + "http.response.body", "body": chunk, "more_body": True})
++                    await send({"type": prefix + "http.response.body", "body": b"\r\n", "more_body": True})
+                 await send(
+                     {
+-                        "type": "http.response.body",
++                        "type": prefix + "http.response.body",
+                         "body": f"--{boundary}--".encode("latin-1"),
+                         "more_body": False,
+                     }
+diff --git a/tests/test_websockets.py b/tests/test_websockets.py
+index e76d8f2..8262d32 100644
+--- a/tests/test_websockets.py
++++ b/tests/test_websockets.py
+@@ -1,5 +1,6 @@
+ import sys
+-from collections.abc import MutableMapping
++from collections.abc import AsyncIterator, MutableMapping
++from pathlib import Path
+ from typing import Any
+ 
+ import anyio
+@@ -7,7 +8,8 @@ import pytest
+ from anyio.abc import ObjectReceiveStream, ObjectSendStream
+ 
+ from starlette import status
+-from starlette.responses import Response
++from starlette.background import BackgroundTask
++from starlette.responses import FileResponse, Response, StreamingResponse
+ from starlette.testclient import WebSocketDenialResponse
+ from starlette.types import Message, Receive, Scope, Send
+ from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
+@@ -322,6 +324,61 @@ def test_send_denial_response(test_client_factory: TestClientFactory) -> None:
+     assert exc.value.content == b"foo"
+ 
+ 
++@pytest.mark.anyio
++async def test_send_denial_streaming_response() -> None:
++    background_calls = 0
++    messages: list[Message] = []
++
++    async def stream() -> AsyncIterator[str | bytes]:
++        yield "foo"
++        yield b"bar"
++
++    async def background() -> None:
++        nonlocal background_calls
++        background_calls += 1
++
++    response = StreamingResponse(stream(), status_code=401, background=BackgroundTask(background))
++
++    async def receive() -> Message:  # pragma: no cover
++        raise AssertionError("A WebSocket denial response must not listen for HTTP disconnects")
++
++    async def send(message: Message) -> None:
++        messages.append(message)
++
++    await response({"type": "websocket"}, receive, send)
++
++    assert [message["type"] for message in messages] == [
++        "websocket.http.response.start",
++        "websocket.http.response.body",
++        "websocket.http.response.body",
++        "websocket.http.response.body",
++    ]
++    assert messages[0]["status"] == 401
++    assert b"".join(message["body"] for message in messages[1:]) == b"foobar"
++    assert messages[-1]["more_body"] is False
++    assert background_calls == 1
++
++
++def test_send_denial_file_response(tmp_path: Path, test_client_factory: TestClientFactory) -> None:
++    path = tmp_path / "denied.txt"
++    path.write_bytes(b"file denial")
++
++    async def app(scope: Scope, receive: Receive, send: Send) -> None:
++        websocket = WebSocket(scope, receive=receive, send=send)
++        message = await websocket.receive()
++        assert message == {"type": "websocket.connect"}
++        response = FileResponse(path, status_code=403)
++        await websocket.send_denial_response(response)
++
++    client = test_client_factory(app)
++    with pytest.raises(WebSocketDenialResponse) as exc:
++        with client.websocket_connect("/"):
++            pass  # pragma: no cover
++
++    assert exc.value.status_code == 403
++    assert exc.value.content == b"file denial"
++
++
+ def test_send_response_multi(test_client_factory: TestClientFactory) -> None:
+     async def app(scope: Scope, receive: Receive, send: Send) -> None:
+         websocket = WebSocket(scope, receive=receive, send=send)

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit automatic `OPTIONS` enablement adds `OPTIONS` regardless of the global default. Added function-view and class-based regression coverage.
+
+`git diff --check` passes. Tests couldn’t run because no Python/pytest executable is available.

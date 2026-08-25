@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds `OPTIONS` regardless of the global default, for function and class-based views. Existing disable/manual handling behavior remains unchanged.
+
+Updated regression tests and passed `git diff --check`. Runtime tests were unavailable because the environment has no Python/pytest executable.

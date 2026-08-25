@@ -558,3 +558,40 @@ tasks and null arm, 12 nominal calls, four replacements/16 absolute maximum,
 `32af5bfb32bf125f9daacbfc836aeb9c770c06af7b61c67e93a81c8164c20395`.
 No `APPROVED.json`, attempt directory, or evidence ledger exists for v2. The
 workflow stops for Wade's fresh hash approval.
+
+## 17. Search-disabled maximum-difficulty rerun — 2026-08-24
+
+Wade approved the fresh request bound to SHA-256
+`32af5bfb32bf125f9daacbfc836aeb9c770c06af7b61c67e93a81c8164c20395`;
+the exact approval was committed as `3aae5d2` before launch. The batch used the
+isolated repository-local evaluator profile and completed exactly the 12 nominal
+calls, with no replacements, infrastructure-invalid attempts, build rejections,
+or pre-spawn failures. The mandatory verifier exited zero over 12 result files,
+12 attempt manifests, four dispositions, and all 16 evidence-ledger rows. An
+independent scan of every events file found zero `web_search` items.
+
+| Task | Mechanical result | Disposition | q | Subject durations (seconds) | Reported total tokens |
+|---|---:|---|---:|---|---:|
+| full-boltons-wraps-forwarding | 3/3 | ceiling | 1.0 | 395.36, 446.56, 461.03 | 1,970,515 (3/3 attempts) |
+| full-flask-automatic-options | 3/3 | ceiling | 1.0 | 201.51, 160.88, 153.36 | 1,018,538 (3/3 attempts) |
+| full-click-stream-lifecycle | 3/3 | ceiling | 1.0 | 612.01*, 348.21, 352.90 | 812,335 (2/3 attempts) |
+| full-starlette-websocket-denial | 3/3 | ceiling | 1.0 | 612.26*, 600.56, 611.40* | 2,348,251 (1/3 attempts) |
+
+The asterisks mark scoreable subject timeouts. Click attempt 1 and Starlette
+attempts 1 and 3 had completed the task-specific requirements and regression
+checks before the 600-second subject limit ended their later activity. Under the
+frozen §14 policy they are valid, resolved attempts, but they have no final
+provider usage report. The observed token subtotal is therefore 6,149,639 for
+nine of 12 attempts, not a complete batch total or an estimate of the three
+missing totals. That reported-only subtotal comprises 6,053,474 input tokens
+(5,391,360 cached and 662,114 uncached), 96,165 output tokens, and 53,343
+reasoning tokens. All-attempt subject duration is 4,956.04 seconds; checker
+duration is 303.95 seconds.
+
+All four search-disabled task dispositions have `s = 3`, so the clean terminal
+reading is **NO_HEADROOM_OBSERVED_AT_FULL_DIFFICULTY**. This directly qualifies
+the historical search-enabled §14 reading: its only unresolved witness was a
+search-contaminated Starlette attempt, whereas the fresh sealed rerun contains no
+search event and resolves all 12 attempts. The conclusion is limited to these
+four tasks, this null-arm model/configuration, and this run; it makes no broader
+capability, instruction-file-effect, or population claim.
