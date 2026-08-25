@@ -546,3 +546,15 @@ frozen classifier itself is unchanged. A regression test proves that such an
 attempt is preserved as infrastructure-invalid and replaced, while the search
 fatal-evidence precedence remains unchanged. A fresh batch requires fresh
 zero-spend preflights, REQUEST, and hash-bound approval.
+
+Those fresh preflights now exist for
+`maximum-difficulty-search-disabled-v2`: all four container probes are
+`ALL_GREEN` with the exact disabled session-flags projection, all four
+environment checks are `ALL_GREEN`, all four host controls are clean `N/A`,
+and every stderr file is empty. The fresh request binds the same immutable four
+tasks and null arm, 12 nominal calls, four replacements/16 absolute maximum,
+600 seconds, serial execution, and `web_search: "disabled"`; its seed is
+`8782901089288696292` and its SHA-256 is
+`32af5bfb32bf125f9daacbfc836aeb9c770c06af7b61c67e93a81c8164c20395`.
+No `APPROVED.json`, attempt directory, or evidence ledger exists for v2. The
+workflow stops for Wade's fresh hash approval.
