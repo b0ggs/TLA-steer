@@ -337,5 +337,217 @@ class ScanAndRuntimeTests(unittest.TestCase):
             self.assertIsNone(invalid["task_manifest_sha256"])
 
 
+class FastRuntimeSmokeTests(unittest.TestCase):
+    def identity(self, image=IMAGE):
+        return {"canonical_executable": "/python/bin/python3.11",
+                "version": "3.11.5 (sealed)", "executable_sha256": "1" * 64,
+                "image_digest": image, "path_resolution": "/python/bin/python3"}
+
+    def inspection(self, value, image=IMAGE):
+        checks = []
+        for task_id in sorted(value):
+            for target in value[task_id]["answer_bearing_modules"]:
+                checks.append({"task_id": task_id, "target": target,
+                               "source_available": False, "source_sha256": [],
+                               "checked_signature_sha256": sorted(
+                                   runtime.sha(signature.encode())
+                                   for signature in value[task_id]["fix_signature_strings"])})
+        return {"status": "PASS", "identity": self.identity(image),
+                "mounts": runtime.FAST_MOUNTS, "auth": "isolated-readable",
+                "bare_connect": True, "target_checks": checks}
+
+    @contextlib.contextmanager
+    def network(self, unused_image, **unused):
+        yield "isolated-network", "172.20.0.2"
+
+    def test_fast_smoke_returns_compact_deterministic_pair_seal(self):
+        value = spec()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(value), encoding="utf-8")
+            selected = {key: value[key] for key in ("cohort-task-1", "cohort-task-0")}
+            inspection = self.inspection(selected)
+            policy = {"identity": self.identity(), "policy_sha256": "2" * 64,
+                      "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE}
+            deadline = runtime.time.monotonic() + 60
+            with mock.patch.object(runtime, "SPEC", spec_path), \
+                 mock.patch.object(runtime, "_pin_path", return_value=root), \
+                 mock.patch.object(runtime, "image_id", return_value=IMAGE) as image_check, \
+                 mock.patch.object(runtime, "_network", side_effect=self.network) as network, \
+                 mock.patch.object(runtime, "_targeted_smoke", return_value=inspection) as targeted, \
+                 mock.patch.object(runtime, "_fast_policy", return_value=policy) as policy_check, \
+                 mock.patch.object(runtime, "probe") as legacy_probe, \
+                 mock.patch.object(runtime, "environment") as legacy_environment, \
+                 mock.patch.object(runtime, "checker") as checker:
+                first = runtime.fast_smoke(
+                    IMAGE, "3.11.5", ["cohort-task-1", "cohort-task-0"], root, deadline)
+                second = runtime.fast_smoke(
+                    IMAGE, "3.11.5", ["cohort-task-1", "cohort-task-0"], root, deadline)
+            self.assertEqual(first, second)
+            self.assertEqual(set(first), runtime._FAST_SEAL_KEYS)
+            self.assertEqual(first["seal_schema"], runtime.FAST_SEAL_SCHEMA)
+            self.assertEqual(first["task_ids"], ["cohort-task-0", "cohort-task-1"])
+            self.assertEqual((image_check.call_count, network.call_count,
+                              targeted.call_count, policy_check.call_count), (2, 2, 2, 2))
+            legacy_probe.assert_not_called()
+            legacy_environment.assert_not_called()
+            checker.assert_not_called()
+
+    def test_fast_smoke_rejects_expired_deadline_before_external_work(self):
+        with mock.patch.object(runtime, "image_id") as image_check, \
+             mock.patch.object(runtime, "_network") as network, \
+             mock.patch.object(runtime, "_targeted_smoke") as targeted:
+            with self.assertRaisesRegex(TimeoutError, "global preflight deadline"):
+                runtime.fast_smoke(IMAGE, "3.11.5", ["cohort-task-0"], Path("auth"),
+                                   runtime.time.monotonic() - 1)
+        image_check.assert_not_called()
+        network.assert_not_called()
+        targeted.assert_not_called()
+
+    def test_fast_smoke_rejects_bad_pin_and_symlink_pin_source(self):
+        value = spec()
+        value["cohort-task-0"]["interpreter_pin"] = "3.10.14"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(value), encoding="utf-8")
+            with mock.patch.object(runtime, "SPEC", spec_path):
+                with self.assertRaisesRegex(RuntimeError, "pin differs"):
+                    runtime._smoke_spec(["cohort-task-0"], "3.11.5")
+
+            pins = root / "pins"
+            real = pins / "3.11.5"
+            real.mkdir(parents=True)
+            (pins / "3.11.6").symlink_to(real, target_is_directory=True)
+            with mock.patch.object(runtime, "PINS", pins):
+                self.assertEqual(runtime._pin_path("3.11.5"), real.resolve())
+                with self.assertRaisesRegex(RuntimeError, "unsafe interpreter pin source"):
+                    runtime._pin_path("3.11.6")
+                with self.assertRaisesRegex(RuntimeError, "unsafe interpreter pin"):
+                    runtime._pin_path("../3.11.5")
+
+    def test_targeted_smoke_fails_closed_on_incomplete_proof(self):
+        value = spec(3)
+        selected = {"cohort-task-0": value["cohort-task-0"]}
+        good = self.inspection(selected)
+
+        def run(row):
+            outcome = runtime.ProcessOutcome(0, runtime.canonical(row) + "\n", "", False, False)
+            with mock.patch.object(runtime, "_run", return_value=(outcome, [])):
+                return runtime._targeted_smoke(
+                    IMAGE, "3.11.5", selected, Path("workspace"), Path("auth"),
+                    "network", "172.20.0.2", runtime.time.monotonic() + 60)
+
+        self.assertEqual(run(good)["target_checks"], good["target_checks"])
+        bad_mount = {**good, "mounts": {"/workspace": "ro"}}
+        with self.assertRaisesRegex(RuntimeError, "proof is incomplete"):
+            run(bad_mount)
+        bad_targets = {**good, "target_checks": []}
+        with self.assertRaisesRegex(RuntimeError, "coverage is incomplete"):
+            run(bad_targets)
+        failed = {"status": "FAIL", "error": "fix signature present"}
+        outcome = runtime.ProcessOutcome(2, runtime.canonical(failed) + "\n", "", False, False)
+        with mock.patch.object(runtime, "_run", return_value=(outcome, [])), \
+             self.assertRaisesRegex(RuntimeError, "fix signature present"):
+            runtime._targeted_smoke(
+                IMAGE, "3.11.5", selected, Path("workspace"), Path("auth"),
+                "network", "172.20.0.2", runtime.time.monotonic() + 60)
+
+    def test_fast_policy_requires_network_denial_and_effective_disabled_search(self):
+        identity = self.identity()
+        source = {"status": "DENIED", "identity": identity,
+                  "permission_profile": {"type": "managed"},
+                  "policy_sha256": "2" * 64, "socket_target": ["172.20.0.2", 8888],
+                  "denial": "PermissionError: [Errno 1] Operation not permitted",
+                  "exit_status": errno.EPERM}
+        config = {"id": 2, "result": {
+            "config": {"web_search": "disabled"},
+            "origins": {"web_search": {"name": {"type": "sessionFlags"}}},
+            "layers": [{"name": {"type": "sessionFlags"},
+                        "config": {"web_search": "disabled"}}]}}
+
+        def run(source_row, config_row=config):
+            reply = {"id": 3, "result": {"stdout": runtime.canonical(source_row) + "\n"}}
+            stdout = runtime.canonical(config_row) + "\n" + runtime.canonical(reply) + "\n"
+            outcome = runtime.ProcessOutcome(0, stdout, "", False, False)
+            with mock.patch.object(runtime, "_run", return_value=(outcome, [])):
+                return runtime._fast_policy(
+                    IMAGE, "3.11.5", Path("workspace"), Path("auth"), "network",
+                    "172.20.0.2", runtime.time.monotonic() + 60)
+
+        self.assertEqual(run(source)["web_search"], runtime.WEB_SEARCH_DISABLED_EVIDENCE)
+        allowed = {**source, "status": "FAIL", "denial": None, "exit_status": 0}
+        with self.assertRaisesRegex(RuntimeError, "network-denied"):
+            run(allowed)
+        enabled = json.loads(json.dumps(config))
+        enabled["result"]["config"]["web_search"] = "live"
+        with self.assertRaisesRegex(RuntimeError, "web search"):
+            run(source, enabled)
+
+    def test_fast_scripts_are_targeted_and_make_no_model_request(self):
+        compile(runtime._TARGETED_SMOKE_SCRIPT, "<targeted-smoke>", "exec")
+        compile(runtime._POLICY_CHILD_SCRIPT, "<policy-child>", "exec")
+        self.assertNotIn("os.walk", runtime._TARGETED_SMOKE_SCRIPT)
+        self.assertNotIn("rglob", runtime._TARGETED_SMOKE_SCRIPT)
+        messages = runtime._fast_policy_messages("172.20.0.2", IMAGE)
+        self.assertEqual([row["method"] for row in messages],
+                         ["initialize", "initialized", "config/read", "command/exec"])
+        rendered = runtime.canonical(messages).lower()
+        for forbidden in ("turn/start", "thread/start", "model/request", "responses"):
+            self.assertNotIn(forbidden, rendered)
+        child = messages[-1]["params"]["command"]
+        self.assertNotIn("probe.py", child)
+
+    def test_subject_reuses_fast_seal_without_policy_probe(self):
+        task_id = "full-boltons-wraps-forwarding"
+        identity = self.identity()
+        core = {"seal_schema": runtime.FAST_SEAL_SCHEMA, "image_digest": IMAGE,
+                "interpreter_pin": "3.11.5", "task_ids": [task_id],
+                "spec_sha256": runtime.sha(runtime.SPEC.read_bytes()),
+                "runtime_security_sha256": runtime.security_sha256(IMAGE, "3.11.5"),
+                "policy_sha256": "2" * 64, "identity": identity,
+                "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE,
+                "mounts": runtime.FAST_MOUNTS, "sandbox": runtime.FAST_SANDBOX,
+                "auth": "isolated-readable", "target_checks_sha256": "3" * 64}
+        seal = runtime._seal(core)
+        outcome = runtime.ProcessOutcome(0, "", "", False, False)
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            command = ["codex", "--config", runtime.WEB_SEARCH_DISABLED_CONFIG,
+                       "--cd", str(workspace), "--output-last-message", str(workspace / "final")]
+            with mock.patch.object(runtime, "_network", side_effect=self.network), \
+                 mock.patch.object(runtime, "_run", return_value=(outcome, [])) as run, \
+                 mock.patch.object(runtime, "_policy") as policy, \
+                 mock.patch.object(runtime, "image_id") as image_check:
+                result = runtime.subject(command, workspace, workspace / "last.txt", "prompt", 900,
+                                         workspace, IMAGE, "3.11.5", seal)
+        self.assertIs(result, outcome)
+        policy.assert_not_called()
+        image_check.assert_not_called()
+        self.assertEqual(run.call_count, 1)
+
+    def test_subject_preserves_legacy_policy_revalidation(self):
+        identity = self.identity()
+        seal = {"runtime_security_sha256": runtime.security_sha256(IMAGE, "3.11.5"),
+                "policy_sha256": "2" * 64, "identity": identity,
+                "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE}
+        policy_row = {"source_sha256": "2" * 64, "identity": identity,
+                      "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE}
+        outcome = runtime.ProcessOutcome(0, "", "", False, False)
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            command = ["codex", "--config", runtime.WEB_SEARCH_DISABLED_CONFIG,
+                       "--cd", str(workspace), "--output-last-message", str(workspace / "final")]
+            with mock.patch.object(runtime, "_network", side_effect=self.network), \
+                 mock.patch.object(runtime, "_run", return_value=(outcome, [])), \
+                 mock.patch.object(runtime, "_policy", return_value=policy_row) as policy, \
+                 mock.patch.object(runtime, "image_id", return_value=IMAGE) as image_check:
+                runtime.subject(command, workspace, workspace / "last.txt", "prompt", 900,
+                                workspace, IMAGE, "3.11.5", seal)
+        policy.assert_called_once()
+        image_check.assert_called_once_with(IMAGE)
+
+
 if __name__ == "__main__":
     unittest.main()

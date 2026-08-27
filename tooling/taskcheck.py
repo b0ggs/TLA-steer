@@ -28,6 +28,7 @@ BATCH_REQUEST_KEYS = {
     "batch_id", "tasks", "arms", "call_count", "replacement_call_cap",
     "max_total_calls", "md_filename", "task_order_seed", "runner",
 }
+BATCH_REQUEST_V3_KEYS = BATCH_REQUEST_KEYS | {"schema_version"}
 COMPARABILITY_NOTE = "The 600-second subject timeout creates a comparability boundary with prior 300-second batches."
 MECHANISM_FACT_KEYS = {
     "fact", "public_support_path", "required_md_substrings",
@@ -395,6 +396,48 @@ def _validate_batch_request(request: Any, batch_id: str, arm_counts: set[int]) -
     )
     if not valid:
         raise TaskError("v2 REQUEST schema or binding is invalid")
+    _md_filename(request["md_filename"])
+
+
+def _validate_batch_request_v3(request: Any, batch_id: str,
+                               arm_counts: set[int]) -> None:
+    """Validate the explicit fast-preflight request schema.
+
+    The unversioned validator above is intentionally frozen for historical v2
+    requests, including its 600-second comparability-note convention.
+    """
+    tasks = request.get("tasks") if isinstance(request, dict) else None
+    arms = request.get("arms") if isinstance(request, dict) else None
+    seed = request.get("task_order_seed") if isinstance(request, dict) else None
+    pair_count = len(tasks) * len(arms) if isinstance(tasks, list) and isinstance(arms, list) else 0
+    valid = (
+        isinstance(request, dict) and set(request) == BATCH_REQUEST_V3_KEYS
+        and request.get("schema_version") == 3
+        and request.get("batch_id") == batch_id and isinstance(tasks, list) and bool(tasks)
+        and isinstance(arms, list) and len(arms) in arm_counts
+        and all(isinstance(row, dict) and set(row) == {"id", "manifest_sha256"}
+                and isinstance(row["id"], str) and TASK_ID.fullmatch(row["id"])
+                and isinstance(row["manifest_sha256"], str)
+                and re.fullmatch(r"[0-9a-f]{64}", row["manifest_sha256"]) for row in tasks)
+        and all(isinstance(row, dict) and set(row) == {"name", "path", "sha256"}
+                and isinstance(row["name"], str) and TASK_ID.fullmatch(row["name"])
+                and isinstance(row["path"], str) and row["path"].startswith("controls/")
+                and PurePosixPath(row["path"]).as_posix() == row["path"]
+                and ".." not in PurePosixPath(row["path"]).parts
+                and isinstance(row["sha256"], str)
+                and re.fullmatch(r"[0-9a-f]{64}", row["sha256"]) for row in arms)
+        and len({row["id"] for row in tasks}) == len(tasks)
+        and len({row["name"] for row in arms}) == len(arms)
+        and isinstance(seed, int) and not isinstance(seed, bool) and seed >= 0
+        and tasks == _batch_task_order(tasks, seed) and isinstance(request.get("runner"), dict)
+        and all(isinstance(request.get(key), int) and not isinstance(request[key], bool)
+                for key in ("call_count", "replacement_call_cap", "max_total_calls"))
+        and request["call_count"] == 3 * pair_count
+        and request["replacement_call_cap"] == pair_count
+        and request["max_total_calls"] == 4 * pair_count
+    )
+    if not valid:
+        raise TaskError("v3 REQUEST schema or binding is invalid")
     _md_filename(request["md_filename"])
 
 

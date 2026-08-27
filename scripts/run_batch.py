@@ -29,6 +29,7 @@ RUNNER = RunnerConfig("codex-cli", "gpt-5.6-sol", "high", "workspace-write", "ne
                       False, True, False, 300, 1)
 WRAPPER_PATH = ROOT / "tooling" / "prompts" / "subject-wrapper-v1.txt"
 V1_KEYS = {"batch_id", "tasks", "arm", "call_count", "contingent_replacement_call_cap", "runner"}
+PREFLIGHT_DEADLINE_SECONDS = 60.0
 BatchError = RuntimeError
 def _ensure(condition: bool, message: str) -> None:
     if not condition:
@@ -97,24 +98,28 @@ def _container(value: Any, task_ids: set[str], *, require_search_disabled: bool 
                      for item in pins.values()) and sealed.container_web_search_valid(value, require_search_disabled))
     _ensure(valid, "runner.container schema or task binding is invalid")
     return value
-def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]],
-        runs_root: Path = ROOT / "runs" / "dev-v2", *, md_filename: str = "CODER.md",
-        task_order_seed: int | None = None, runner: RunnerConfig = RUNNER,
-        container: dict[str, Any] | None = None) -> Path:
+def _request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]], *,
+        md_filename: str = "CODER.md", task_order_seed: int | None = None,
+        runner: RunnerConfig = RUNNER, container: dict[str, Any] | None = None) -> dict[str, Any]:
     _ensure(bool(taskcheck.TASK_ID.fullmatch(batch_id)) and bool(tasks) and len(arms) in {1, 2}
             and len({task.name for task in tasks}) == len(tasks) and all(taskcheck.TASK_ID.fullmatch(task.name) for task in tasks),
             "batch id, tasks, or arm count is invalid")
+    _ensure(all(not task.is_symlink() and _relative(task.resolve()) == f"tasks/{task.name}"
+                for task in tasks), "task paths must be canonical repository tasks")
     md_filename = taskcheck._md_filename(md_filename)
     seed = secrets.randbits(64) if task_order_seed is None else task_order_seed
     _ensure(isinstance(seed, int) and not isinstance(seed, bool) and seed >= 0,
             "task order seed must be a nonnegative integer")
-    container = _container(container, {task.name for task in tasks}, require_search_disabled=container is not None)
+    container = _container(container, {task.name for task in tasks},
+                           require_search_disabled=container is not None)
     task_rows = [{"id": task.name, "manifest_sha256": taskcheck.verify(
-        task, md_filename=None if container else md_filename)["manifest_sha256"]} for task in tasks]
+        task, md_filename=None)["manifest_sha256"]} for task in tasks]
     arm_rows = []
     for name, source in arms:
+        if source.is_symlink():
+            raise BatchError("arm labels/files are invalid")
         source = source.resolve()
-        if (not taskcheck.TASK_ID.fullmatch(name) or source.is_symlink() or not source.is_file()
+        if (not taskcheck.TASK_ID.fullmatch(name) or not source.is_file()
                 or not _relative(source).startswith("controls/")):
             raise BatchError("arm labels/files are invalid")
         _ensure(name not in {"n", "null"} or not source.stat().st_size,
@@ -126,15 +131,157 @@ def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]]
     runner_row = asdict(_runner(asdict(runner)))
     if container is not None:
         runner_row["container"] = container
-        for row in task_rows:
-            _launch_record(runs_root / batch_id, row["id"], container, row["manifest_sha256"], runner.timeout_seconds == 600)
     nominal = 3 * len(task_rows) * len(arm_rows)
     replacement_cap = len(task_rows) * len(arm_rows)
-    request = {"batch_id": batch_id, "tasks": task_rows, "arms": arm_rows,
+    request = {"schema_version": 3, "batch_id": batch_id, "tasks": task_rows, "arms": arm_rows,
                "call_count": nominal, "replacement_call_cap": replacement_cap,
                "max_total_calls": nominal + replacement_cap, "md_filename": md_filename,
                "task_order_seed": seed, "runner": runner_row}
-    if runner.timeout_seconds == 600: request["comparability_note"] = taskcheck.COMPARABILITY_NOTE
+    taskcheck._validate_batch_request_v3(request, batch_id, {1, 2})
+    return request
+
+def _preflight_failure(started: float, name: str, exc: BaseException,
+                       monotonic: Callable[[], float] = time.monotonic) -> dict[str, Any]:
+    return {"status": "FAIL", "duration_seconds": max(0.0, monotonic() - started),
+            "failed_checks": [name], "errors": {name: f"{type(exc).__name__}: {exc}"},
+            "seals": {}}
+
+def preflight_request(request: dict[str, Any], *, require_auth: bool = True,
+        deadline_seconds: float = PREFLIGHT_DEADLINE_SECONDS,
+        monotonic: Callable[[], float] = time.monotonic,
+        smoke: Callable[..., dict[str, Any]] | None = None,
+        started: float | None = None) -> dict[str, Any]:
+    """Run the bounded schema-v3 mechanical preflight without writing evidence."""
+    started = monotonic() if started is None else started
+    deadline = started + deadline_seconds
+    failed: list[str] = []
+    errors: dict[str, str] = {}
+    seals: dict[str, dict[str, Any]] = {}
+
+    def fail(name: str, exc: BaseException | str) -> None:
+        if name not in failed:
+            failed.append(name)
+        errors[name] = str(exc) if isinstance(exc, str) else f"{type(exc).__name__}: {exc}"
+
+    def remaining(name: str) -> bool:
+        if monotonic() < deadline:
+            return True
+        fail("deadline", f"global {deadline_seconds:g}-second preflight deadline expired during {name}")
+        return False
+
+    container: dict[str, Any] | None = None
+    try:
+        taskcheck._validate_batch_request_v3(request, str(request.get("batch_id", "")), {1, 2})
+        runner = _runner(request.get("runner"))
+        task_ids = {row["id"] for row in request["tasks"]}
+        container = _container(request["runner"].get("container"), task_ids,
+                               require_search_disabled=True)
+        if require_auth:
+            _ensure(container is not None, "schema v3 execution requires a sealed container")
+    except (BatchError, taskcheck.TaskError, TypeError, KeyError) as exc:
+        fail("request_shape", exc)
+        runner = None
+
+    if not failed:
+        for row in request["tasks"]:
+            name = f"task:{row['id']}:manifest"
+            if not remaining(name):
+                break
+            try:
+                task = _resolve(f"tasks/{row['id']}")
+                verified = taskcheck.verify(task, md_filename=None)
+                _ensure(verified["manifest_sha256"] == row["manifest_sha256"],
+                        "request-bound task hash changed")
+            except (BatchError, taskcheck.TaskError, OSError) as exc:
+                fail(name, exc)
+        for arm in request["arms"]:
+            name = f"arm:{arm['name']}:hash"
+            if not remaining(name):
+                break
+            try:
+                path = _resolve(arm["path"])
+                _ensure(not path.is_symlink() and path.is_file()
+                        and sha256_file(path) == arm["sha256"],
+                        "request-bound arm hash changed")
+            except (BatchError, OSError) as exc:
+                fail(name, exc)
+
+    # require_auth=False is the existing offline unit-test seam. The CLI never
+    # exposes it, and all static request/task/arm checks above still run.
+    if not failed and not require_auth:
+        duration = max(0.0, monotonic() - started)
+        if duration > deadline_seconds:
+            fail("deadline", f"global {deadline_seconds:g}-second preflight deadline expired")
+        return {"status": "PASS" if not failed else "FAIL", "duration_seconds": duration,
+                "failed_checks": failed, "errors": errors, "seals": seals}
+
+    codex_home: Path | None = None
+    spec: dict[str, Any] | None = None
+    if not failed and remaining("contamination_spec"):
+        try:
+            _ensure(container is not None and sha256_file(sealed.SPEC) == container["spec_sha256"],
+                    "contamination specification hash changed")
+            raw_spec = json.loads(sealed.SPEC.read_text(encoding="utf-8"))
+            _ensure(isinstance(raw_spec, dict) and set(raw_spec) == {row["id"] for row in request["tasks"]},
+                    "contamination specification task set differs from request")
+            _ensure(all(raw_spec[row["id"]].get("interpreter_pin")
+                        == container["interpreter_pins"][row["id"]] for row in request["tasks"]),
+                    "contamination specification interpreter pin differs from request")
+            spec = raw_spec
+        except (BatchError, OSError, UnicodeError, json.JSONDecodeError, KeyError) as exc:
+            fail("contamination_spec", exc)
+    if not failed and remaining("auth_source"):
+        try:
+            codex_home = Path(_auth_home())
+            with (codex_home / "auth.json").open("rb") as stream:
+                _ensure(bool(stream.read(1)), "isolated auth source is unreadable or empty")
+        except (BatchError, OSError) as exc:
+            fail("auth_source", exc)
+
+    if not failed:
+        groups: dict[tuple[str, str], list[str]] = {}
+        assert container is not None and spec is not None and codex_home is not None
+        for row in request["tasks"]:
+            task_id = row["id"]
+            pair = (container["image_digests"][task_id], container["interpreter_pins"][task_id])
+            groups.setdefault(pair, []).append(task_id)
+        smoke = smoke or sealed.fast_smoke
+        for (image, pin), ids in sorted(groups.items()):
+            name = f"runtime:{image}@{pin}"
+            if not remaining(name):
+                break
+            try:
+                seal = smoke(image, pin, sorted(ids), codex_home, deadline)
+                _ensure(isinstance(seal, dict)
+                        and seal.get("seal_schema") == sealed.FAST_SEAL_SCHEMA
+                        and seal.get("image_digest") == image
+                        and seal.get("interpreter_pin") == pin
+                        and seal.get("task_ids") == sorted(ids)
+                        and seal.get("spec_sha256") == container["spec_sha256"],
+                        "runtime smoke returned an incorrectly bound compact seal")
+                for task_id in ids:
+                    seals[task_id] = seal
+            except (BatchError, OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                fail(name, exc)
+            if not remaining(name):
+                break
+
+    duration = max(0.0, monotonic() - started)
+    if duration > deadline_seconds:
+        fail("deadline", f"global {deadline_seconds:g}-second preflight deadline expired")
+    return {"status": "PASS" if not failed else "FAIL", "duration_seconds": duration,
+            "failed_checks": failed, "errors": errors, "seals": seals}
+
+def queue_request(batch_id: str, tasks: list[Path], arms: list[tuple[str, Path]],
+        runs_root: Path = ROOT / "runs" / "dev-v2", *, md_filename: str = "CODER.md",
+        task_order_seed: int | None = None, runner: RunnerConfig = RUNNER,
+        container: dict[str, Any] | None = None, require_auth: bool = True) -> Path:
+    started = time.monotonic()
+    request = _request(batch_id, tasks, arms, md_filename=md_filename,
+                       task_order_seed=task_order_seed, runner=runner, container=container)
+    preflight = preflight_request(request, require_auth=require_auth, started=started)
+    _ensure(preflight["status"] == "PASS",
+            "preflight failed: " + ", ".join(preflight["failed_checks"]))
     path = runs_root / batch_id / "REQUEST.json"
     data = _bytes(request)
     if path.exists():
@@ -166,10 +313,16 @@ def _approved(batch: Path) -> tuple[dict[str, Any], int]:
                  and request.get("runner") == asdict(RUNNER))
         _ensure(valid, "v1 REQUEST schema or binding is invalid")
         return request, 1
-    taskcheck._validate_batch_request(request, batch.name, {1, 2})
+    if request.get("schema_version") == 3:
+        taskcheck._validate_batch_request_v3(request, batch.name, {1, 2})
+        version = 3
+    else:
+        taskcheck._validate_batch_request(request, batch.name, {1, 2})
+        version = 2
     _runner(request.get("runner"))
-    _container(request["runner"].get("container"), {row["id"] for row in request["tasks"]})
-    return request, 2
+    _container(request["runner"].get("container"), {row["id"] for row in request["tasks"]},
+               require_search_disabled=version == 3 and request["runner"].get("container") is not None)
+    return request, version
 def _launch_record(batch: Path, task_id: str, container: dict[str, Any], manifest_sha256: str, section14: bool = False) -> dict[str, Any]:
     paths = [batch / "preflight" / kind / f"{task_id}.{suffix}" for kind, suffix in
              (("host", "jsonl"), ("container", "jsonl"), ("environment", "json"))]
@@ -279,16 +432,28 @@ def _attempt_manifest(attempt: Path, ledger: Path | None = None) -> str:
                                         "manifest_sha256": sha256_file(target)}, "evidence ledger")
     return sha256_file(target)
 def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: int,
-        batch: Path, process_runner: Callable[..., ProcessOutcome], codex_home: str) -> bool:
+        batch: Path, process_runner: Callable[..., ProcessOutcome], codex_home: str,
+        preflight_seal: dict[str, Any] | None = None) -> bool:
     container = request["runner"].get("container")
-    verified = taskcheck.verify(task, md_filename=None if container else request["md_filename"])
+    verified = taskcheck.verify(task, md_filename=(
+        None if request.get("schema_version") == 3 or container else request["md_filename"]))
     expected = next(row["manifest_sha256"] for row in request["tasks"] if row["id"] == task.name)
     arm_path = _resolve(arm["path"])
     _ensure(verified["manifest_sha256"] == expected and sha256_file(arm_path) == arm["sha256"],
             "approved task manifest or arm hash changed")
     md_filename = request["md_filename"]
     runner = _runner(request["runner"])
-    seal = _launch_record(batch, task.name, container, expected, "comparability_note" in request) if container else None
+    if container and request.get("schema_version") == 3:
+        _ensure(isinstance(preflight_seal, dict)
+                and preflight_seal.get("seal_schema") == sealed.FAST_SEAL_SCHEMA
+                and preflight_seal.get("image_digest") == container["image_digests"][task.name]
+                and preflight_seal.get("interpreter_pin") == container["interpreter_pins"][task.name]
+                and task.name in preflight_seal.get("task_ids", []),
+                "missing or incorrectly bound run-level fast-preflight seal")
+        seal = preflight_seal
+    else:
+        seal = (_launch_record(batch, task.name, container, expected,
+                               "comparability_note" in request) if container else None)
     wrapper = WRAPPER_PATH.read_text(encoding="utf-8").replace("{md_filename}", md_filename)
     wrapper_sha = taskcheck.sha256_bytes(wrapper.encode())
     destination = batch / task.name / arm["name"] / f"attempt-{ordinal}"
@@ -441,6 +606,24 @@ def _state(base: Path) -> tuple[list[dict[str, Any]], int, int, int]:
     return results, infra, ordinal, launched
 def _container_echo(attempt: Path, request: dict[str, Any]) -> bool:
     paths=[attempt/name for name in ("intent.json","launch.json","result.json")]; expected=request["runner"].get("container"); return expected is None or paths[0].is_file() and all((not path.exists() and not path.is_symlink()) or ((row:=_json(path)).get("container")==expected and row.get("runner")==request["runner"]) for path in paths)
+def _fast_seal_echo(attempt: Path, request: dict[str, Any], task_id: str) -> dict[str, Any] | None:
+    container = request["runner"].get("container")
+    if request.get("schema_version") != 3 or container is None:
+        return None
+    rows = [_json(path) for name in ("intent.json", "launch.json", "result.json")
+            if (path := attempt / name).is_file() and not path.is_symlink()]
+    _ensure(bool(rows), f"missing v3 attempt evidence: {attempt}")
+    values = [row.get("container_preflight") for row in rows]
+    _ensure(all(isinstance(value, dict) and value == values[0] for value in values),
+            f"fast-preflight seal echo mismatch: {attempt}")
+    seal = values[0]
+    _ensure(seal.get("seal_schema") == sealed.FAST_SEAL_SCHEMA
+            and seal.get("image_digest") == container["image_digests"][task_id]
+            and seal.get("interpreter_pin") == container["interpreter_pins"][task_id]
+            and seal.get("spec_sha256") == container["spec_sha256"]
+            and task_id in seal.get("task_ids", []),
+            f"fast-preflight seal binding mismatch: {attempt}")
+    return seal
 def _disposition(task: Path, arm: dict[str, str], results: list[dict[str, Any]], infra: int,
         request: dict[str, Any], *, legacy: bool = False) -> dict[str, Any]:
     if not legacy:
@@ -501,13 +684,19 @@ def launch(batch_id: str, runs_root: Path = ROOT / "runs" / "dev-v2",
         require_auth: bool = True) -> None:
     batch = runs_root / batch_id
     request, version = _approved(batch)
-    _ensure(version == 2, "launch accepts REQUEST schema v2 only")
-    container = request["runner"].get("container"); codex_home = _auth_home() if require_auth else str(Path(tempfile.gettempdir()))
+    _ensure(version in {2, 3}, "launch accepts REQUEST schema v2 or v3 only")
+    container = request["runner"].get("container")
+    codex_home: str | None = (_auth_home() if require_auth else str(Path(tempfile.gettempdir()))) if version == 2 else None
+    invocation_seals: dict[str, dict[str, Any]] | None = None
     for task_index, row in enumerate(request["tasks"]):
         task = _resolve(f"tasks/{row['id']}")
-        verified = taskcheck.verify(task, md_filename=None if request["runner"].get("container") else request["md_filename"])
+        verified = taskcheck.verify(task, md_filename=(
+            None if version == 3 or request["runner"].get("container") else request["md_filename"]))
         _ensure(verified["manifest_sha256"] == row["manifest_sha256"],
-                f"request-bound task hash changed: {task.name}"); _launch_record(batch, task.name, container, row["manifest_sha256"], "comparability_note" in request) if container else None
+                f"request-bound task hash changed: {task.name}")
+        if version == 2 and container:
+            _launch_record(batch, task.name, container, row["manifest_sha256"],
+                           "comparability_note" in request)
         for round_index in range(3):
             arms = request["arms"] if (task_index + round_index) % 2 == 0 else list(reversed(request["arms"]))
             for arm in arms:
@@ -516,7 +705,17 @@ def launch(batch_id: str, runs_root: Path = ROOT / "runs" / "dev-v2",
                 while len(results) <= round_index and infra < 2:
                     _ensure(_launched_calls(batch) < request["max_total_calls"],
                             "approved maximum subject-call count exhausted")
-                    usable = _attempt(task, request, arm, ordinal, batch, process_runner, codex_home)
+                    if version == 3 and invocation_seals is None:
+                        preflight = preflight_request(request, require_auth=require_auth)
+                        _ensure(preflight["status"] == "PASS",
+                                "preflight failed: " + ", ".join(preflight["failed_checks"]))
+                        invocation_seals = preflight["seals"]
+                        codex_home = (_auth_home() if require_auth
+                                      else str(Path(tempfile.gettempdir())))
+                    assert codex_home is not None
+                    seal = invocation_seals.get(task.name) if invocation_seals is not None else None
+                    usable = _attempt(task, request, arm, ordinal, batch, process_runner,
+                                      codex_home, seal)
                     attempt = base / f"attempt-{ordinal}"
                     ordinal += 1
                     if usable:
@@ -542,7 +741,7 @@ def verify_batch(batch: Path) -> None:
               for row in request["tasks"]] if legacy else request["tasks"])
     arms = [request["arm"]] if legacy else request["arms"]
     container = None if legacy else request["runner"].get("container")
-    md_filename = None if legacy or container else request["md_filename"]
+    md_filename = None if legacy or container or version == 3 else request["md_filename"]
     for arm in arms:
         _ensure(sha256_file(_resolve(arm["path"])) == arm["sha256"],
                 f"request-bound arm hash changed: {arm['name']}")
@@ -559,13 +758,28 @@ def verify_batch(batch: Path) -> None:
         verified = taskcheck.verify(task, md_filename=md_filename)
         _ensure(verified["manifest_sha256"] == row["manifest_sha256"],
                 f"request-bound task hash changed: {task.name}")
-        seal = _launch_record(batch, task.name, container, row["manifest_sha256"], "comparability_note" in request) if container else None
+        seal = (_launch_record(batch, task.name, container, row["manifest_sha256"],
+                               "comparability_note" in request)
+                if version == 2 and container else None)
+        fast_seal: dict[str, Any] | None = None
         for arm in arms:
             base = batch / task.name / arm["name"]
             results, infra, _, launched = _state(base)
             _ensure(all(_container_echo(attempt, request) for attempt in base.glob("attempt-*")), f"container echo evidence mismatch: {task.name}")
-            _ensure(not container or all(item.get("container_preflight") == seal for item in results),
-                    f"container preflight evidence mismatch: {task.name}")
+            if version == 3 and container:
+                echoed = [_fast_seal_echo(attempt, request, task.name)
+                          for attempt in base.glob("attempt-*")]
+                echoed = [item for item in echoed if item is not None]
+                _ensure(bool(echoed) and all(item == echoed[0] for item in echoed),
+                        f"fast-preflight seal differs across attempts: {task.name}")
+                if fast_seal is None:
+                    fast_seal = echoed[0]
+                _ensure(all(item == fast_seal for item in echoed)
+                        and all(item.get("container_preflight") == fast_seal for item in results),
+                        f"container preflight evidence mismatch: {task.name}")
+            else:
+                _ensure(not container or all(item.get("container_preflight") == seal for item in results),
+                        f"container preflight evidence mismatch: {task.name}")
             path = base / "disposition.json"
             expected = _disposition(task, arm, results, infra, request, legacy=legacy)
             valid = (len(results) >= 3 or infra >= 2) and path.is_file() and _json(path) == expected
@@ -576,30 +790,53 @@ def verify_batch(batch: Path) -> None:
     if not legacy:
         _ensure(_launched_calls(batch) <= request["max_total_calls"],
                 "approved maximum subject-call count exceeded")
+def _add_request_arguments(command: argparse.ArgumentParser) -> None:
+    command.add_argument("batch_id")
+    command.add_argument("--task", action="append", type=Path, required=True)
+    command.add_argument("--arm", action="append", nargs=2,
+                         metavar=("NAME", "PATH"), required=True)
+    command.add_argument("--md-filename", default="CODER.md")
+    command.add_argument("--task-order-seed", type=int)
+    command.add_argument("--container", type=json.loads)
+    for field in fields(RunnerConfig):
+        default = getattr(RUNNER, field.name)
+        command.add_argument("--" + field.name.replace("_", "-"), default=default,
+                             type=json.loads if isinstance(default, bool) else type(default))
+    command.add_argument("--runs-root", type=Path, default=ROOT / "runs" / "dev-v2")
+
+def _cli_request(args: argparse.Namespace) -> tuple[RunnerConfig, list[tuple[str, Path]]]:
+    runner = RunnerConfig(*(getattr(args, field.name) for field in fields(RunnerConfig)))
+    return runner, [(name, Path(path)) for name, path in args.arm]
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    queue = commands.add_parser("queue")
-    queue.add_argument("batch_id")
-    queue.add_argument("--task", action="append", type=Path, required=True)
-    queue.add_argument("--arm", action="append", nargs=2, metavar=("NAME", "PATH"), required=True)
-    queue.add_argument("--md-filename", default="CODER.md")
-    queue.add_argument("--task-order-seed", type=int)
-    queue.add_argument("--container", type=json.loads)
-    for field in fields(RunnerConfig):
-        default = getattr(RUNNER, field.name)
-        queue.add_argument("--" + field.name.replace("_", "-"), default=default,
-                           type=json.loads if isinstance(default, bool) else type(default))
-    queue.add_argument("--runs-root", type=Path, default=ROOT / "runs" / "dev-v2")
+    for name in ("preflight", "queue"):
+        _add_request_arguments(commands.add_parser(name))
     for name in ("run", "verify"):
         command = commands.add_parser(name)
         command.add_argument("batch_id")
         command.add_argument("--runs-root", type=Path, default=ROOT / "runs" / "dev-v2")
     args = parser.parse_args(argv)
+    if args.command == "preflight":
+        started = time.monotonic()
+        try:
+            runner, arms = _cli_request(args)
+            request = _request(args.batch_id, args.task, arms,
+                               md_filename=args.md_filename,
+                               task_order_seed=args.task_order_seed,
+                               runner=runner, container=args.container)
+            result = preflight_request(request, started=started)
+        except (BatchError, taskcheck.TaskError, OSError, ValueError) as exc:
+            result = _preflight_failure(started, "request_shape", exc)
+        public = {key: result[key] for key in ("status", "duration_seconds", "failed_checks")}
+        if result.get("errors"):
+            public["errors"] = result["errors"]
+        print(json.dumps(public, sort_keys=True, separators=(",", ":")))
+        return 0 if result["status"] == "PASS" else 1
     try:
         if args.command == "queue":
-            runner = RunnerConfig(*(getattr(args, field.name) for field in fields(RunnerConfig)))
-            arms = [(name, Path(path)) for name, path in args.arm]
+            runner, arms = _cli_request(args)
             path = queue_request(args.batch_id, args.task, arms, args.runs_root, md_filename=args.md_filename,
                                  task_order_seed=args.task_order_seed, runner=runner, container=args.container)
             print(json.dumps({"request": str(path), "request_sha256": sha256_file(path)}, sort_keys=True))

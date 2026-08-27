@@ -76,7 +76,10 @@ def _request(batch: Path) -> dict[str, Any]:
     request = _json(path)
     approval = _json(batch / "APPROVED.json", canonical=False)
     try:
-        taskcheck._validate_batch_request(request, batch.name, {2})
+        if request.get("schema_version") == 3:
+            taskcheck._validate_batch_request_v3(request, batch.name, {2})
+        else:
+            taskcheck._validate_batch_request(request, batch.name, {2})
     except taskcheck.TaskError as exc:
         raise CompareError("REQUEST/APPROVED binding is invalid") from exc
     if (set(approval) != {"request_sha256"} or approval["request_sha256"] != _sha_file(path)

@@ -1,5 +1,7 @@
 from __future__ import annotations
+import contextlib
 import hashlib
+import io
 import json
 import shutil
 import subprocess
@@ -81,9 +83,187 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         runs = self.root / "runs"
         with patch.object(batch, "ROOT", self.root.resolve()):
             request = batch.queue_request("fake-batch", tasks, [("a", arm_a), ("b", arm_b)],
-                                          runs, md_filename=md_filename, task_order_seed=seed)
+                                          runs, md_filename=md_filename, task_order_seed=seed,
+                                          require_auth=False)
         self.approve(request)
         return request, runs
+    def test_fast_preflight_groups_pairs_is_hash_only_and_never_calls_subject(self):
+        names = ["full-boltons-wraps-forwarding", "full-click-stream-lifecycle",
+                 "full-flask-automatic-options", "full-starlette-websocket-denial"]
+        tasks = [self.task(name) for name in names]
+        arms = [("null", self.arm("null", b"")), ("probe", self.arm("probe", b"focus\n"))]
+        images = {name: "sha256:" + digest * 64 for name, digest in zip(names, "aabc")}
+        spec = {name: {"answer_bearing_modules": ["package.answer"],
+                       "fix_signature_strings": ["a sufficiently long fix signature"],
+                       "interpreter_pin": "3.11.5"} for name in names}
+        spec_path = self.root / "contamination-spec.json"
+        spec_path.write_bytes(batch._bytes(spec))
+        container = {"image_digests": images,
+                     "interpreter_pins": {name: "3.11.5" for name in names},
+                     "spec_sha256": batch.sha256_file(spec_path), "web_search": "disabled"}
+        values = batch.asdict(batch.RUNNER); values["timeout_seconds"] = 900
+        auth = self.root / "auth"; auth.mkdir(); (auth / "auth.json").write_text("{}\n")
+        calls = []
+        def smoke(image, pin, task_ids, codex_home, deadline):
+            calls.append((image, pin, task_ids, codex_home, deadline))
+            return {"seal_schema": batch.sealed.FAST_SEAL_SCHEMA,
+                    "image_digest": image, "interpreter_pin": pin,
+                    "task_ids": task_ids, "spec_sha256": container["spec_sha256"],
+                    "policy": "workspace-write-network-denied"}
+        with patch.object(batch, "ROOT", self.root.resolve()), \
+             patch.object(batch.sealed, "SPEC", spec_path), \
+             patch.dict("os.environ", {"MDSEVAL_CODEX_HOME": str(auth)}, clear=False), \
+             patch.object(batch.sealed, "subject", side_effect=AssertionError("model call")), \
+             patch.object(batch.taskcheck, "run_checker", side_effect=AssertionError("checker called")):
+            request = batch._request("cost-time-probe-v1", tasks, arms,
+                                     task_order_seed=20260826,
+                                     runner=batch.RunnerConfig(**values), container=container)
+            result = batch.preflight_request(request, smoke=smoke)
+        self.assertEqual((result["status"], result["failed_checks"]), ("PASS", []))
+        self.assertEqual(len(calls), 3)
+        self.assertEqual({task for call in calls for task in call[2]}, set(names))
+        self.assertTrue(all(call[4] == calls[0][4] for call in calls))
+        self.assertEqual(set(result["seals"]), set(names))
+
+    def test_fast_preflight_failure_prevents_request_write(self):
+        task, arm = self.task("task-1"), self.arm("a", b"")
+        with patch.object(batch, "ROOT", self.root.resolve()):
+            request = batch._request("failed-batch", [task], [("a", arm)], task_order_seed=1)
+        failure = {"status": "FAIL", "duration_seconds": 0.1,
+                   "failed_checks": ["runtime:image@pin"], "errors": {}, "seals": {}}
+        runs = self.root / "runs"
+        with patch.object(batch, "ROOT", self.root.resolve()), \
+             patch.object(batch, "preflight_request", return_value=failure), \
+             self.assertRaisesRegex(batch.BatchError, "runtime:image@pin"):
+            batch.queue_request("failed-batch", [task], [("a", arm)], runs,
+                                task_order_seed=1, require_auth=False)
+        self.assertFalse((runs / "failed-batch" / "REQUEST.json").exists())
+
+    def test_fast_preflight_uses_one_absolute_global_deadline(self):
+        task, arm = self.task("task-1"), self.arm("a", b"")
+        spec = {"task-1": {"answer_bearing_modules": ["package.answer"],
+                            "fix_signature_strings": ["a sufficiently long fix signature"],
+                            "interpreter_pin": "3.11.5"}}
+        spec_path = self.root / "spec.json"; spec_path.write_bytes(batch._bytes(spec))
+        image = "sha256:" + "a" * 64
+        container = {"image_digests": {"task-1": image},
+                     "interpreter_pins": {"task-1": "3.11.5"},
+                     "spec_sha256": batch.sha256_file(spec_path), "web_search": "disabled"}
+        auth = self.root / "auth"; auth.mkdir(); (auth / "auth.json").write_text("{}\n")
+        clock = [0.0]; deadlines = []
+        def smoke(_image, _pin, task_ids, _home, deadline):
+            deadlines.append(deadline); clock[0] = 61.0
+            return {"seal_schema": batch.sealed.FAST_SEAL_SCHEMA,
+                    "image_digest": image, "interpreter_pin": "3.11.5",
+                    "task_ids": task_ids, "spec_sha256": container["spec_sha256"]}
+        with patch.object(batch, "ROOT", self.root.resolve()), \
+             patch.object(batch.sealed, "SPEC", spec_path), \
+             patch.dict("os.environ", {"MDSEVAL_CODEX_HOME": str(auth)}, clear=False):
+            request = batch._request("deadline-batch", [task], [("a", arm)],
+                                     task_order_seed=1, container=container)
+            result = batch.preflight_request(request, monotonic=lambda: clock[0], smoke=smoke)
+        self.assertEqual(deadlines, [60.0])
+        self.assertEqual((result["status"], result["duration_seconds"]), ("FAIL", 61.0))
+        self.assertIn("deadline", result["failed_checks"])
+
+    def test_v3_run_preflights_once_and_reuses_task_seal(self):
+        task = self.task("task-1")
+        arm_a, arm_b = self.arm("a", b""), self.arm("b", b"focus\n")
+        image = "sha256:" + "a" * 64
+        container = {"image_digests": {task.name: image}, "spec_sha256": "b" * 64,
+                     "interpreter_pins": {task.name: "3.11.5"}, "web_search": "disabled"}
+        runs = self.root / "runs"
+        with patch.object(batch, "ROOT", self.root.resolve()):
+            request_path = batch.queue_request(
+                "sealed-batch", [task], [("a", arm_a), ("b", arm_b)], runs,
+                task_order_seed=1, container=container, require_auth=False)
+        self.approve(request_path)
+        seal = {"seal_schema": batch.sealed.FAST_SEAL_SCHEMA,
+                "image_digest": image, "interpreter_pin": "3.11.5",
+                "task_ids": [task.name], "spec_sha256": container["spec_sha256"]}
+        result_lists = {}
+        def state(base):
+            values = result_lists.setdefault(str(base), [])
+            return values, 0, len(values) + 1, len(values)
+        def attempt(task_arg, request, arm, ordinal, batch_dir, _runner, _home, used_seal):
+            path = batch_dir / task_arg.name / arm["name"] / f"attempt-{ordinal}" / "result.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(batch._bytes({"ordinal": ordinal}))
+            self.assertIs(used_seal, seal)
+            return True
+        preflight = {"status": "PASS", "duration_seconds": 1.0,
+                     "failed_checks": [], "errors": {}, "seals": {task.name: seal}}
+        with patch.object(batch, "ROOT", self.root.resolve()), \
+             patch.object(batch, "preflight_request", return_value=preflight) as checked, \
+             patch.object(batch, "_state", side_effect=state), \
+             patch.object(batch, "_attempt", side_effect=attempt) as attempted, \
+             patch.object(batch, "_launched_calls", return_value=0), \
+             patch.object(batch, "_write_disposition"):
+            batch.launch("sealed-batch", runs, require_auth=False)
+        checked.assert_called_once()
+        self.assertEqual(attempted.call_count, 6)
+
+    def test_completed_sealed_v3_batch_verifies_without_runtime_preflight(self):
+        task = self.task("task-1")
+        arm_a, arm_b = self.arm("a", b""), self.arm("b", b"focus\n")
+        image = "sha256:" + "a" * 64
+        container = {"image_digests": {task.name: image}, "spec_sha256": "b" * 64,
+                     "interpreter_pins": {task.name: "3.11.5"}, "web_search": "disabled"}
+        runs = self.root / "runs"
+        with patch.object(batch, "ROOT", self.root.resolve()):
+            request_path = batch.queue_request(
+                "sealed-batch", [task], [("a", arm_a), ("b", arm_b)], runs,
+                task_order_seed=1, container=container, require_auth=False)
+        self.approve(request_path)
+        identity = {"image_digest": image, "canonical_executable": "/python/bin/python3.11"}
+        seal = {"seal_schema": batch.sealed.FAST_SEAL_SCHEMA,
+                "image_digest": image, "interpreter_pin": "3.11.5",
+                "task_ids": [task.name], "spec_sha256": container["spec_sha256"],
+                "identity": identity}
+        preflight = {"status": "PASS", "duration_seconds": 1.0,
+                     "failed_checks": [], "errors": {}, "seals": {task.name: seal}}
+        def subject(_command, workspace, final_path, _stdin, _timeout, _home,
+                    _image, _pin, _seal):
+            if (workspace / "CODER.md").read_bytes():
+                (workspace / "solution.txt").write_text("done\n")
+            final_path.write_text("done\n")
+            return ProcessOutcome(0, '{"type":"turn.completed"}\n', "", False, False)
+        def checker(task_arg, workspace, _image, _pin, _home, expected):
+            result, deterministic, duration = batch._checker(task_arg, workspace)
+            return result, deterministic, duration, {"identity": expected, "runs": []}
+        with patch.object(batch, "ROOT", self.root.resolve()), \
+             patch.object(batch, "preflight_request", return_value=preflight) as checked, \
+             patch.object(batch.sealed, "subject", side_effect=subject), \
+             patch.object(batch.sealed, "checker", side_effect=checker):
+            batch.launch("sealed-batch", runs, require_auth=False)
+        checked.assert_called_once()
+        with patch.object(batch, "ROOT", self.root.resolve()), \
+             patch.object(batch, "_launch_record", side_effect=AssertionError("legacy evidence")), \
+             patch.object(batch, "preflight_request", side_effect=AssertionError("runtime preflight")), \
+             patch.object(batch.sealed, "fast_smoke", side_effect=AssertionError("Docker")), \
+             patch.object(batch.sealed, "subject", side_effect=AssertionError("model call")):
+            batch.verify_batch(request_path.parent)
+
+    def test_preflight_cli_emits_exactly_one_final_json_object(self):
+        argv = ["preflight", "cli-batch", "--task", "tasks/task-1",
+                "--arm", "a", "controls/a.md"]
+        passed = {"status": "PASS", "duration_seconds": 1.25,
+                  "failed_checks": [], "errors": {}, "seals": {}}
+        for expected, request_effect, result in ((0, None, passed),
+                                                  (1, batch.BatchError("bad"), None)):
+            output = io.StringIO()
+            request_patch = ({"return_value": {}} if request_effect is None
+                             else {"side_effect": request_effect})
+            with patch.object(batch, "_request", **request_patch), \
+                 patch.object(batch, "preflight_request", return_value=result), \
+                 contextlib.redirect_stdout(output):
+                code = batch.main(argv)
+            rows = output.getvalue().splitlines()
+            self.assertEqual((code, len(rows)), (expected, 1))
+            record = json.loads(rows[0])
+            self.assertEqual(record["status"], "PASS" if expected == 0 else "FAIL")
+            self.assertIn("duration_seconds", record)
+            self.assertIn("failed_checks", record)
     def test_approval_and_exclusive_create_refusals(self):
         request, runs = self.queued(["task-1"])
         calls = []
@@ -171,18 +351,20 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
                          (6, False, "fatal evidence defect: web_search tool item in events"))
         self.assertFalse((request.parent / "task-1/a/attempt-1/infra-invalid.json").exists())
         self.assertEqual(json.loads((request.parent / "task-1/a/disposition.json").read_text())["label"], "invalid")
-    def test_queue_rechecks_request_filename_neutrality(self):
+    def test_v3_queue_uses_hash_only_verification_and_needs_no_preflight_directory(self):
         task, arm = self.task("task-1", alt_sensitive=True), self.arm("a", b"")
-        with patch.object(batch, "ROOT", self.root.resolve()), self.assertRaisesRegex(taskcheck.TaskError, "arm-neutral"):
-            batch.queue_request("fake-batch", [task], [("a", arm)], self.root / "runs", md_filename="ALT.md")
         container = {"image_digests": {task.name: "sha256:" + "a" * 64}, "spec_sha256": "b" * 64,
                      "interpreter_pins": {task.name: "3.11.5"}, "web_search": "disabled"}
-        with patch.object(batch, "ROOT", self.root.resolve()), patch.object(batch, "_launch_record"), patch.object(
+        with patch.object(batch, "ROOT", self.root.resolve()), patch.object(
+                batch, "_launch_record", side_effect=AssertionError("legacy preflight used")), patch.object(
                 batch.taskcheck, "verify", wraps=taskcheck.verify) as verified:
-            batch.queue_request("sealed-batch", [task], [("a", arm)], self.root / "runs", md_filename="ALT.md", container=container)
-        self.assertIsNone(verified.call_args.kwargs["md_filename"])
-        with patch.object(batch.taskcheck, "verify", side_effect=RuntimeError("stop")) as checked, self.assertRaisesRegex(RuntimeError, "stop"): batch._attempt(task, {"runner": {"container": container}, "md_filename": "ALT.md"}, {}, 1, self.root, None, "")
-        self.assertIsNone(checked.call_args.kwargs["md_filename"])
+            request_path = batch.queue_request(
+                "sealed-batch", [task], [("a", arm)], self.root / "runs",
+                md_filename="ALT.md", container=container, require_auth=False)
+        self.assertTrue(all(call.kwargs["md_filename"] is None
+                            for call in verified.call_args_list))
+        self.assertEqual(json.loads(request_path.read_text())["schema_version"], 3)
+        self.assertFalse((request_path.parent / "preflight").exists())
     def test_container_schema_is_exact_and_removed_before_runner_config(self):
         task_ids = {"task-1", "task-2"}
         digest = "sha256:" + "a" * 64
@@ -210,22 +392,24 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         (attempt / "build-rejected.json").write_text("{}\n")
         with self.assertRaisesRegex(batch.BatchError, "BUILD_REJECTED"):
             batch._state(base)
-    def test_600_second_request_records_exact_comparability_boundary(self):
+    def test_v3_900_second_timeout_is_independent_and_v2_boundary_stays_read_only(self):
         task, arm = self.task("task-1"), self.arm("a", b"")
-        values = batch.asdict(batch.RUNNER); values["timeout_seconds"] = 600; runner = batch.RunnerConfig(**values)
+        values = batch.asdict(batch.RUNNER); values["timeout_seconds"] = 900; runner = batch.RunnerConfig(**values)
         with patch.object(batch, "ROOT", self.root.resolve()):
             request_path = batch.queue_request(
                 "full-scale", [task], [("a", arm)], self.root / "runs",
-                task_order_seed=1, runner=runner)
+                task_order_seed=1, runner=runner, require_auth=False)
         request = json.loads(request_path.read_text())
-        self.assertEqual((request["comparability_note"], request["runner"]["timeout_seconds"]), (taskcheck.COMPARABILITY_NOTE, 600))
-        taskcheck._validate_batch_request(request, "full-scale", {1})
-        legacy = dict(request); legacy.pop("comparability_note")
-        legacy["runner"] = {**legacy["runner"], "timeout_seconds": 300}
+        self.assertEqual((request["schema_version"], request["runner"]["timeout_seconds"]), (3, 900))
+        self.assertNotIn("comparability_note", request)
+        taskcheck._validate_batch_request_v3(request, "full-scale", {1})
+        legacy = dict(request); legacy.pop("schema_version")
+        legacy["runner"] = {**legacy["runner"], "timeout_seconds": 600}
+        legacy["comparability_note"] = taskcheck.COMPARABILITY_NOTE
         taskcheck._validate_batch_request(legacy, "full-scale", {1})
-        request["comparability_note"] += " altered"
+        legacy["comparability_note"] += " altered"
         with self.assertRaisesRegex(taskcheck.TaskError, "REQUEST schema"):
-            taskcheck._validate_batch_request(request, "full-scale", {1})
+            taskcheck._validate_batch_request(legacy, "full-scale", {1})
     def test_section14_preflight_accepts_bound_host_na(self):
         ids = ["task-1", "task-2"]; image, spec, manifest = "sha256:" + "a" * 64, "b" * 64, "e" * 64
         container = {"image_digests": {key: image for key in ids}, "spec_sha256": spec,

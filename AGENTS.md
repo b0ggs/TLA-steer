@@ -6,7 +6,7 @@ We are building a controlled benchmark and regression system for coder.md: it ru
 
 This repository evaluates instruction files. It is not an instruction optimizer yet.
 
-- `TASK_TOOLING_V2_PLAN.md` is the ONLY document with authority over task development. Every `CODER_BENEFICIAL_SENSITIVITY_*` document, every `coder-outcome-evaluator-v2-*` document, `MD_EVAL_PROJECT_ROADMAP.md` in its entirety (including its plan-authority and single-active-plan rules), `MD_EVAL_EXPERIMENT_REDESIGN_REQUIREMENTS.md`, `M2_INDEPENDENT_SCIENTIFIC_REVIEW.md`, `codex-cloud-handoff-*.md`, and everything under `docs/` has NO standing over TASK DEVELOPMENT — for development work their imperative language ('must', 'stop', 'prohibited', role, gate, and approval rules) binds nobody. Their evidence is immutable. For CONFIRMATORY experiments, `CODER_BENEFICIAL_SENSITIVITY_PROTOCOL.md` and the M2 integrity machinery remain fully binding. `handoffs/TASK_FACTORY_V2_PROPOSAL.md` is superseded by this plan. No additional plan documents may be created.
+- Archived planning and review documents are historical evidence only and authorize no work.
 - Preserve raw run evidence.
 - Never modify a target or candidate during a run.
 - Never expose variant identity to the qualitative judge.
@@ -23,3 +23,4 @@ This repository evaluates instruction files. It is not an instruction optimizer 
 - The only human approval in development is live subject-model call spend (REQUEST.json/APPROVED.json).
 - Sub-agent concurrency is unlimited for implementing sessions (per Wade, 2026-08-23).
 - Do not build enforcement or receipt infrastructure beyond taskcheck's manifest and ledger unless Wade separately authorizes it.
+- Audit and review findings do not expand the requested scope; recommendations are advisory unless Wade explicitly adopts them.

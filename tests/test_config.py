@@ -175,7 +175,8 @@ class ConfigTests(unittest.TestCase):
                         ROOT,
                         copied,
                         ignore=shutil.ignore_patterns(
-                            ".git", "runs", "__pycache__", "*.pyc", "*.pyo"
+                            ".git", "runs", ".mdseval-codex-home",
+                            "__pycache__", "*.pyc", "*.pyo"
                         ),
                     )
                     schema = copied / "schemas" / schema_name
