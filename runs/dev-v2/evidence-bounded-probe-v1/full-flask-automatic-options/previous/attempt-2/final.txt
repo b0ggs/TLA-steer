@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds `OPTIONS` even when globally disabled, for function and class-based views. Updated focused regression tests accordingly.
+
+Validation: `git diff --check` passed. Tests could not run because Python/pytest is unavailable.

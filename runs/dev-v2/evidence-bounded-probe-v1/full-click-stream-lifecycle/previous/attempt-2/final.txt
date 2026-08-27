@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Applied the upstream-compatible stream lifecycle fix:
+
+- Prevented `_NamedTextIOWrapper` from closing buffers it does not own.
+- Removed destructive `StreamMixer` finalization.
+- Added the upstream logging regression test and changelog entry.
+
+`git diff --check` passes. Pytest could not run because the repository environment has no Python, pytest, tox, or uv executable.

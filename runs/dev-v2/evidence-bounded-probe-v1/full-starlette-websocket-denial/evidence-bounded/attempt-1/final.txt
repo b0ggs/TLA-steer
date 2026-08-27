@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added valid WebSocket denial event handling for `StreamingResponse` and `FileResponse`, including exact-once streaming background tasks and HTTP-only scope guards. Added regression tests.
+
+`git diff --check` passes. Pytest could not run because neither pytest, uv, nor Python is available in the repository environment.

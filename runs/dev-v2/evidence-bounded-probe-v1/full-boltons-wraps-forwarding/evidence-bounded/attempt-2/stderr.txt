@@ -1,0 +1,3 @@
+2026-08-27T20:33:02.746488Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /workspace/boltons/funcutils.py:
+        args (list): List of argument names, defaults to empty list,
+            denoting no arguments.

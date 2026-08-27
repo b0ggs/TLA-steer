@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [route registration](/workspace/src/flask/sansio/app.py:630) so explicit automatic `OPTIONS` enablement overrides the global default, while explicit disablement and view-handled `OPTIONS` remain intact. Added function and class-view coverage.
+
+Runtime tests could not run because both `python` and configured `uv` are unavailable. `git diff --check` passed.

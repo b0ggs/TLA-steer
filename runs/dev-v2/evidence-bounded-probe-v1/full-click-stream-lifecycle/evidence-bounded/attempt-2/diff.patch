@@ -1,0 +1,36 @@
+diff --git a/src/click/testing.py b/src/click/testing.py
+index f6f60b8..a66a290 100644
+--- a/src/click/testing.py
++++ b/src/click/testing.py
+@@ -98,18 +98,6 @@ class StreamMixer:
+         self.stdout: io.BytesIO = BytesIOCopy(copy_to=self.output)
+         self.stderr: io.BytesIO = BytesIOCopy(copy_to=self.output)
+ 
+-    def __del__(self) -> None:
+-        """
+-        Guarantee that embedded file-like objects are closed in a
+-        predictable order, protecting against races between
+-        self.output being closed and other streams being flushed on close
+-
+-        .. versionadded:: 8.2.2
+-        """
+-        self.stderr.close()
+-        self.stdout.close()
+-        self.output.close()
+-
+ 
+ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def __init__(
+@@ -127,6 +115,12 @@ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def mode(self) -> str:
+         return self._mode
+ 
++    def close(self) -> None:
++        try:
++            self.detach()
++        except ValueError:
++            pass
++
+ 
+ def make_input_stream(
+     input: str | bytes | t.IO[t.Any] | None, charset: str

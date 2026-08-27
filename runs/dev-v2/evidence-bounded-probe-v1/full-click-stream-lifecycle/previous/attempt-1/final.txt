@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [testing.py](/workspace/src/click/testing.py) to prevent wrappers and `StreamMixer` finalization from closing owned buffers. Added focused pytest regressions in [test_testing.py](/workspace/tests/test_testing.py).
+
+`git diff --check` passes. Tests could not run because this environment has no Python/pytest executable.

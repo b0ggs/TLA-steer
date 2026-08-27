@@ -1,0 +1,125 @@
+diff --git a/src/click/testing.py b/src/click/testing.py
+index f6f60b8..ebfd54d 100644
+--- a/src/click/testing.py
++++ b/src/click/testing.py
+@@ -98,18 +98,6 @@ class StreamMixer:
+         self.stdout: io.BytesIO = BytesIOCopy(copy_to=self.output)
+         self.stderr: io.BytesIO = BytesIOCopy(copy_to=self.output)
+ 
+-    def __del__(self) -> None:
+-        """
+-        Guarantee that embedded file-like objects are closed in a
+-        predictable order, protecting against races between
+-        self.output being closed and other streams being flushed on close
+-
+-        .. versionadded:: 8.2.2
+-        """
+-        self.stderr.close()
+-        self.stdout.close()
+-        self.output.close()
+-
+ 
+ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def __init__(
+@@ -119,6 +107,15 @@ class _NamedTextIOWrapper(io.TextIOWrapper):
+         self._name = name
+         self._mode = mode
+ 
++    def close(self) -> None:
++        """
++        The buffer this object contains belongs to some other object, so
++        prevent the default __del__ implementation from closing that buffer.
++
++        .. versionadded:: 8.3.2
++        """
++        ...
++
+     @property
+     def name(self) -> str:
+         return self._name
+diff --git a/tests/test_testing.py b/tests/test_testing.py
+index 11fe29d..60f20ba 100644
+--- a/tests/test_testing.py
++++ b/tests/test_testing.py
+@@ -1,3 +1,4 @@
++import gc
+ import os
+ import sys
+ from io import BytesIO
+@@ -6,7 +7,9 @@ import pytest
+ 
+ import click
+ from click.exceptions import ClickException
++from click.testing import _NamedTextIOWrapper
+ from click.testing import CliRunner
++from click.testing import StreamMixer
+ 
+ 
+ def test_runner():
+@@ -469,3 +472,66 @@ def test_isolation_flushes_unflushed_stderr():
+ 
+     result = runner.invoke(cli)
+     assert result.stderr == "gyarados gyarados gyarados"
++
++
++def test_named_text_wrapper_close_preserves_shared_buffer():
++    buffer = BytesIO()
++    first = _NamedTextIOWrapper(
++        buffer, encoding="utf-8", name="first", mode="w"
++    )
++    second = _NamedTextIOWrapper(
++        buffer, encoding="utf-8", name="second", mode="w"
++    )
++
++    first.write("first")
++    first.flush()
++    first.close()
++    second.write("second")
++    second.flush()
++    second.close()
++
++    assert not buffer.closed
++    assert buffer.getvalue() == b"firstsecond"
++
++
++def test_stream_mixer_buffers_survive_wrapper_finalization():
++    mixer = StreamMixer()
++    stdout = _NamedTextIOWrapper(
++        mixer.stdout, encoding="utf-8", name="<stdout>", mode="w"
++    )
++    stderr = _NamedTextIOWrapper(
++        mixer.stderr, encoding="utf-8", name="<stderr>", mode="w"
++    )
++    stdout.write("out")
++    stdout.flush()
++    stderr.write("err")
++    stderr.flush()
++
++    del stdout, stderr
++    gc.collect()
++
++    assert not mixer.stdout.closed
++    assert not mixer.stderr.closed
++    assert not mixer.output.closed
++    assert mixer.stdout.getvalue() == b"out"
++    assert mixer.stderr.getvalue() == b"err"
++    assert mixer.output.getvalue() == b"outerr"
++
++
++def test_stream_mixer_buffers_survive_mixer_finalization():
++    mixer = StreamMixer()
++    stdout = mixer.stdout
++    stderr = mixer.stderr
++    output = mixer.output
++    stdout.write(b"out")
++    stderr.write(b"err")
++
++    del mixer
++    gc.collect()
++
++    assert not stdout.closed
++    assert not stderr.closed
++    assert not output.closed
++    assert stdout.getvalue() == b"out"
++    assert stderr.getvalue() == b"err"
++    assert output.getvalue() == b"outerr"

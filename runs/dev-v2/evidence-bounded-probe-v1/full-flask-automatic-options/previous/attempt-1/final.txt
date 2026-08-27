@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so resolved explicit `True` always adds `OPTIONS`, including when globally disabled. Added function and class-based regression coverage while preserving explicit `False` and self-handled `OPTIONS`.
+
+Validation: `git diff --check` passed. Tests could not run because no Python runtime is installed.

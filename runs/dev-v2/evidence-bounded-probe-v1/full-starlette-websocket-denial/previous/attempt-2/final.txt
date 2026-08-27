@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added WebSocket denial event adaptation for `StreamingResponse` and `FileResponse`, including background-task and file-body regression tests. HTTP behavior and method signatures remain unchanged.
+
+`git diff --check` passes. Pytest could not run because neither `pytest` nor `uv` is installed in the environment.

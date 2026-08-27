@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `StreamingResponse` and `FileResponse` to emit valid WebSocket denial events while preserving HTTP behavior. Added focused tests for streamed bodies, file delivery, status codes, and exactly-once background execution.
+
+Verification could not run because the environment lacks both `pytest` and a Python executable; static formatting and call-site checks passed.

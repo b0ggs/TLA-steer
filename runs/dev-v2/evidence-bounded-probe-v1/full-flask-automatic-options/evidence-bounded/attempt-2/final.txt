@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Resolved explicit automatic `OPTIONS` enablement for function and class-based views when globally disabled. Updated focused tests accordingly.
+
+`git diff --check` passed. Runtime tests could not run because Python/pytest are unavailable in the environment.

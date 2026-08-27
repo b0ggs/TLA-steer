@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [testing.py](/workspace/src/click/testing.py) to detach named wrappers without closing owned buffers and removed unsafe `StreamMixer` finalization. Added lifecycle regressions covering shared buffers, garbage collection, logging threads, exceptions, repeated invocations, and stream restoration.
+
+Tests were not run because neither `python` nor `python3` is installed in the evaluation environment.

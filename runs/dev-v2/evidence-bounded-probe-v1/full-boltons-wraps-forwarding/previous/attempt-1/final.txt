@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding for defaulted, keyword-only, positional-only, and varargs parameters. Added focused regression tests, including `expected` signatures and keyword-only wrappers.
+
+Validation: `git diff --check` passed. Python/pytest was unavailable in the evaluation image, so tests could not be executed.

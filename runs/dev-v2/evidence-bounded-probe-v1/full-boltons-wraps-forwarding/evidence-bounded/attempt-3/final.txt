@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` to:
+
+- Forward defaulted and keyword-only parameters by keyword.
+- Preserve positional-only parameters.
+- Keep regular parameters positional when `*args` is present.
+- Support `expected` and keyword-only wrapper signatures.
+
+Updated relevant tests accordingly. Runtime tests could not run because the environment has neither Python nor pytest installed.

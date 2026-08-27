@@ -1,0 +1,254 @@
+diff --git a/boltons/funcutils.py b/boltons/funcutils.py
+index e7a8953..95b80bc 100644
+--- a/boltons/funcutils.py
++++ b/boltons/funcutils.py
+@@ -62,7 +62,8 @@ def inspect_formatargspec(
+         formatvarkw=lambda name: '**' + name,
+         formatvalue=lambda value: '=' + repr(value),
+         formatreturns=lambda text: ' -> ' + text,
+-        formatannotation=formatannotation):
++        formatannotation=formatannotation,
++        posonlyargs=()):
+     """Copy formatargspec from python 3.7 standard library.
+     Python 3 has deprecated formatargspec and requested that Signature
+     be used instead, however this requires a full reimplementation
+@@ -84,6 +85,8 @@ def inspect_formatargspec(
+         if defaults and i >= firstdefault:
+             spec = spec + formatvalue(defaults[i - firstdefault])
+         specs.append(spec)
++        if posonlyargs and i + 1 == len(posonlyargs):
++            specs.append('/')
+     if varargs is not None:
+         specs.append(formatvarargs(formatargandannotation(varargs)))
+     else:
+@@ -694,6 +697,8 @@ class FunctionBuilder:
+             in a function which does nothing and returns ``None``.
+         args (list): List of argument names, defaults to empty list,
+             denoting no arguments.
++        posonlyargs (list): Prefix of *args* containing positional-only
++            argument names, defaults to empty list.
+         varargs (str): Name of the catch-all variable for positional
+             arguments. E.g., "args" if the resultant function is to have
+             ``*args`` in the signature. Defaults to None.
+@@ -723,6 +728,7 @@ class FunctionBuilder:
+     """
+ 
+     _argspec_defaults = {'args': list,
++                         'posonlyargs': list,
+                          'varargs': lambda: None,
+                          'varkw': lambda: None,
+                          'defaults': lambda: None,
+@@ -733,8 +739,23 @@ class FunctionBuilder:
+     @classmethod
+     def _argspec_to_dict(cls, f):
+         argspec = inspect.getfullargspec(f)
+-        return {attr: getattr(argspec, attr)
+-                    for attr in cls._argspec_defaults}
++        ret = {attr: getattr(argspec, attr)
++               for attr in cls._argspec_defaults
++               if attr != 'posonlyargs'}
++        code = getattr(f, '__code__', None)
++        if code is not None:
++            posonly_count = getattr(code, 'co_posonlyargcount', 0)
++            ret['posonlyargs'] = ret['args'][:posonly_count]
++        else:
++            try:
++                parameters = inspect.signature(
++                    f, follow_wrapped=False).parameters.values()
++            except (TypeError, ValueError):
++                ret['posonlyargs'] = []
++            else:
++                ret['posonlyargs'] = [param.name for param in parameters
++                                      if param.kind is inspect.Parameter.POSITIONAL_ONLY]
++        return ret
+ 
+     _defaults = {'doc': str,
+                  'dict': dict,
+@@ -780,7 +801,8 @@ class FunctionBuilder:
+                                      [],
+                                      self.kwonlyargs,
+                                      {},
+-                                     annotations)
++                                     annotations,
++                                     posonlyargs=self.posonlyargs)
+ 
+     _KWONLY_MARKER = re.compile(r"""
+     \*     # a star
+@@ -790,23 +812,21 @@ class FunctionBuilder:
+     """, re.VERBOSE)
+ 
+     def get_invocation_str(self):
+-        kwonly_pairs = None
+-        formatters = {}
+-        if self.kwonlyargs:
+-            kwonly_pairs = {arg: arg
+-                                for arg in self.kwonlyargs}
+-            formatters['formatvalue'] = lambda value: '=' + value
+-
+-        sig = inspect_formatargspec(self.args,
+-                                    self.varargs,
+-                                    self.varkw,
+-                                    [],
+-                                    kwonly_pairs,
+-                                    kwonly_pairs,
+-                                    {},
+-                                    **formatters)
+-        sig = self._KWONLY_MARKER.sub('', sig)
+-        return sig[1:-1]
++        args = list(self.args)
++        if self.defaults and self.varargs is None:
++            default_start = len(args) - len(self.defaults)
++            positional_count = max(default_start, len(self.posonlyargs))
++        else:
++            positional_count = len(args)
++
++        invocation = args[:positional_count]
++        invocation.extend(f'{arg}={arg}' for arg in args[positional_count:])
++        if self.varargs is not None:
++            invocation.append(f'*{self.varargs}')
++        invocation.extend(f'{arg}={arg}' for arg in self.kwonlyargs)
++        if self.varkw is not None:
++            invocation.append(f'**{self.varkw}')
++        return ', '.join(invocation)
+ 
+     @classmethod
+     def from_func(cls, func):
+@@ -953,6 +973,10 @@ class FunctionBuilder:
+                 self.kwonlydefaults.pop(arg_name, None)
+         else:
+             d_dict.pop(arg_name, None)
++            try:
++                self.posonlyargs.remove(arg_name)
++            except ValueError:
++                pass
+             self.defaults = tuple([d_dict[a] for a in args if a in d_dict])
+         return
+ 
+diff --git a/tests/test_funcutils_fb.py b/tests/test_funcutils_fb.py
+index 98d0940..2b2a593 100644
+--- a/tests/test_funcutils_fb.py
++++ b/tests/test_funcutils_fb.py
+@@ -235,7 +235,7 @@ def test_wraps_expected():
+     def expect_pair(func):
+         @wraps(func, expected=[('c', 5)])
+         def wrapped(*args, **kwargs):
+-            args, c = args[:2], args[-1]
++            args, c = args[:2], kwargs.pop('c')
+             return func(*args, **kwargs) + (c,)
+         return wrapped
+ 
+@@ -244,7 +244,7 @@ def test_wraps_expected():
+     def expect_dict(func):
+         @wraps(func, expected={'c': 6})
+         def wrapped(*args, **kwargs):
+-            args, c = args[:2], args[-1]
++            args, c = args[:2], kwargs.pop('c')
+             return func(*args, **kwargs) + (c,)
+         return wrapped
+ 
+@@ -277,7 +277,7 @@ def test_get_arg_names():
+     [
+         (["a", "b"], None, None, None, "a, b", "(a, b)"),
+         (None, "args", "kwargs", None, "*args, **kwargs", "(*args, **kwargs)"),
+-        ("a", None, None, dict(a="a"), "a", "(a)"),
++        ("a", None, None, dict(a="a"), "a=a", "(a)"),
+     ],
+ )
+ def test_get_invocation_sig_str(
+diff --git a/tests/test_funcutils_fb_py3.py b/tests/test_funcutils_fb_py3.py
+index 85cdf12..ea9fa7e 100644
+--- a/tests/test_funcutils_fb_py3.py
++++ b/tests/test_funcutils_fb_py3.py
+@@ -215,25 +215,7 @@ def test_get_invocation_sig_str(
+ 
+ 
+ def test_wraps_inner_kwarg_only():
+-    """from https://github.com/mahmoud/boltons/issues/261
+-
+-    mh responds to the issue:
+-
+-    You'll notice that when kw-only args are involved the first time
+-    (wraps(f)(g)) it works fine. The other way around, however,
+-    wraps(g)(f) fails, because by the very nature of funcutils.wraps,
+-    you're trying to give f the same signature as g. And f's signature
+-    is not like g's. g supports positional b and f() does not.
+-
+-    If you want to make a wrapper which converts a keyword-only
+-    argument to one that can be positional or keyword only, that'll
+-    require a different approach for now.
+-
+-    A potential fix would be to pass all function arguments as
+-    keywords. But doubt that's the right direction, because, while I
+-    have yet to add positional argument only support, that'll
+-    definitely throw a wrench into things.
+-    """
++    """Regression test based on boltons issue #261."""
+     from boltons.funcutils import wraps
+ 
+     def g(a: float, b=10):
+@@ -247,13 +229,62 @@ def test_wraps_inner_kwarg_only():
+     assert g(3) == 30
+     assert wraps(f)(g)(3) == 3  # yay, g got the f default (not so with functools.wraps!)
+ 
+-    # but this doesn't work
+-    with pytest.raises(TypeError):
+-        wraps(g)(f)(3)
++    assert wraps(g)(f)(3) == 30
+ 
+     return
+ 
+ 
++def test_wraps_preserves_keyword_forwarding():
++    calls = []
++
++    def wrapped(a, b=2, *, c=3):
++        return a, b, c
++
++    @wraps(wrapped)
++    def wrapper(*args, **kwargs):
++        calls.append((args, kwargs))
++        return wrapped(*args, **kwargs)
++
++    assert wrapper(1, b=4, c=5) == (1, 4, 5)
++    assert calls == [((1,), {'b': 4, 'c': 5})]
++
++
++def test_wraps_keeps_regular_args_positional_before_varargs():
++    calls = []
++
++    def wrapped(a, b=2, *args, c=3):
++        return a, b, args, c
++
++    @wraps(wrapped)
++    def wrapper(a, b, *args, **kwargs):
++        calls.append((a, b, args, kwargs))
++        return wrapped(a, b, *args, **kwargs)
++
++    assert wrapper(1, 4, 5, c=6) == (1, 4, (5,), 6)
++    assert calls == [(1, 4, (5,), {'c': 6})]
++
++
++@pytest.mark.skipif(not hasattr((lambda: None).__code__, 'co_posonlyargcount'),
++                    reason='positional-only syntax requires Python 3.8+')
++def test_wraps_keeps_positional_only_args_positional():
++    namespace = {'wraps': wraps}
++    exec("""
++calls = []
++
++def wrapped(a=1, /, b=2):
++    return a, b
++
++@wraps(wrapped)
++def wrapper(*args, **kwargs):
++    calls.append((args, kwargs))
++    return wrapped(*args, **kwargs)
++""", namespace)
++
++    assert namespace['wrapper'](3, b=4) == (3, 4)
++    assert namespace['calls'] == [((3,), {'b': 4})]
++    assert str(inspect.signature(namespace['wrapper'])) == '(a=1, /, b=2)'
++
++
+ def test_wraps_async():
+     # from https://github.com/mahmoud/boltons/issues/194
+     import asyncio

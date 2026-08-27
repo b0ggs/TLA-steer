@@ -1,0 +1,109 @@
+{
+  "schema_version": "evidence-bounded-exploratory-analysis-v1",
+  "batch_id": "evidence-bounded-probe-v1",
+  "request_sha256": "5353b0e7dff8db94261d0bfa9ee0a4e6de5534151fef29f7335f33305ef1d637",
+  "mechanical_verification": "PASS",
+  "attempts": {
+    "nominal": 24,
+    "launched": 24,
+    "valid": 24,
+    "usage_reported": 24,
+    "infrastructure_replacements": 0,
+    "timeouts": 0
+  },
+  "arms": {
+    "previous": {
+      "path": "controls/coder/cost-time-probe-v1.md",
+      "sha256": "beecdb31396701c6712391f1cdcaea34ba49e8d2cffe77c7adc95ba77faf50ec"
+    },
+    "evidence_bounded": {
+      "path": "controls/coder/evidence-bounded-v1.md",
+      "sha256": "c0d56e29ade34c24278b976e84b29e47324c11a23399ca882239daffc9762c74"
+    }
+  },
+  "metric_definitions": {
+    "primary_token_cost": "input_tokens - cached_input_tokens + output_tokens",
+    "wall_time_seconds": "subject duration_seconds",
+    "trajectory_length": "distinct completed command_execution or file_change item IDs",
+    "percent_change": "(evidence-bounded - previous) / previous * 100; negative favors evidence-bounded"
+  },
+  "correctness": {
+    "previous": "11/12",
+    "evidence_bounded": "11/12",
+    "detail": "Each arm missed R1 on Starlette attempt 2; all other attempts resolved."
+  },
+  "all_valid_attempts": {
+    "previous": {
+      "count": 12,
+      "primary_token_cost": {"total": 959049, "median": 83703.5},
+      "wall_time_seconds": {"total": 3580.642526383017, "median": 290.1271507240017},
+      "trajectory_length": {"total": 300, "median": 18.5}
+    },
+    "evidence_bounded": {
+      "count": 12,
+      "primary_token_cost": {"total": 691682, "median": 55713.5},
+      "wall_time_seconds": {"total": 2457.832295528002, "median": 215.6339983334983},
+      "trajectory_length": {"total": 227, "median": 18.5}
+    },
+    "percent_change": {
+      "primary_token_cost": {"total": -27.878346153324806, "median": -33.439461910194915},
+      "wall_time_seconds": {"total": -31.357786279470375, "median": -25.676036249833373},
+      "trajectory_length": {"total": -24.333333333333336, "median": 0.0}
+    }
+  },
+  "resolved_attempts_only": {
+    "previous": {
+      "count": 11,
+      "primary_token_cost": {"total": 874427, "median": 82785},
+      "wall_time_seconds": {"total": 3261.2047532400175, "median": 287.79335256099876},
+      "trajectory_length": {"total": 268, "median": 18}
+    },
+    "evidence_bounded": {
+      "count": 11,
+      "primary_token_cost": {"total": 616242, "median": 55170},
+      "wall_time_seconds": {"total": 2237.354116375005, "median": 210.78981751399988},
+      "trajectory_length": {"total": 203, "median": 17}
+    },
+    "percent_change": {
+      "primary_token_cost": {"total": -29.526192580970168, "median": -33.357492299329586},
+      "wall_time_seconds": {"total": -31.39485908843391, "median": -26.756537064447212},
+      "trajectory_length": {"total": -24.253731343283583, "median": -5.555555555555555}
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "full-boltons-wraps-forwarding",
+      "correctness": {"previous": "3/3", "evidence_bounded": "3/3"},
+      "previous_medians": {"primary_token_cost": 63235, "wall_time_seconds": 299.8041204799956, "trajectory_length": 17},
+      "evidence_bounded_medians": {"primary_token_cost": 67506, "wall_time_seconds": 306.0866863330011, "trajectory_length": 29},
+      "percent_change": {"primary_token_cost": 6.754170949632324, "wall_time_seconds": 2.095556873250083, "trajectory_length": 70.58823529411765}
+    },
+    {
+      "task_id": "full-flask-automatic-options",
+      "correctness": {"previous": "3/3", "evidence_bounded": "3/3"},
+      "previous_medians": {"primary_token_cost": 44300, "wall_time_seconds": 110.03821278900432, "trajectory_length": 18},
+      "evidence_bounded_medians": {"primary_token_cost": 40107, "wall_time_seconds": 102.77402922300098, "trajectory_length": 15},
+      "percent_change": {"primary_token_cost": -9.465011286681715, "wall_time_seconds": -6.601509949940971, "trajectory_length": -16.666666666666664}
+    },
+    {
+      "task_id": "full-starlette-websocket-denial",
+      "correctness": {"previous": "2/3", "evidence_bounded": "2/3"},
+      "previous_medians": {"primary_token_cost": 118490, "wall_time_seconds": 565.7296802790079, "trajectory_length": 46},
+      "evidence_bounded_medians": {"primary_token_cost": 56257, "wall_time_seconds": 220.47817915299674, "trajectory_length": 20},
+      "percent_change": {"primary_token_cost": -52.52173179171238, "wall_time_seconds": -61.027645032825426, "trajectory_length": -56.52173913043478},
+      "resolved_only_percent_change": {"primary_token_cost": -63.64345432868195, "wall_time_seconds": -70.32213207471422, "trajectory_length": -64.8936170212766}
+    },
+    {
+      "task_id": "full-click-stream-lifecycle",
+      "correctness": {"previous": "3/3", "evidence_bounded": "3/3"},
+      "previous_medians": {"primary_token_cost": 90337, "wall_time_seconds": 211.44755401299335, "trajectory_length": 19},
+      "evidence_bounded_medians": {"primary_token_cost": 55170, "wall_time_seconds": 210.78981751399988, "trajectory_length": 16},
+      "percent_change": {"primary_token_cost": -38.928678171734724, "wall_time_seconds": -0.3110636592906885, "trajectory_length": -15.789473684210526}
+    }
+  ],
+  "descriptive_result": {
+    "tasks_with_lower_evidence_bounded_median": {"primary_token_cost": "3/4", "wall_time_seconds": "3/4", "trajectory_length": "3/4"},
+    "summary": "Evidence-bounded had equal observed correctness and materially lower pooled token and wall-time use, but the result was not uniform and the largest time effect came from Starlette. Boltons favored the previous MD on all three efficiency metrics."
+  },
+  "claim_boundary": "Exploratory comparison on four development tasks used to derive the candidate. No significance, causal, or generalization claim."
+}

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit automatic `OPTIONS=True` adds `OPTIONS` even when globally disabled. Added function- and class-view regression coverage while preserving explicit false and custom handlers.
+
+`git diff --check` passed. Tests could not run because Python/pytest/tox/uv are unavailable.

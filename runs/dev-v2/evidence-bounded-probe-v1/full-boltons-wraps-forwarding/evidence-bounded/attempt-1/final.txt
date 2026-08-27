@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [funcutils.py](/workspace/boltons/funcutils.py:735) to preserve keyword, positional-only, and `*args` forwarding. Updated focused tests for ordinary `wraps`, `expected`, and keyword-only targets.
+
+`git diff --check` passed. Runtime tests could not run because Python, pytest, and uv are unavailable.

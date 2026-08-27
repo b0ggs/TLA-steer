@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream ownership so text wrappers detach without closing shared binary buffers, and removed `StreamMixer`’s unsafe finalizer. Added focused regression tests for both cases.
+
+`git diff --check` passes. Pytest could not run because no Python or pytest executable is available in the repository environment.

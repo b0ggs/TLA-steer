@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added valid WebSocket denial event handling for `StreamingResponse` and `FileResponse`, including streamed bodies, status codes, background tasks, and HTTP-only scope guards. Added focused pytest regressions.
+
+Runtime tests could not run because `pytest`, `uv`, and `python` are unavailable. Static diff checks passed.

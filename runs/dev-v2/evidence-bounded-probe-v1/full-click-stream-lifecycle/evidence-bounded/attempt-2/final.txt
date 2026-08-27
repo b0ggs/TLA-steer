@@ -1,0 +1,8 @@
+IMPLEMENTED
+
+Updated `src/click/testing.py` to:
+
+- Detach named text wrappers on close, preserving their binary buffers.
+- Prevent `StreamMixer` finalization from closing retained output buffers.
+
+Static diff checks passed. Pytest could not run because no Python or test-runner executable is available in the repository environment.

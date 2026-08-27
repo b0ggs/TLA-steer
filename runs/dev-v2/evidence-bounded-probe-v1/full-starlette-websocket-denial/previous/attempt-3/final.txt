@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added WebSocket denial event handling for `StreamingResponse` and `FileResponse`, preserving HTTP behavior and background-task execution. Added focused regression tests.
+
+Verification: 6 focused pytest tests passed; compilation and diff checks passed.
