@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream finalization to detach named text wrappers and preserve `StreamMixer` buffers. Added shared-buffer and finalization regression tests.
+
+Verification: 28 focused tests passed; 1,283 suite tests passed. Remaining pager cases require the unavailable `less` executable.

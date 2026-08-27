@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit automatic `OPTIONS` enablement adds the method even when globally disabled, for function and class-based views. Preserved explicit disablement and custom `OPTIONS` dispatch behavior. Added focused regression coverage.
+
+`git diff --check` passes. Tests could not run because no Python runtime is installed.

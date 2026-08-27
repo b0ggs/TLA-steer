@@ -1,0 +1,117 @@
+diff --git a/starlette/responses.py b/starlette/responses.py
+index 03d82ac..11d89c7 100644
+--- a/starlette/responses.py
++++ b/starlette/responses.py
+@@ -23,7 +23,19 @@ from starlette.background import BackgroundTask
+ from starlette.concurrency import iterate_in_threadpool
+ from starlette.datastructures import URL, Headers, MutableHeaders
+ from starlette.requests import ClientDisconnect
+-from starlette.types import Receive, Scope, Send
++from starlette.types import Message, Receive, Scope, Send
++
++
++def _prepare_send(scope: Scope, send: Send) -> Send:
++    if scope["type"] != "websocket":
++        return send
++
++    async def websocket_send(message: Message) -> None:
++        if message["type"].startswith("http."):
++            message["type"] = "websocket." + message["type"]
++        await send(message)
++
++    return websocket_send
+ 
+ 
+ class Response:
+@@ -257,6 +269,7 @@ class StreamingResponse(Response):
+         await send({"type": "http.response.body", "body": b"", "more_body": False})
+ 
+     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
++        send = _prepare_send(scope, send)
+         spec_version = tuple(map(int, scope.get("asgi", {}).get("spec_version", "2.0").split(".")))
+ 
+         if spec_version >= (2, 4):
+@@ -334,8 +347,9 @@ class FileResponse(Response):
+         self.headers.setdefault("etag", etag)
+ 
+     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+-        send_header_only: bool = scope["method"].upper() == "HEAD"
+-        send_pathsend: bool = "http.response.pathsend" in scope.get("extensions", {})
++        send = _prepare_send(scope, send)
++        send_header_only: bool = scope["type"] == "http" and scope["method"].upper() == "HEAD"
++        send_pathsend: bool = scope["type"] == "http" and "http.response.pathsend" in scope.get("extensions", {})
+ 
+         if self.stat_result is None:
+             try:
+diff --git a/tests/test_websockets.py b/tests/test_websockets.py
+index e76d8f2..86cdb5a 100644
+--- a/tests/test_websockets.py
++++ b/tests/test_websockets.py
+@@ -1,5 +1,6 @@
+ import sys
+ from collections.abc import MutableMapping
++from pathlib import Path
+ from typing import Any
+ 
+ import anyio
+@@ -7,7 +8,8 @@ import pytest
+ from anyio.abc import ObjectReceiveStream, ObjectSendStream
+ 
+ from starlette import status
+-from starlette.responses import Response
++from starlette.background import BackgroundTask
++from starlette.responses import FileResponse, Response, StreamingResponse
+ from starlette.testclient import WebSocketDenialResponse
+ from starlette.types import Message, Receive, Scope, Send
+ from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
+@@ -322,6 +324,50 @@ def test_send_denial_response(test_client_factory: TestClientFactory) -> None:
+     assert exc.value.content == b"foo"
+ 
+ 
++def test_send_streaming_denial_response(test_client_factory: TestClientFactory) -> None:
++    background_calls = 0
++
++    async def app(scope: Scope, receive: Receive, send: Send) -> None:
++        nonlocal background_calls
++
++        def background() -> None:
++            nonlocal background_calls
++            background_calls += 1
++
++        websocket = WebSocket(scope, receive=receive, send=send)
++        response = StreamingResponse(
++            iter(["foo", "bar"]),
++            status_code=401,
++            background=BackgroundTask(background),
++        )
++        await websocket.send_denial_response(response)
++
++    client = test_client_factory(app)
++    with pytest.raises(WebSocketDenialResponse) as exc:
++        with client.websocket_connect("/"):
++            pass  # pragma: no cover
++    assert exc.value.status_code == 401
++    assert exc.value.content == b"foobar"
++    assert background_calls == 1
++
++
++def test_send_file_denial_response(tmp_path: Path, test_client_factory: TestClientFactory) -> None:
++    path = tmp_path / "denied.txt"
++    path.write_text("not authenticated")
++
++    async def app(scope: Scope, receive: Receive, send: Send) -> None:
++        websocket = WebSocket(scope, receive=receive, send=send)
++        response = FileResponse(path, status_code=401)
++        await websocket.send_denial_response(response)
++
++    client = test_client_factory(app)
++    with pytest.raises(WebSocketDenialResponse) as exc:
++        with client.websocket_connect("/"):
++            pass  # pragma: no cover
++    assert exc.value.status_code == 401
++    assert exc.value.content == b"not authenticated"
++
++
+ def test_send_response_multi(test_client_factory: TestClientFactory) -> None:
+     async def app(scope: Scope, receive: Receive, send: Send) -> None:
+         websocket = WebSocket(scope, receive=receive, send=send)

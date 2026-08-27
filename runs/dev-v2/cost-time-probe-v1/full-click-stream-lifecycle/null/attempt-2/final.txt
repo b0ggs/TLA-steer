@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream lifecycle handling:
+
+- Named text wrappers now detach without closing shared binary buffers.
+- `StreamMixer` no longer closes externally referenced buffers during finalization.
+- Added regressions for logging, threads, repeated invocation, and garbage collection.
+
+Verification: 31 focused tests passed; 1286 broader tests passed. Only unavailable external `less` pager cases were excluded.

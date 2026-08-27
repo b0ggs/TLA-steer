@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Resolved explicit automatic `OPTIONS` enablement for function and class-based views when the global setting is disabled. Updated focused regression tests.
+
+Validation: `git diff --check` passed. Tests could not run because no Python executable is available in the environment.

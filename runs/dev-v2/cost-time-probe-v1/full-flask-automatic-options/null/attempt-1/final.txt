@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds `OPTIONS` even when the global setting is disabled. Updated function and class-based regression tests; explicit false and custom `OPTIONS` dispatch remain intact.
+
+Static diff checks pass. Runtime tests could not run because no Python interpreter is installed.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `StreamingResponse`, `FileResponse`, and response dispatch to emit valid WebSocket denial events, preserve streaming/background behavior, and avoid HTTP-only scope assumptions. Added regression tests.
+
+Verification: 3 focused asyncio tests passed; all 205 response/WebSocket tests collected; compilation and diff checks passed. Full execution was limited by sandbox thread/socket restrictions.

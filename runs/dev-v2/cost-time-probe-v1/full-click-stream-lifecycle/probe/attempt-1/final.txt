@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Updated Click’s stream lifecycle handling:
+
+- Named text wrappers no longer close shared binary buffers.
+- Removed eager `StreamMixer` finalization that closed captured streams.
+- Added the upstream logging regression test.
+
+Verification: 27 focused tests passed; 1,282 remaining tests passed. Pager tests requiring unavailable `less` were excluded.

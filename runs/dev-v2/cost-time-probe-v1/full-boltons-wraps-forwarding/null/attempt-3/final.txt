@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` to preserve keyword forwarding, positional-only parameters, keyword-only parameters, and safe `*args` behavior. Added regression tests for ordinary, `expected`, and mixed-signature wrapping.
+
+Relevant tests: 41 passed. Full suite: 443 passed; 9 unrelated socket tests were blocked by sandbox permissions.

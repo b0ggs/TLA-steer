@@ -1,0 +1,6 @@
+2026-08-27T13:05:01.102575Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /workspace/boltons/funcutils.py:
+        body (str): String version of the code representing the body
+            of the function. Defaults to ``'pass'``.
+        args (list): List of argument names, defaults to empty list,
+            denoting no arguments.
+        varargs (str): Name of the catch-all variable for positional

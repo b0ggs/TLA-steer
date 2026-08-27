@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream lifecycle handling:
+
+- Named text wrappers now detach without closing shared binary buffers.
+- Removed destructive `StreamMixer` finalization.
+- Added regression tests for shared buffers, garbage collection, readable captured streams, and exception cleanup.
+
+Static checks passed. Pytest could not run because the container has no Python/test runtime installed.

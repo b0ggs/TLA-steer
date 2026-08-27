@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `StreamingResponse` and `FileResponse` to emit valid WebSocket denial events while preserving HTTP behavior. Added regression tests for streaming bodies/background execution and file denial responses.
+
+`git diff --check` passes. Runtime tests could not run because the environment has no Python or pytest installation.

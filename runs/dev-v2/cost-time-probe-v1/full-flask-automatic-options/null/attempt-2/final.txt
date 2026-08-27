@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit `provide_automatic_options=True` adds `OPTIONS` regardless of the global default. Added function and class-based regression coverage while preserving explicit false and self-handled `OPTIONS`.
+
+Static checks passed. Tests could not run because the container lacks Python and `uv`.

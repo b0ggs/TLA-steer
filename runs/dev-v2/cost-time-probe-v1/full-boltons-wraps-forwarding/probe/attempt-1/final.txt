@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding to preserve keyword, positional-only, keyword-only, `*args`, and `**kwargs` behavior. Added targeted regression tests, including `expected` and keyword-only wrappers.
+
+`git diff --check` passes. Tests could not run because no Python/pytest executable is installed.

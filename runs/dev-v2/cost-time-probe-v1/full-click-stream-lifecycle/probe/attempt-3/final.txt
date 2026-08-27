@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated Click’s testing streams to detach without closing owned binary buffers and removed eager `StreamMixer` finalization. Added regressions for shared buffers, post-isolation readability, and repeated logging invocations.
+
+Validation: 1,314 passed, 21 skipped, 1 xfailed. Thirty pager tests were deselected because `less` is unavailable.

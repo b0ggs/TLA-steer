@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Removed unsafe `StreamMixer` finalization and made named text wrappers detach without closing underlying buffers. Added regression tests for shared buffers and logging across repeated invocations.
+
+`git diff --check` passes. Pytest could not run because the environment has no Python executable.

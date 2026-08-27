@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Updated [responses.py](/workspace/starlette/responses.py:244) so streaming and file denial responses emit valid WebSocket HTTP events, avoid HTTP-only scope assumptions, and preserve HTTP paths/background execution.
+
+Added regression tests in [test_websockets.py](/workspace/tests/test_websockets.py:327).
+
+`git diff --check` passes. Pytest execution was unavailable because the container has no Python/pytest runtime.

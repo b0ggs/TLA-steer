@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding for defaulted, keyword-only, positional-only, and variadic parameters. Added regression coverage for ordinary, `expected`, and keyword-only wrapper cases.
+
+Validation: 50 targeted tests passed; 442 non-socket tests passed. Socket tests are restricted by the sandbox.

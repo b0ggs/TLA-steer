@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` to preserve keyword, varargs, keyword-only, positional-only, and `expected` forwarding semantics. Added regression coverage.
+
+Validation:
+
+- 42 focused tests passed
+- 442 non-socket repository tests passed
+- 9 socket tests blocked by sandbox permissions, unrelated to changes
+- Diff checks and compilation passed
