@@ -31,14 +31,36 @@ a product requirement, so unconstrained early stopping is not an acceptable
 optimization. The candidate therefore combines hard exploration/retry/output
 limits with one direct proof for every requested behavior.
 
-## Prospective claim boundary
+## Current exploratory comparison
+
+Wade selected a narrow exploratory comparison on 2026-08-27. It reuses the
+same four development tasks and compares the previous efficiency probe
+(`cost-time-probe-v1.md`) directly with this candidate. There are three planned
+attempts per arm and task: 24 nominal calls, with the existing bounded
+infrastructure-replacement allowance only.
+
+This comparison answers the immediate question: on these tasks, does the new
+MD show a materially better observed efficiency profile than the previous MD
+without losing mechanical correctness? The report will show:
+
+- checker resolution and requirement results as the quality guardrail;
+- primary token cost (uncached input plus output), wall time, and trajectory
+  length for every attempt;
+- per-task and pooled descriptive medians and percentage differences; and
+- both all-valid-attempt and mechanically-resolved-only summaries, so a cheap
+  failure cannot be presented as an efficiency win.
+
+This screen makes no significance or generalization claim. It requires no new
+tasks and authorizes no task development.
+
+## Deferred confirmatory claim boundary (not current scope)
 
 The four traced tasks are development data and cannot confirm the MD derived
 from them. They are also too few for a task-level exact significance claim:
 even four favorable task medians give two-sided sign-test `p = 0.125`.
 
-A confirmatory efficiency experiment should freeze these bytes and declare,
-before any new subject exposure:
+A future confirmatory efficiency experiment could freeze these bytes and
+declare, before any new subject exposure:
 
 - **Fixed design:** 35 fresh independent tasks, four planned attempts per arm,
   balanced arm order, and no outcome-dependent enrollment or extension.
@@ -59,9 +81,10 @@ before any new subject exposure:
   failures, and captured command-output characters. They do not substitute for
   the primary result.
 
-The candidate should first receive only offline validation. Any live batch
-requires a new request that binds its SHA-256 and Wade's matching spend
-approval. No current or historical run evidence is modified by this design.
+That design is retained only as a boundary on any future significance claim.
+It is not the current experiment and authorizes no cohort or task work. The
+current exploratory batch still requires a request binding both MD hashes and
+Wade's matching live-spend approval. No historical run evidence is modified.
 
 ## Offline validation
 
@@ -81,14 +104,8 @@ No live model call was made during authorship or validation.
 
 ## Live-test readiness
 
-The repository currently contains 23 mechanically verified task packages.
-Four are the development tasks used to derive this MD, leaving at most 19
-packages outside the derivation corpus. That cannot instantiate the fixed
-35-task confirmatory design above, even before assessing independent sourcing
-or prior exposure.
-
-Accordingly, no live request was queued. Re-running only the four development
-tasks could be a regression smoke test, but it cannot meet the statistical
-claim defined here. Building and admitting a sufficiently large independent
-cohort is a separate task-development phase and requires Wade to authorize
-that scope before a hash-bound live-spend request can be created.
+The candidate bytes are frozen and the complete four-task preflight is below
+the 60-second launch gate. The next artifact is the hash-bound request for the
+24-call exploratory comparison described above. Queueing that request performs
+offline preflight only; it makes no subject-model call. Execution remains
+blocked until Wade approves the exact resulting request hash.
