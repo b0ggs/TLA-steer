@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit `provide_automatic_options=True` adds `OPTIONS` regardless of the global default. Added function, decorator, direct keyword, class-based, explicit-false, and manual-`OPTIONS` coverage.
+
+`git diff --check` passes. Tests could not run because no Python or test runner is installed.

@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated Click stream lifecycle handling:
+
+- Named text wrappers detach during finalization, preserving shared binary buffers.
+- Removed `StreamMixer` finalization that prematurely closed captured streams.
+- Added regressions for shared wrappers and post-isolation readability.
+- `git diff --check` passed.
+
+Runtime tests could not run because both configured `uv` and `python3` are unavailable.

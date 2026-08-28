@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `StreamingResponse` and `FileResponse` to emit valid WebSocket denial events while preserving HTTP behavior. Added coverage for streaming chunks, exactly-once background execution, and file denial responses.
+
+`git diff --check` passes. Pytest could not run because neither `uv` nor `.venv/bin/pytest` is installed.

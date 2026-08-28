@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit `provide_automatic_options=True` adds automatic `OPTIONS`, even when globally disabled. Added function and class-view regression coverage while preserving explicit false and self-handled `OPTIONS`.
+
+`git diff --check` passed. Runtime tests could not run because Python/pytest are unavailable.

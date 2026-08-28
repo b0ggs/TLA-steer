@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream ownership so named wrappers only flush borrowed buffers, and `StreamMixer` no longer closes externally referenced streams during finalization. Added regressions for shared buffers and garbage collection.
+
+`git diff --check` passes. Pytest could not run because Python and uv executables are unavailable.

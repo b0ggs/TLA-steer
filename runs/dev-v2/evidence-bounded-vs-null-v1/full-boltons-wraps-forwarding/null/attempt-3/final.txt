@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding for defaulted, keyword-only, varargs, and positional-only parameters, including `expected` signatures. Added regression coverage and updated superseded assertions.
+
+Static checks passed. Runtime tests were unavailable because Python/pytest are not installed.

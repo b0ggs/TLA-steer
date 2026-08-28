@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream lifecycle handling so text wrappers detach without closing shared binary buffers, and removed destructive `StreamMixer` finalization. Added regressions for shared buffers, garbage collection, and retained logging handlers.
+
+Verification: 29 focused tests passed; broader suite passed with 1,314 tests after deselecting 30 pager tests requiring unavailable `less`.

@@ -1,0 +1,5 @@
+2026-08-28T12:30:55.794166Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /workspace/boltons/funcutils.py:
+    def _argspec_to_dict(cls, f):
+        argspec = inspect.getfullargspec(f)
+        return {attr: getattr(argspec, attr)
+                    for attr in cls._argspec_defaults}

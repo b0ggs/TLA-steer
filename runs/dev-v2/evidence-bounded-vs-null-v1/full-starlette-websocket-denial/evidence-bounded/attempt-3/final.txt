@@ -1,0 +1,7 @@
+IMPLEMENTED
+
+Added WebSocket denial event translation for `StreamingResponse` and `FileResponse`, including exact-once streaming background tasks and safe handling of non-HTTP scopes. Added focused regression tests.
+
+`git diff --check` passed. Pytest could not run because no Python/pytest executable is installed.
+
+TASK_COMPLETE

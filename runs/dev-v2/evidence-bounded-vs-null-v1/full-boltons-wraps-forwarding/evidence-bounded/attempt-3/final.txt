@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Corrected `funcutils.wraps` forwarding for defaults, keyword-only, varargs, positional-only, and `expected` signatures. Updated focused tests and pre-fix assertions.
+
+`git diff --check` passes. Runtime tests were unavailable because Python and pytest executables are not installed.

@@ -1,0 +1,66 @@
+diff --git a/src/flask/sansio/app.py b/src/flask/sansio/app.py
+index e069b90..6cc2292 100644
+--- a/src/flask/sansio/app.py
++++ b/src/flask/sansio/app.py
+@@ -637,10 +637,12 @@ class App(Scaffold):
+         if provide_automatic_options is None:
+             if "OPTIONS" not in methods and self.config["PROVIDE_AUTOMATIC_OPTIONS"]:
+                 provide_automatic_options = True
+-                required_methods.add("OPTIONS")
+             else:
+                 provide_automatic_options = False
+ 
++        if provide_automatic_options:
++            required_methods.add("OPTIONS")
++
+         # Add the required methods now.
+         methods |= required_methods
+ 
+diff --git a/tests/test_basic.py b/tests/test_basic.py
+index f8a1152..612ff5d 100644
+--- a/tests/test_basic.py
++++ b/tests/test_basic.py
+@@ -79,14 +79,16 @@ def test_provide_automatic_options_attr():
+     assert rv.status_code == 405
+ 
+     app = flask.Flask(__name__)
++    app.config["PROVIDE_AUTOMATIC_OPTIONS"] = False
+ 
+     def index2():
+         return "Hello World!"
+ 
+     index2.provide_automatic_options = True
+-    app.route("/", methods=["OPTIONS"])(index2)
++    app.route("/")(index2)
+     rv = app.test_client().open("/", method="OPTIONS")
+-    assert sorted(rv.allow) == ["OPTIONS"]
++    assert sorted(rv.allow) == ["GET", "HEAD", "OPTIONS"]
++    assert not rv.data
+ 
+ 
+ def test_provide_automatic_options_kwarg(app, client):
+diff --git a/tests/test_views.py b/tests/test_views.py
+index eab5eda..51b9f41 100644
+--- a/tests/test_views.py
++++ b/tests/test_views.py
+@@ -113,9 +113,9 @@ def test_view_provide_automatic_options_attr():
+     assert rv.status_code == 405
+ 
+     app = flask.Flask(__name__)
++    app.config["PROVIDE_AUTOMATIC_OPTIONS"] = False
+ 
+     class Index2(flask.views.View):
+-        methods = ["OPTIONS"]
+         provide_automatic_options = True
+ 
+         def dispatch_request(self):
+@@ -124,7 +124,8 @@ def test_view_provide_automatic_options_attr():
+     app.add_url_rule("/", view_func=Index2.as_view("index"))
+     c = app.test_client()
+     rv = c.open("/", method="OPTIONS")
+-    assert sorted(rv.allow) == ["OPTIONS"]
++    assert sorted(rv.allow) == ["GET", "HEAD", "OPTIONS"]
++    assert not rv.data
+ 
+     app = flask.Flask(__name__)
+ 

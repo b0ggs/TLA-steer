@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Made `_NamedTextIOWrapper` non-owning and removed unsafe `StreamMixer` finalization. Added lifecycle, GC, logging, threading, exception, and repeated-invocation tests.
+
+Verification: 1,315 passed, 21 skipped, 1 expected failure. Only 30 `less` pager cases were deselected because `less` is unavailable.

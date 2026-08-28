@@ -39,6 +39,7 @@ class CostTimeProbeAnalysisTests(unittest.TestCase):
         *,
         arm_names: tuple[str, str] = ("null", "probe"),
         reverse_arms: bool = False,
+        probe_path: str = analyzer.PROBE_ARM_PATH,
     ) -> None:
         null_name, probe_name = arm_names
         arms = [
@@ -49,7 +50,7 @@ class CostTimeProbeAnalysisTests(unittest.TestCase):
             },
             {
                 "name": probe_name,
-                "path": analyzer.PROBE_ARM_PATH,
+                "path": probe_path,
                 "sha256": "a" * 64,
             },
         ]
@@ -332,6 +333,10 @@ class CostTimeProbeAnalysisTests(unittest.TestCase):
             if row["task_id"] == "task-4" and row["arm"] == "probe"
         )
         self.assertEqual(risk["score"], "2/3")
+        summary = analyzer.render_summary(analysis)
+        self.assertIn("| `null` | 12/12 |", summary)
+        self.assertIn("| `probe` | 11/12 |", summary)
+        self.assertIn("Quality gate failed", summary)
         invalid = analysis["tasks"][3]["arms"]["probe"]["attempts"][2]
         self.assertFalse(invalid["usable"])
         self.assertIn("synthetic invalid attempt", invalid["exclusion_reason"])
@@ -357,6 +362,23 @@ class CostTimeProbeAnalysisTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(analyzer.AnalysisError, "conflicts"):
             analyzer.analyze_batch(self.batch, null_arm="workflow-guidance")
+
+    def test_explicit_probe_path_binds_a_different_candidate(self) -> None:
+        candidate_path = "controls/coder/evidence-bounded-v1.md"
+        self.request(
+            ["task-1"],
+            arm_names=("zero-byte-control", "candidate"),
+            probe_path=candidate_path,
+        )
+
+        with self.assertRaisesRegex(analyzer.AnalysisError, "must bind"):
+            analyzer.analyze_batch(self.batch)
+        analysis = analyzer.analyze_batch(self.batch, probe_path=candidate_path)
+        self.assertEqual(
+            analysis["arm_roles"],
+            {"null": "zero-byte-control", "probe": "candidate"},
+        )
+        self.assertEqual(analysis["arm_bindings"]["probe"]["path"], candidate_path)
 
     def test_equal_to_null_range_is_not_a_directional_signal(self) -> None:
         task_ids = [f"task-{index}" for index in range(1, 4)]

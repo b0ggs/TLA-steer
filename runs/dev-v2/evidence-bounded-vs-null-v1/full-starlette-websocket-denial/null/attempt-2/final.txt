@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `StreamingResponse` and `FileResponse` to emit valid WebSocket denial events while preserving HTTP behavior. Added regression tests for streaming, exact-once background execution, file delivery/status, and disabling HTTP path-send behavior.
+
+`git diff --check` passes. Pytest could not run because the environment has no Python, pytest, or uv executable.

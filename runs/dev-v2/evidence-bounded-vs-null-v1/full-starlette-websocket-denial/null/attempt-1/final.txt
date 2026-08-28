@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `StreamingResponse` and `FileResponse` to emit valid WebSocket denial events. File responses now avoid WebSocket-incompatible HTTP scope assumptions and `pathsend`. Added regression tests for streamed bodies, exactly-once background tasks, file bodies, and status codes.
+
+`git diff --check` passes. Pytest could not run because the environment contains no Python or `uv` executable.

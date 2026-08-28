@@ -1,0 +1,9 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding to:
+
+- Preserve defaulted and keyword-only arguments as keywords.
+- Keep positional-only and pre-`*args` parameters positional.
+- Support ordinary, `expected`, and keyword-only target wrapping.
+
+Updated relevant tests. `git diff --check` passes. Tests could not run because neither `python` nor `python3` exists in the environment.

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `StreamingResponse` and `FileResponse` to emit valid WebSocket denial events while preserving HTTP behavior. Added tests for streamed content, exact-once background execution, and file delivery/status.
+
+Static diff checks pass. Pytest could not run because `pytest`, `uv`, and `python` executables are unavailable.

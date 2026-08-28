@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [testing.py](/workspace/src/click/testing.py) so wrappers detach borrowed buffers and `StreamMixer` no longer closes referenced streams during finalization. Added lifecycle regressions in [test_testing.py](/workspace/tests/test_testing.py).
+
+`git diff --check` passes. Pytest could not run because Python/pytest is unavailable in the image.

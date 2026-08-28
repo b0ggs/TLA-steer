@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding to preserve keyword/default, keyword-only, positional-only, `*args`, and `expected` behavior. Added focused regression tests and updated superseded assertions.
+
+Static diff validation passed. Runtime tests were unavailable because the repository image has no Python/test runner.

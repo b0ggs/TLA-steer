@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit automatic `OPTIONS=True` adds `OPTIONS` regardless of the global default. Preserved explicit false and view-handled `OPTIONS`, with regression coverage for function and class views.
+
+`git diff --check` passes. Tests could not run because no Python/`uv` executable is available.

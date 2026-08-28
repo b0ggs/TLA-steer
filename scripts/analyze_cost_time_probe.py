@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyze the fixed null-versus-cost/time-probe batch without live calls."""
+"""Analyze a fixed null-versus-candidate cost/time batch without live calls."""
 
 from __future__ import annotations
 
@@ -105,7 +105,10 @@ def _bool_map(value: object, context: str) -> dict[str, bool]:
 
 
 def _request_shape(
-    batch_dir: Path, null_arm: str | None, probe_arm: str | None
+    batch_dir: Path,
+    null_arm: str | None,
+    probe_arm: str | None,
+    probe_path: str,
 ) -> tuple[dict[str, Any], list[str], list[str], str, str, dict[str, dict[str, str]]]:
     request = _read_json(batch_dir / "REQUEST.json")
     batch_id = request.get("batch_id")
@@ -147,12 +150,14 @@ def _request_shape(
         arms_by_path[path] = {"name": row["name"], "path": path, "sha256": digest}
     if len(set(arm_names)) != 2:
         _fail("REQUEST.json has duplicate arm names")
-    if set(arms_by_path) != {NULL_ARM_PATH, PROBE_ARM_PATH}:
+    if not probe_path or probe_path == NULL_ARM_PATH:
+        _fail("probe path must be nonempty and different from the fixed null arm path")
+    if set(arms_by_path) != {NULL_ARM_PATH, probe_path}:
         _fail(
-            "REQUEST.json arms must bind the fixed null-m2.md and cost-time-probe-v1.md paths"
+            f"REQUEST.json arms must bind the fixed null path and probe path {probe_path!r}"
         )
     derived_null = arms_by_path[NULL_ARM_PATH]["name"]
-    derived_probe = arms_by_path[PROBE_ARM_PATH]["name"]
+    derived_probe = arms_by_path[probe_path]["name"]
     if arms_by_path[NULL_ARM_PATH]["sha256"] != EMPTY_SHA256:
         _fail("REQUEST.json null arm does not have the zero-byte SHA-256")
     if null_arm is not None and null_arm != derived_null:
@@ -168,7 +173,7 @@ def _request_shape(
     if not _is_number(timeout) or float(timeout) != CENSOR_SECONDS:
         _fail("the cost/time probe request must use the fixed 900-second attempt timeout")
 
-    bindings = {"null": arms_by_path[NULL_ARM_PATH], "probe": arms_by_path[PROBE_ARM_PATH]}
+    bindings = {"null": arms_by_path[NULL_ARM_PATH], "probe": arms_by_path[probe_path]}
     return request, task_ids, arm_names, null_arm, probe_arm, bindings
 
 
@@ -574,11 +579,15 @@ def _classification(tasks: list[dict[str, Any]], metric: str) -> dict[str, Any]:
 
 
 def analyze_batch(
-    batch_dir: Path, *, null_arm: str | None = None, probe_arm: str | None = None
+    batch_dir: Path,
+    *,
+    null_arm: str | None = None,
+    probe_arm: str | None = None,
+    probe_path: str = PROBE_ARM_PATH,
 ) -> dict[str, Any]:
     batch_dir = batch_dir.resolve()
     request, task_ids, arm_names, null_arm, probe_arm, arm_bindings = _request_shape(
-        batch_dir, null_arm, probe_arm
+        batch_dir, null_arm, probe_arm, probe_path
     )
     tasks: list[dict[str, Any]] = []
     regression_risks: list[dict[str, Any]] = []
@@ -695,6 +704,36 @@ def _checker_brief(checker: dict[str, Any] | None) -> str:
     return ", ".join(fields) if fields else "no named checks"
 
 
+def _overall_arm_summary(analysis: dict[str, Any], arm_name: str) -> dict[str, Any]:
+    arms = [task["arms"][arm_name] for task in analysis["tasks"]]
+    return {
+        "resolved_attempts": sum(
+            arm["correctness"]["resolved_attempts"] for arm in arms
+        ),
+        "expected_attempts": sum(
+            arm["correctness"]["expected_attempts"] for arm in arms
+        ),
+        "primary_token_cost": {
+            "total": sum(
+                sum(arm["metrics"]["primary_token_cost"]["values"]) for arm in arms
+            ),
+            "usable_attempt_count": sum(
+                arm["metrics"]["primary_token_cost"]["usable_attempt_count"]
+                for arm in arms
+            ),
+        },
+        "wall_time_seconds": {
+            "total": sum(
+                sum(arm["metrics"]["wall_time_seconds"]["values"]) for arm in arms
+            ),
+            "usable_attempt_count": sum(
+                arm["metrics"]["wall_time_seconds"]["usable_attempt_count"]
+                for arm in arms
+            ),
+        },
+    }
+
+
 def render_summary(analysis: dict[str, Any]) -> str:
     null_arm = analysis["arm_roles"]["null"]
     probe_arm = analysis["arm_roles"]["probe"]
@@ -720,6 +759,43 @@ def render_summary(analysis: dict[str, Any]) -> str:
                 "",
             ]
         )
+
+    overall_null = _overall_arm_summary(analysis, null_arm)
+    overall_probe = _overall_arm_summary(analysis, probe_arm)
+    lines.extend(
+        [
+            "## Overall outcome",
+            "",
+            "| Arm | Resolved | Primary-token total | Wall-time total (s) |",
+            "|---|---:|---:|---:|",
+        ]
+    )
+    for arm_name, overall in ((null_arm, overall_null), (probe_arm, overall_probe)):
+        token = overall["primary_token_cost"]
+        wall = overall["wall_time_seconds"]
+        lines.append(
+            f"| `{arm_name}` | {overall['resolved_attempts']}/"
+            f"{overall['expected_attempts']} | {_format_number(token['total'])} "
+            f"(n={token['usable_attempt_count']}) | {_format_number(wall['total'])} "
+            f"(n={wall['usable_attempt_count']}) |"
+        )
+    lines.append("")
+    if overall_probe["resolved_attempts"] < overall_null["resolved_attempts"]:
+        lines.extend(
+            [
+                "**Quality gate failed:** the candidate resolved fewer attempts than null, "
+                "so lower aggregate resource totals cannot be treated as an efficiency "
+                "improvement.",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "Totals are descriptive sums over metric-usable attempts and can be confounded "
+            "by failed attempts ending earlier.",
+            "",
+        ]
+    )
 
     lines.extend(
         [
@@ -863,10 +939,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--summary-output", type=Path, default=DEFAULT_SUMMARY_OUTPUT)
     parser.add_argument("--null-arm")
     parser.add_argument("--probe-arm")
+    parser.add_argument(
+        "--probe-path",
+        default=PROBE_ARM_PATH,
+        help="request path that identifies the candidate arm",
+    )
     args = parser.parse_args(argv)
     try:
         analysis = analyze_batch(
-            args.batch_dir, null_arm=args.null_arm, probe_arm=args.probe_arm
+            args.batch_dir,
+            null_arm=args.null_arm,
+            probe_arm=args.probe_arm,
+            probe_path=args.probe_path,
         )
         write_outputs(analysis, args.analysis_output, args.summary_output)
     except AnalysisError as exc:

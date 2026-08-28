@@ -1,0 +1,89 @@
+diff --git a/src/click/testing.py b/src/click/testing.py
+index f6f60b8..8b7764a 100644
+--- a/src/click/testing.py
++++ b/src/click/testing.py
+@@ -98,19 +98,6 @@ class StreamMixer:
+         self.stdout: io.BytesIO = BytesIOCopy(copy_to=self.output)
+         self.stderr: io.BytesIO = BytesIOCopy(copy_to=self.output)
+ 
+-    def __del__(self) -> None:
+-        """
+-        Guarantee that embedded file-like objects are closed in a
+-        predictable order, protecting against races between
+-        self.output being closed and other streams being flushed on close
+-
+-        .. versionadded:: 8.2.2
+-        """
+-        self.stderr.close()
+-        self.stdout.close()
+-        self.output.close()
+-
+-
+ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def __init__(
+         self, buffer: t.BinaryIO, name: str, mode: str, **kwargs: t.Any
+@@ -127,6 +114,10 @@ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def mode(self) -> str:
+         return self._mode
+ 
++    def close(self) -> None:
++        # The binary stream is borrowed and may be shared by other wrappers.
++        self.flush()
++
+ 
+ def make_input_stream(
+     input: str | bytes | t.IO[t.Any] | None, charset: str
+diff --git a/tests/test_testing.py b/tests/test_testing.py
+index 11fe29d..fecb9b8 100644
+--- a/tests/test_testing.py
++++ b/tests/test_testing.py
+@@ -1,3 +1,4 @@
++import gc
+ import os
+ import sys
+ from io import BytesIO
+@@ -6,6 +7,7 @@ import pytest
+ 
+ import click
+ from click.exceptions import ClickException
++from click.testing import _NamedTextIOWrapper
+ from click.testing import CliRunner
+ 
+ 
+@@ -108,6 +110,36 @@ def test_runner_with_stream():
+     assert result.output == "Hello World!\nHello World!\n"
+ 
+ 
++def test_named_text_wrapper_does_not_close_shared_buffer():
++    buffer = BytesIO()
++    first = _NamedTextIOWrapper(
++        buffer, encoding="utf-8", name="<first>", mode="w"
++    )
++    second = _NamedTextIOWrapper(
++        buffer, encoding="utf-8", name="<second>", mode="w"
++    )
++
++    first.write("first")
++    first.close()
++    second.write("second")
++    second.close()
++
++    assert not buffer.closed
++    assert buffer.getvalue() == b"firstsecond"
++
++
++def test_isolation_streams_remain_readable_after_cleanup(runner):
++    with runner.isolation() as streams:
++        sys.stdout.write("stdout")
++        sys.stderr.write("stderr")
++
++    gc.collect()
++
++    assert streams[0].getvalue() == b"stdout"
++    assert streams[1].getvalue() == b"stderr"
++    assert streams[2].getvalue() == b"stdoutstderr"
++
++
+ def test_prompts():
+     @click.command()
+     @click.option("--foo", prompt=True)
