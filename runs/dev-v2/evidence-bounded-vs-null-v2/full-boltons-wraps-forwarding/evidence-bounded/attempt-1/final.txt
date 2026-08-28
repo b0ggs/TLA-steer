@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` to:
+
+- Preserve keyword forwarding for defaulted and keyword-only parameters.
+- Keep positional-only parameters positional.
+- Avoid `*args` collisions by retaining preceding regular parameters positionally.
+- Support `expected` and keyword-only wrapped targets.
+
+Verification: 7 focused tests and 1 adjacent async regression passed. Full suite was not run per repository instructions.

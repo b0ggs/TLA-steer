@@ -1,0 +1,134 @@
+diff --git a/src/click/testing.py b/src/click/testing.py
+index f6f60b8..5eb9467 100644
+--- a/src/click/testing.py
++++ b/src/click/testing.py
+@@ -98,19 +98,6 @@ class StreamMixer:
+         self.stdout: io.BytesIO = BytesIOCopy(copy_to=self.output)
+         self.stderr: io.BytesIO = BytesIOCopy(copy_to=self.output)
+ 
+-    def __del__(self) -> None:
+-        """
+-        Guarantee that embedded file-like objects are closed in a
+-        predictable order, protecting against races between
+-        self.output being closed and other streams being flushed on close
+-
+-        .. versionadded:: 8.2.2
+-        """
+-        self.stderr.close()
+-        self.stdout.close()
+-        self.output.close()
+-
+-
+ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def __init__(
+         self, buffer: t.BinaryIO, name: str, mode: str, **kwargs: t.Any
+@@ -127,6 +114,12 @@ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def mode(self) -> str:
+         return self._mode
+ 
++    def __del__(self) -> None:
++        try:
++            self.detach()
++        except Exception:
++            pass
++
+ 
+ def make_input_stream(
+     input: str | bytes | t.IO[t.Any] | None, charset: str
+diff --git a/tests/test_testing.py b/tests/test_testing.py
+index 11fe29d..3e3755b 100644
+--- a/tests/test_testing.py
++++ b/tests/test_testing.py
+@@ -1,11 +1,15 @@
++import gc
++import logging
+ import os
+ import sys
++import threading
+ from io import BytesIO
+ 
+ import pytest
+ 
+ import click
+ from click.exceptions import ClickException
++from click.testing import _NamedTextIOWrapper
+ from click.testing import CliRunner
+ 
+ 
+@@ -469,3 +473,76 @@ def test_isolation_flushes_unflushed_stderr():
+ 
+     result = runner.invoke(cli)
+     assert result.stderr == "gyarados gyarados gyarados"
++
++
++def test_isolation_stream_lifecycle():
++    runner = CliRunner()
++
++    with runner.isolation() as streams:
++        click.echo("stdout")
++        click.echo("stderr", err=True)
++
++    gc.collect()
++
++    assert streams[0].getvalue() == b"stdout\n"
++    assert streams[1].getvalue() == b"stderr\n"
++    assert streams[2].getvalue() == b"stdout\nstderr\n"
++
++
++def test_named_text_wrapper_finalization_preserves_shared_buffer():
++    buffer = BytesIO()
++    first = _NamedTextIOWrapper(buffer, "<first>", "w", encoding="utf-8")
++    second = _NamedTextIOWrapper(buffer, "<second>", "w", encoding="utf-8")
++
++    first.write("first ")
++    first.flush()
++    del first
++    gc.collect()
++
++    second.write("second")
++    second.flush()
++    assert buffer.getvalue() == b"first second"
++
++
++def test_repeated_invoke_with_threaded_logging_after_exception():
++    runner = CliRunner()
++    logger = logging.getLogger("click.testing.stream-lifecycle")
++    old_level = logger.level
++    old_propagate = logger.propagate
++    handlers = []
++
++    @click.command()
++    @click.option("--fail", is_flag=True)
++    def cli(fail):
++        handler = logging.StreamHandler()
++        handlers.append(handler)
++        logger.addHandler(handler)
++        thread = threading.Thread(target=logger.warning, args=("logged",))
++        thread.start()
++        thread.join()
++
++        if fail:
++            raise RuntimeError("failed")
++
++    logger.setLevel(logging.WARNING)
++    logger.propagate = False
++    old_streams = sys.stdin, sys.stdout, sys.stderr
++
++    try:
++        first = runner.invoke(cli, ["--fail"])
++        assert isinstance(first.exception, RuntimeError)
++        assert first.stderr == "logged\n"
++        assert (sys.stdin, sys.stdout, sys.stderr) == old_streams
++
++        gc.collect()
++        second = runner.invoke(cli)
++        assert second.exception is None
++        assert second.stderr == "logged\n"
++        assert (sys.stdin, sys.stdout, sys.stderr) == old_streams
++    finally:
++        for handler in handlers:
++            logger.removeHandler(handler)
++            handler.close()
++
++        logger.setLevel(old_level)
++        logger.propagate = old_propagate

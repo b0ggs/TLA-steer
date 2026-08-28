@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` invocation generation to:
+
+- Preserve defaulted and keyword-only arguments as keywords.
+- Keep positional-only arguments positional.
+- Avoid `*args` binding collisions.
+- Support `expected` signatures and keyword-only wrapped targets.
+
+Verification: 11 focused tests and 1 adjacent regression passed. Full suite not run per repository instructions.

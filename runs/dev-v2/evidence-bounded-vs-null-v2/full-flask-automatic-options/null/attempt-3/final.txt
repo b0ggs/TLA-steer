@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds `OPTIONS` regardless of the global default, for function and class-based views. Explicit false and view-handled `OPTIONS` behavior remain intact.
+
+Verification: 489 tests passed; the sole excluded test requires installed Flask package metadata unavailable in this environment. Relevant test modules: 143 passed.

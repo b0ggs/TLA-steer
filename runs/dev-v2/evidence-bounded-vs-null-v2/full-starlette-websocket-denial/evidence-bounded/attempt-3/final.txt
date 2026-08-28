@@ -1,0 +1,3 @@
+BLOCKED
+
+Implemented WebSocket-safe streaming/file denial responses and regression tests. However, focused pytest timed out twice; CODER.md forbids another retry. Static diff checks pass, but runtime verification remains incomplete.

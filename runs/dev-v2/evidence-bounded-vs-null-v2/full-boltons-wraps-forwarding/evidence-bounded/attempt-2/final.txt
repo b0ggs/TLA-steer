@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` to preserve keyword forwarding for defaulted and keyword-only parameters while safely handling positional-only parameters and `*args`. Added coverage for ordinary, `expected`, keyword-only, variadic, and positional-only signatures.
+
+Focused tests passed (6 cases); adjacent `tests/test_funcutils.py` regression passed (8 tests). Full suite not run.

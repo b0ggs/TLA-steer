@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [responses.py](/workspace/starlette/responses.py) so streamed and file WebSocket denials emit valid denial events, avoid HTTP-only scope assumptions, and run streaming background tasks once. Added regression coverage in [test_websockets.py](/workspace/tests/test_websockets.py).
+
+Direct ASGI checks, compilation, diff validation, and pytest smoke tests passed. Full TestClient execution was limited by sandbox socket/event-loop restrictions.

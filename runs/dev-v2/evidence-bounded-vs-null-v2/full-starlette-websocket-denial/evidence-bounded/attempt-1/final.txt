@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added WebSocket denial support for `StreamingResponse` and `FileResponse`, including correct events, complete bodies, status codes, and single background-task execution. Added focused tests.
+
+`git diff --check` passed. Pytest was attempted twice but timed out without output; no adjacent regression was run.

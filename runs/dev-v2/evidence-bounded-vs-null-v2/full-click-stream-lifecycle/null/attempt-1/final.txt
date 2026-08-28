@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [testing.py](/workspace/src/click/testing.py) so named text wrappers detach without closing shared buffers and `StreamMixer` finalization preserves captured streams. Added lifecycle regression tests.
+
+Verification: 1,314 passed, 21 skipped, 1 expected failure. Thirty `less` pager cases were deselected because `less` is unavailable. Stress checks for logging, threads, repeated invocation, and exception restoration passed.

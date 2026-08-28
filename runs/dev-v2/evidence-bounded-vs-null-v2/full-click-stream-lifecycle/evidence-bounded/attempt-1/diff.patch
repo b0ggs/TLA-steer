@@ -1,0 +1,137 @@
+diff --git a/src/click/testing.py b/src/click/testing.py
+index f6f60b8..d0bc94f 100644
+--- a/src/click/testing.py
++++ b/src/click/testing.py
+@@ -98,18 +98,6 @@ class StreamMixer:
+         self.stdout: io.BytesIO = BytesIOCopy(copy_to=self.output)
+         self.stderr: io.BytesIO = BytesIOCopy(copy_to=self.output)
+ 
+-    def __del__(self) -> None:
+-        """
+-        Guarantee that embedded file-like objects are closed in a
+-        predictable order, protecting against races between
+-        self.output being closed and other streams being flushed on close
+-
+-        .. versionadded:: 8.2.2
+-        """
+-        self.stderr.close()
+-        self.stdout.close()
+-        self.output.close()
+-
+ 
+ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def __init__(
+@@ -127,6 +115,12 @@ class _NamedTextIOWrapper(io.TextIOWrapper):
+     def mode(self) -> str:
+         return self._mode
+ 
++    def __del__(self) -> None:
++        try:
++            self.detach()
++        except Exception:
++            pass
++
+ 
+ def make_input_stream(
+     input: str | bytes | t.IO[t.Any] | None, charset: str
+diff --git a/tests/test_testing.py b/tests/test_testing.py
+index 11fe29d..b34a56f 100644
+--- a/tests/test_testing.py
++++ b/tests/test_testing.py
+@@ -1,5 +1,8 @@
++import gc
++import logging
+ import os
+ import sys
++import threading
+ from io import BytesIO
+ 
+ import pytest
+@@ -7,6 +10,7 @@ import pytest
+ import click
+ from click.exceptions import ClickException
+ from click.testing import CliRunner
++from click.testing import _NamedTextIOWrapper
+ 
+ 
+ def test_runner():
+@@ -27,6 +31,79 @@ def test_runner():
+     assert result.output == "Hello World!\n"
+ 
+ 
++def test_runner_stream_lifecycles():
++    shared = BytesIO()
++    wrapper = _NamedTextIOWrapper(
++        shared, encoding="utf-8", name="<first>", mode="w"
++    )
++    other_wrapper = _NamedTextIOWrapper(
++        shared, encoding="utf-8", name="<second>", mode="w"
++    )
++
++    del wrapper
++    gc.collect()
++
++    other_wrapper.write("shared")
++    other_wrapper.flush()
++    assert shared.getvalue() == b"shared"
++
++    runner = CliRunner()
++    with runner.isolation() as streams:
++        click.echo("stdout")
++        click.echo("stderr", err=True)
++
++    gc.collect()
++
++    assert streams[0].getvalue() == b"stdout\n"
++    assert streams[1].getvalue() == b"stderr\n"
++    assert streams[2].getvalue() == b"stdout\nstderr\n"
++
++    old_streams = sys.stdin, sys.stdout, sys.stderr
++    logger = logging.Logger("click.stream-lifecycles", level=logging.ERROR)
++    handlers = []
++    thread_errors = []
++
++    @click.command()
++    @click.option("--fail", is_flag=True)
++    def cli(fail):
++        handler = logging.StreamHandler()
++        handlers.append(handler)
++        logger.addHandler(handler)
++        logger.error("logged")
++        click.echo("stdout")
++
++        if fail:
++            raise RuntimeError("fail")
++
++    first_result = runner.invoke(cli, ["--fail"])
++    assert first_result.exit_code == 1
++    assert first_result.output == "logged\nstdout\n"
++    assert (sys.stdin, sys.stdout, sys.stderr) == old_streams
++
++    gc.collect()
++
++    def write_after_invoke():
++        try:
++            handlers[0].stream.write("thread\n")
++            handlers[0].flush()
++        except Exception as e:
++            thread_errors.append(e)
++
++    thread = threading.Thread(target=write_after_invoke)
++    thread.start()
++    thread.join()
++
++    second_result = runner.invoke(cli)
++    assert second_result.exit_code == 0
++    assert second_result.output == "logged\nstdout\n"
++    assert (sys.stdin, sys.stdout, sys.stderr) == old_streams
++    assert not thread_errors
++
++    for handler in handlers:
++        logger.removeHandler(handler)
++        handler.close()
++
++
+ def test_echo_stdin_stream():
+     @click.command()
+     def test():

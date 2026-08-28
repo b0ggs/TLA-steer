@@ -1,0 +1,211 @@
+diff --git a/boltons/funcutils.py b/boltons/funcutils.py
+index e7a8953..6d2d84d 100644
+--- a/boltons/funcutils.py
++++ b/boltons/funcutils.py
+@@ -790,14 +790,27 @@ class FunctionBuilder:
+     """, re.VERBOSE)
+ 
+     def get_invocation_str(self):
++        args = list(self.args or ())
++        positional_args = args
++        keyword_args = []
++        if not self.varargs and self.defaults:
++            default_arg_names = args[-len(self.defaults):]
++            posonlyargs = set(getattr(self, '_posonlyargs', ()))
++            positional_args = [arg for arg in args
++                               if arg not in default_arg_names
++                               or arg in posonlyargs]
++            keyword_args = [arg for arg in default_arg_names
++                            if arg not in posonlyargs]
++
+         kwonly_pairs = None
+         formatters = {}
+-        if self.kwonlyargs:
++        kwonlyargs = list(self.kwonlyargs or ())
++        if keyword_args or kwonlyargs:
+             kwonly_pairs = {arg: arg
+-                                for arg in self.kwonlyargs}
++                            for arg in keyword_args + kwonlyargs}
+             formatters['formatvalue'] = lambda value: '=' + value
+ 
+-        sig = inspect_formatargspec(self.args,
++        sig = inspect_formatargspec(positional_args,
+                                     self.varargs,
+                                     self.varkw,
+                                     [],
+@@ -837,7 +850,15 @@ class FunctionBuilder:
+         if inspect.iscoroutinefunction(func):
+             kwargs['is_async'] = True
+ 
+-        return cls(**kwargs)
++        ret = cls(**kwargs)
++        try:
++            parameters = inspect.signature(func).parameters.values()
++        except (TypeError, ValueError):
++            ret._posonlyargs = []
++        else:
++            ret._posonlyargs = [param.name for param in parameters
++                                if param.kind is param.POSITIONAL_ONLY]
++        return ret
+ 
+     def get_func(self, execdict=None, add_source=True, with_dict=True):
+         """Compile and return a new function based on the current values of
+@@ -954,6 +975,8 @@ class FunctionBuilder:
+         else:
+             d_dict.pop(arg_name, None)
+             self.defaults = tuple([d_dict[a] for a in args if a in d_dict])
++            if arg_name in getattr(self, '_posonlyargs', ()):
++                self._posonlyargs.remove(arg_name)
+         return
+ 
+     def _compile(self, src, execdict):
+diff --git a/tests/test_funcutils_fb.py b/tests/test_funcutils_fb.py
+index 98d0940..7406b4e 100644
+--- a/tests/test_funcutils_fb.py
++++ b/tests/test_funcutils_fb.py
+@@ -277,7 +277,7 @@ def test_get_arg_names():
+     [
+         (["a", "b"], None, None, None, "a, b", "(a, b)"),
+         (None, "args", "kwargs", None, "*args, **kwargs", "(*args, **kwargs)"),
+-        ("a", None, None, dict(a="a"), "a", "(a)"),
++        ("a", None, None, dict(a="a"), "a=a", "(a)"),
+     ],
+ )
+ def test_get_invocation_sig_str(
+diff --git a/tests/test_funcutils_fb_py3.py b/tests/test_funcutils_fb_py3.py
+index 85cdf12..932c527 100644
+--- a/tests/test_funcutils_fb_py3.py
++++ b/tests/test_funcutils_fb_py3.py
+@@ -215,25 +215,7 @@ def test_get_invocation_sig_str(
+ 
+ 
+ def test_wraps_inner_kwarg_only():
+-    """from https://github.com/mahmoud/boltons/issues/261
+-
+-    mh responds to the issue:
+-
+-    You'll notice that when kw-only args are involved the first time
+-    (wraps(f)(g)) it works fine. The other way around, however,
+-    wraps(g)(f) fails, because by the very nature of funcutils.wraps,
+-    you're trying to give f the same signature as g. And f's signature
+-    is not like g's. g supports positional b and f() does not.
+-
+-    If you want to make a wrapper which converts a keyword-only
+-    argument to one that can be positional or keyword only, that'll
+-    require a different approach for now.
+-
+-    A potential fix would be to pass all function arguments as
+-    keywords. But doubt that's the right direction, because, while I
+-    have yet to add positional argument only support, that'll
+-    definitely throw a wrench into things.
+-    """
++    """Defaulted arguments can be forwarded to keyword-only targets."""
+     from boltons.funcutils import wraps
+ 
+     def g(a: float, b=10):
+@@ -247,13 +229,45 @@ def test_wraps_inner_kwarg_only():
+     assert g(3) == 30
+     assert wraps(f)(g)(3) == 3  # yay, g got the f default (not so with functools.wraps!)
+ 
+-    # but this doesn't work
+-    with pytest.raises(TypeError):
+-        wraps(g)(f)(3)
++    assert wraps(g)(f)(3) == 30
+ 
+     return
+ 
+ 
++def test_wraps_preserves_keyword_forwarding():
++    calls = []
++
++    def wrapper(*args, **kwargs):
++        calls.append((args, kwargs))
++
++    def regular(a, b=2, *, c=3):
++        pass
++
++    wrapped = wraps(regular)(wrapper)
++    wrapped(1, b=4, c=5)
++    assert calls.pop() == ((1,), {'b': 4, 'c': 5})
++    wrapped(1, 4, c=5)
++    assert calls.pop() == ((1,), {'b': 4, 'c': 5})
++
++    wrapped = wraps(regular, expected=[('extra', 6)])(wrapper)
++    wrapped(1, b=4, c=5, extra=7)
++    assert calls.pop() == ((1,), {'b': 4, 'extra': 7, 'c': 5})
++
++    def variadic(a, b=2, *args, c=3, **kwargs):
++        pass
++
++    wrapped = wraps(variadic)(wrapper)
++    wrapped(1, 4, 5, c=6, extra=7)
++    assert calls.pop() == ((1, 4, 5), {'c': 6, 'extra': 7})
++
++    def positional_only(a, b=2, /, c=3):
++        pass
++
++    wrapped = wraps(positional_only)(wrapper)
++    wrapped(1, 4, c=5)
++    assert calls.pop() == ((1, 4), {'c': 5})
++
++
+ def test_wraps_async():
+     # from https://github.com/mahmoud/boltons/issues/194
+     import asyncio
+diff --git a/.pytest_cache/.gitignore b/.pytest_cache/.gitignore
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/.gitignore
+@@ -0,0 +1,2 @@
++# Created by pytest automatically.
++*
+diff --git a/.pytest_cache/CACHEDIR.TAG b/.pytest_cache/CACHEDIR.TAG
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/CACHEDIR.TAG
+@@ -0,0 +1,4 @@
++Signature: 8a477f597d28d172789f06886806bc55
++# This file is a cache directory tag created by pytest.
++# For information about cache directory tags, see:
++#	https://bford.info/cachedir/spec.html
+diff --git a/.pytest_cache/README.md b/.pytest_cache/README.md
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/README.md
+@@ -0,0 +1,8 @@
++# pytest cache directory #
++
++This directory contains data from the pytest's cache plugin,
++which provides the `--lf` and `--ff` options, as well as the `cache` fixture.
++
++**Do not** commit this to version control.
++
++See [the docs](https://docs.pytest.org/en/stable/how-to/cache.html) for more information.
+diff --git a/.pytest_cache/v/cache/lastfailed b/.pytest_cache/v/cache/lastfailed
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/v/cache/lastfailed
+@@ -0,0 +1,1 @@
++{}
+diff --git a/.pytest_cache/v/cache/nodeids b/.pytest_cache/v/cache/nodeids
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/v/cache/nodeids
+@@ -0,0 +1,17 @@
++[
++  "tests/test_funcutils.py::test_copy_function",
++  "tests/test_funcutils.py::test_format_invocation",
++  "tests/test_funcutils.py::test_noop",
++  "tests/test_funcutils.py::test_once_caches_result",
++  "tests/test_funcutils.py::test_once_executes_only_once",
++  "tests/test_funcutils.py::test_once_thread_safety",
++  "tests/test_funcutils.py::test_partials",
++  "tests/test_funcutils.py::test_total_ordering",
++  "tests/test_funcutils_fb.py::test_get_invocation_sig_str[None-args-kwargs-None-*args, **kwargs-(*args, **kwargs)]",
++  "tests/test_funcutils_fb.py::test_get_invocation_sig_str[a-None-None-defaults2-a-(a)]",
++  "tests/test_funcutils_fb.py::test_get_invocation_sig_str[a-None-None-defaults2-a=a-(a)]",
++  "tests/test_funcutils_fb.py::test_get_invocation_sig_str[args0-None-None-None-a, b-(a, b)]",
++  "tests/test_funcutils_fb_py3.py::test_get_invocation_sig_str[None-args-kwargs-None-a-kwonlydefaults0-*args, a=a, **kwargs-(*args, a, **kwargs)]",
++  "tests/test_funcutils_fb_py3.py::test_wraps_inner_kwarg_only",
++  "tests/test_funcutils_fb_py3.py::test_wraps_preserves_keyword_forwarding"
++]

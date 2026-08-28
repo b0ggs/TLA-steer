@@ -1,0 +1,29 @@
+2026-08-28T19:19:06.697691Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:19:06.758951Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:19:22.976573Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:19:29.630712Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:19:37.342499Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:20:02.014673Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:21:12.775776Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:21:17.981491Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:21:24.320566Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:22:06.169701Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:22:11.705368Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:22:47.709445Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /workspace/boltons/funcutils.py:
+    def _argspec_to_dict(cls, f):
+        argspec = inspect.getfullargspec(f)
+        return {attr: getattr(argspec, attr)
+                    for attr in cls._argspec_defaults}
+2026-08-28T19:22:52.763595Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:23:12.869216Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:23:20.076528Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:23:32.263346Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:24:13.753997Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:24:20.902300Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:24:34.595952Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:24:58.794204Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:25:16.708828Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:25:35.544811Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:25:50.220333Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:26:02.234953Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-28T19:26:14.039815Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit

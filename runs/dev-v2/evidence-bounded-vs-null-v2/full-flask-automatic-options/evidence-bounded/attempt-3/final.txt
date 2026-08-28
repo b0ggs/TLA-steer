@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so resolved `provide_automatic_options=True` always adds `OPTIONS`, including when globally disabled. Added function and class-view regression coverage; explicit false and self-handled `OPTIONS` behavior remain unchanged.
+
+`git diff --check` passed. Tests could not run because the available pytest environment could not import the local package; per `CODER.md`, no further runner retries were attempted.

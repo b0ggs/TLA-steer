@@ -1,0 +1,183 @@
+diff --git a/boltons/funcutils.py b/boltons/funcutils.py
+index e7a8953..c0ea045 100644
+--- a/boltons/funcutils.py
++++ b/boltons/funcutils.py
+@@ -726,6 +726,7 @@ class FunctionBuilder:
+                          'varargs': lambda: None,
+                          'varkw': lambda: None,
+                          'defaults': lambda: None,
++                         'posonlyargs': list,
+                          'kwonlyargs': list,
+                          'kwonlydefaults': dict,
+                          'annotations': dict}
+@@ -733,8 +734,16 @@ class FunctionBuilder:
+     @classmethod
+     def _argspec_to_dict(cls, f):
+         argspec = inspect.getfullargspec(f)
+-        return {attr: getattr(argspec, attr)
+-                    for attr in cls._argspec_defaults}
++        ret = {attr: getattr(argspec, attr)
++               for attr in cls._argspec_defaults if attr != 'posonlyargs'}
++        try:
++            sig = inspect.signature(f, follow_wrapped=False)
++        except (TypeError, ValueError):
++            ret['posonlyargs'] = []
++        else:
++            ret['posonlyargs'] = [name for name, param in sig.parameters.items()
++                                  if param.kind is param.POSITIONAL_ONLY]
++        return ret
+ 
+     _defaults = {'doc': str,
+                  'dict': dict,
+@@ -792,6 +801,12 @@ class FunctionBuilder:
+     def get_invocation_str(self):
+         kwonly_pairs = None
+         formatters = {}
++        if not self.varargs:
++            defaults = set(self.args) & self.get_defaults_dict().keys()
++            posonlyargs = set(self.posonlyargs)
++            formatters['formatarg'] = lambda arg: (
++                arg if arg in posonlyargs or arg not in defaults
++                else f'{arg}={arg}')
+         if self.kwonlyargs:
+             kwonly_pairs = {arg: arg
+                                 for arg in self.kwonlyargs}
+@@ -953,6 +968,8 @@ class FunctionBuilder:
+                 self.kwonlydefaults.pop(arg_name, None)
+         else:
+             d_dict.pop(arg_name, None)
++            if arg_name in self.posonlyargs:
++                self.posonlyargs.remove(arg_name)
+             self.defaults = tuple([d_dict[a] for a in args if a in d_dict])
+         return
+ 
+diff --git a/tests/test_funcutils_fb.py b/tests/test_funcutils_fb.py
+index 98d0940..ac9317b 100644
+--- a/tests/test_funcutils_fb.py
++++ b/tests/test_funcutils_fb.py
+@@ -235,7 +235,7 @@ def test_wraps_expected():
+     def expect_pair(func):
+         @wraps(func, expected=[('c', 5)])
+         def wrapped(*args, **kwargs):
+-            args, c = args[:2], args[-1]
++            c = kwargs.pop('c')
+             return func(*args, **kwargs) + (c,)
+         return wrapped
+ 
+@@ -244,7 +244,7 @@ def test_wraps_expected():
+     def expect_dict(func):
+         @wraps(func, expected={'c': 6})
+         def wrapped(*args, **kwargs):
+-            args, c = args[:2], args[-1]
++            c = kwargs.pop('c')
+             return func(*args, **kwargs) + (c,)
+         return wrapped
+ 
+@@ -277,7 +277,7 @@ def test_get_arg_names():
+     [
+         (["a", "b"], None, None, None, "a, b", "(a, b)"),
+         (None, "args", "kwargs", None, "*args, **kwargs", "(*args, **kwargs)"),
+-        ("a", None, None, dict(a="a"), "a", "(a)"),
++        ("a", None, None, dict(a="a"), "a=a", "(a)"),
+     ],
+ )
+ def test_get_invocation_sig_str(
+diff --git a/tests/test_funcutils_fb_py3.py b/tests/test_funcutils_fb_py3.py
+index 85cdf12..9c86d16 100644
+--- a/tests/test_funcutils_fb_py3.py
++++ b/tests/test_funcutils_fb_py3.py
+@@ -247,13 +247,41 @@ def test_wraps_inner_kwarg_only():
+     assert g(3) == 30
+     assert wraps(f)(g)(3) == 3  # yay, g got the f default (not so with functools.wraps!)
+ 
+-    # but this doesn't work
+-    with pytest.raises(TypeError):
+-        wraps(g)(f)(3)
++    # Defaulted positional-or-keyword arguments are forwarded by keyword,
++    # allowing a keyword-only wrapper to receive them correctly.
++    assert wraps(g)(f)(3) == 30
+ 
+     return
+ 
+ 
++def test_wraps_preserves_keyword_forwarding():
++    def capture(func, **wrap_kw):
++        @wraps(func, **wrap_kw)
++        def wrapper(*args, **kwargs):
++            return args, kwargs
++        return wrapper
++
++    def regular(a, b=2, *, c=3):
++        pass
++
++    assert capture(regular)(1, b=4, c=5) == ((1,), {'b': 4, 'c': 5})
++
++    expected = capture(regular, expected={'d': 6})
++    assert expected(1, d=7) == ((1,), {'b': 2, 'c': 3, 'd': 7})
++
++    def variadic(a, b=2, *args, c=3, **kwargs):
++        pass
++
++    assert capture(variadic)(1, 4, 5, c=6, d=7) == (
++        (1, 4, 5), {'c': 6, 'd': 7})
++
++    def positional_only(a, b=2, /, c=3, *, d=4):
++        pass
++
++    assert capture(positional_only)(1, 5, c=6, d=7) == (
++        (1, 5), {'c': 6, 'd': 7})
++
++
+ def test_wraps_async():
+     # from https://github.com/mahmoud/boltons/issues/194
+     import asyncio
+diff --git a/.pytest_cache/.gitignore b/.pytest_cache/.gitignore
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/.gitignore
+@@ -0,0 +1,2 @@
++# Created by pytest automatically.
++*
+diff --git a/.pytest_cache/CACHEDIR.TAG b/.pytest_cache/CACHEDIR.TAG
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/CACHEDIR.TAG
+@@ -0,0 +1,4 @@
++Signature: 8a477f597d28d172789f06886806bc55
++# This file is a cache directory tag created by pytest.
++# For information about cache directory tags, see:
++#	https://bford.info/cachedir/spec.html
+diff --git a/.pytest_cache/README.md b/.pytest_cache/README.md
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/README.md
+@@ -0,0 +1,8 @@
++# pytest cache directory #
++
++This directory contains data from the pytest's cache plugin,
++which provides the `--lf` and `--ff` options, as well as the `cache` fixture.
++
++**Do not** commit this to version control.
++
++See [the docs](https://docs.pytest.org/en/stable/how-to/cache.html) for more information.
+diff --git a/.pytest_cache/v/cache/lastfailed b/.pytest_cache/v/cache/lastfailed
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/v/cache/lastfailed
+@@ -0,0 +1,1 @@
++{}
+diff --git a/.pytest_cache/v/cache/nodeids b/.pytest_cache/v/cache/nodeids
+new file mode 100644
+--- /dev/null
++++ b/.pytest_cache/v/cache/nodeids
+@@ -0,0 +1,10 @@
++[
++  "tests/test_funcutils_fb.py::test_get_invocation_sig_str[None-args-kwargs-None-*args, **kwargs-(*args, **kwargs)]",
++  "tests/test_funcutils_fb.py::test_get_invocation_sig_str[a-None-None-defaults2-a=a-(a)]",
++  "tests/test_funcutils_fb.py::test_get_invocation_sig_str[args0-None-None-None-a, b-(a, b)]",
++  "tests/test_funcutils_fb.py::test_wraps_expected",
++  "tests/test_funcutils_fb_py3.py::test_get_invocation_sig_str[None-args-kwargs-None-a-kwonlydefaults0-*args, a=a, **kwargs-(*args, a, **kwargs)]",
++  "tests/test_funcutils_fb_py3.py::test_wraps_async",
++  "tests/test_funcutils_fb_py3.py::test_wraps_inner_kwarg_only",
++  "tests/test_funcutils_fb_py3.py::test_wraps_preserves_keyword_forwarding"
++]

@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream finalization to detach named text wrappers and removed unsafe `StreamMixer` teardown. Added regressions for shared buffers, GC, threaded logging, exceptions, repeated invocation, and stream restoration.
+
+`git diff --check` passes. Pytest could not run: the launcher cannot import the checkout, while the available Python lacks pytest.

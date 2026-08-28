@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit automatic `OPTIONS` enablement overrides the disabled global setting for function and class-based views. Added targeted assertions for automatic empty responses while preserving explicit disablement and self-handled `OPTIONS`.
+
+`git diff --check` passes. Tests could not start because the evaluation environment lacked an importable Flask/pytest combination.

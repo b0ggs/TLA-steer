@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds `OPTIONS` regardless of the global default, for function and class-based views. Regression tests were updated.
+
+Verification: 143 focused tests passed; full suite had 489 passed and one environment-related package-metadata failure. Diff checks passed.

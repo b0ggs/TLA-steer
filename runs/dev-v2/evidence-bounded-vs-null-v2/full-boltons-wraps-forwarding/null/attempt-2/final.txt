@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` forwarding for defaulted, keyword-only, positional-only, variadic, and `expected` parameters. Added regression coverage.
+
+Verification: 40 focused tests and 440 non-socket tests pass. Nine full-suite socket tests are blocked by sandbox socket permissions.

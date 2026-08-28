@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Explicit `provide_automatic_options=True` now adds `OPTIONS` even when globally disabled, for function and class-based views. Explicit false and self-handled `OPTIONS` behavior remain unchanged. Updated relevant tests.
+
+`git diff --check` passes. Focused tests could not run because the available pytest launchers had incompatible import environments.

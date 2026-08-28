@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated [testing.py](/workspace/src/click/testing.py) so named wrappers detach during finalization and `StreamMixer` no longer prematurely closes owned buffers. Added lifecycle regression coverage in [test_testing.py](/workspace/tests/test_testing.py).
+
+Focused lifecycle and adjacent prompt reproducers passed. Pytest execution was unavailable due missing Click/pytest installation in the provided runner environments.

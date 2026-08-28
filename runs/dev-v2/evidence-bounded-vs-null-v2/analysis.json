@@ -1,0 +1,2508 @@
+{
+  "arm_bindings": {
+    "null": {
+      "name": "null",
+      "path": "controls/coder/null-m2.md",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "probe": {
+      "name": "evidence-bounded",
+      "path": "controls/coder/evidence-bounded-v1.md",
+      "sha256": "c0d56e29ade34c24278b976e84b29e47324c11a23399ca882239daffc9762c74"
+    }
+  },
+  "arm_roles": {
+    "null": "null",
+    "probe": "evidence-bounded"
+  },
+  "attempt_timeout_seconds": 900.0,
+  "batch_id": "evidence-bounded-vs-null-v2",
+  "classifications": {
+    "primary_token_cost": {
+      "classification": "NO DIRECTIONAL SIGNAL",
+      "direction": null,
+      "largest_same_direction_qualifying_count": 1,
+      "measurable_task_count": 4,
+      "measurable_tasks": [
+        "full-boltons-wraps-forwarding",
+        "full-flask-automatic-options",
+        "full-starlette-websocket-denial",
+        "full-click-stream-lifecycle"
+      ],
+      "negative_qualifying_tasks": [
+        "full-flask-automatic-options"
+      ],
+      "positive_qualifying_tasks": []
+    },
+    "trajectory_length": {
+      "classification": "DIRECTIONAL SIGNAL",
+      "direction": "probe lower than null",
+      "largest_same_direction_qualifying_count": 3,
+      "measurable_task_count": 4,
+      "measurable_tasks": [
+        "full-boltons-wraps-forwarding",
+        "full-flask-automatic-options",
+        "full-starlette-websocket-denial",
+        "full-click-stream-lifecycle"
+      ],
+      "negative_qualifying_tasks": [
+        "full-flask-automatic-options",
+        "full-starlette-websocket-denial",
+        "full-click-stream-lifecycle"
+      ],
+      "positive_qualifying_tasks": []
+    },
+    "wall_time_seconds": {
+      "classification": "NO DIRECTIONAL SIGNAL",
+      "direction": null,
+      "largest_same_direction_qualifying_count": 1,
+      "measurable_task_count": 4,
+      "measurable_tasks": [
+        "full-boltons-wraps-forwarding",
+        "full-flask-automatic-options",
+        "full-starlette-websocket-denial",
+        "full-click-stream-lifecycle"
+      ],
+      "negative_qualifying_tasks": [
+        "full-starlette-websocket-denial"
+      ],
+      "positive_qualifying_tasks": []
+    }
+  },
+  "correctness_regression_risk": true,
+  "evidence_definitions": {
+    "ordered_tool_call_categories": "raw command_execution/file_change categories in first completed-item order, with each completed item ID listed once"
+  },
+  "interpretation": "Independent descriptive triage only; not a significance test or causal claim. Correctness risks do not alter numeric classifications.",
+  "metric_definitions": {
+    "primary_token_cost": "input_tokens - cached_input_tokens + output_tokens",
+    "trajectory_length": "distinct completed item IDs of type command_execution or file_change",
+    "wall_time_seconds": "subject duration_seconds; timed-out attempts censored at 900 seconds"
+  },
+  "regression_risks": [
+    {
+      "arm": "evidence-bounded",
+      "expected_attempts": 3,
+      "resolved_attempts": 1,
+      "score": "1/3",
+      "task_id": "full-click-stream-lifecycle"
+    }
+  ],
+  "schema_version": "cost-time-probe-analysis-v1",
+  "tasks": [
+    {
+      "arms": {
+        "evidence-bounded": {
+          "attempt_count": 3,
+          "attempts": [
+            {
+              "changed_paths": [
+                "boltons/funcutils.py",
+                "tests/test_funcutils_fb.py",
+                "tests/test_funcutils_fb_py3.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-1",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 1,
+              "primary_token_cost": 80601,
+              "recorded_duration_seconds": 233.7736202570086,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 264192,
+                "input_tokens": 336768,
+                "output_tokens": 8025
+              },
+              "trajectory_length": 21,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 233.7736202570086
+            },
+            {
+              "changed_paths": [
+                "boltons/funcutils.py",
+                "tests/test_funcutils_fb.py",
+                "tests/test_funcutils_fb_py3.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-2",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 2,
+              "primary_token_cost": 46220,
+              "recorded_duration_seconds": 242.22830553801032,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 380928,
+                "input_tokens": 419242,
+                "output_tokens": 7906
+              },
+              "trajectory_length": 20,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 242.22830553801032
+            },
+            {
+              "changed_paths": [
+                "boltons/funcutils.py",
+                "tests/test_funcutils_fb.py",
+                "tests/test_funcutils_fb_py3.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-3",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "file_change",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 3,
+              "primary_token_cost": 88750,
+              "recorded_duration_seconds": 211.6873003260116,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 429056,
+                "input_tokens": 509169,
+                "output_tokens": 8637
+              },
+              "trajectory_length": 20,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 211.6873003260116
+            }
+          ],
+          "correctness": {
+            "expected_attempts": 3,
+            "regression_risk": false,
+            "resolved_attempts": 3,
+            "score": "3/3"
+          },
+          "finalized_attempt_count": 3,
+          "metrics": {
+            "primary_token_cost": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 80601,
+              "usable_attempt_count": 3,
+              "values": [
+                80601,
+                46220,
+                88750
+              ]
+            },
+            "trajectory_length": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 20,
+              "usable_attempt_count": 3,
+              "values": [
+                21,
+                20,
+                20
+              ]
+            },
+            "wall_time_seconds": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "censored_attempt_count": 0,
+              "excluded_attempt_count": 0,
+              "median": 233.7736202570086,
+              "usable_attempt_count": 3,
+              "values": [
+                233.7736202570086,
+                242.22830553801032,
+                211.6873003260116
+              ]
+            }
+          },
+          "usage_completeness": {
+            "complete": true,
+            "finalized_attempts": 3,
+            "usage_reported_attempts": 3
+          },
+          "valid_attempt_count": 3
+        },
+        "null": {
+          "attempt_count": 3,
+          "attempts": [
+            {
+              "changed_paths": [
+                "boltons/funcutils.py",
+                "tests/test_funcutils_fb.py",
+                "tests/test_funcutils_fb_py3.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-1",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 1,
+              "primary_token_cost": 68250,
+              "recorded_duration_seconds": 449.2822598479979,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 520448,
+                "input_tokens": 577034,
+                "output_tokens": 11664
+              },
+              "trajectory_length": 17,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 449.2822598479979
+            },
+            {
+              "changed_paths": [
+                "boltons/funcutils.py",
+                "tests/test_funcutils_fb.py",
+                "tests/test_funcutils_fb_py3.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-2",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 2,
+              "primary_token_cost": 96096,
+              "recorded_duration_seconds": 334.375729537991,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 945920,
+                "input_tokens": 1030098,
+                "output_tokens": 11918
+              },
+              "trajectory_length": 24,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 334.375729537991
+            },
+            {
+              "changed_paths": [
+                "boltons/funcutils.py",
+                "tests/test_funcutils_fb.py",
+                "tests/test_funcutils_fb_py3.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-3",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution"
+              ],
+              "ordinal": 3,
+              "primary_token_cost": 71843,
+              "recorded_duration_seconds": 305.65576372000214,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 569600,
+                "input_tokens": 629120,
+                "output_tokens": 12323
+              },
+              "trajectory_length": 18,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 305.65576372000214
+            }
+          ],
+          "correctness": {
+            "expected_attempts": 3,
+            "regression_risk": false,
+            "resolved_attempts": 3,
+            "score": "3/3"
+          },
+          "finalized_attempt_count": 3,
+          "metrics": {
+            "primary_token_cost": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 71843,
+              "usable_attempt_count": 3,
+              "values": [
+                68250,
+                96096,
+                71843
+              ]
+            },
+            "trajectory_length": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 18,
+              "usable_attempt_count": 3,
+              "values": [
+                17,
+                24,
+                18
+              ]
+            },
+            "wall_time_seconds": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "censored_attempt_count": 0,
+              "excluded_attempt_count": 0,
+              "median": 334.375729537991,
+              "usable_attempt_count": 3,
+              "values": [
+                449.2822598479979,
+                334.375729537991,
+                305.65576372000214
+              ]
+            }
+          },
+          "usage_completeness": {
+            "complete": true,
+            "finalized_attempts": 3,
+            "usage_reported_attempts": 3
+          },
+          "valid_attempt_count": 3
+        }
+      },
+      "comparisons": {
+        "primary_token_cost": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 27846,
+          "null_median": 71843,
+          "null_usable_attempt_count": 3,
+          "probe_median": 80601,
+          "probe_minus_null_median": 8758,
+          "probe_usable_attempt_count": 3,
+          "qualifies": false,
+          "sign": "positive"
+        },
+        "trajectory_length": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 7,
+          "null_median": 18,
+          "null_usable_attempt_count": 3,
+          "probe_median": 20,
+          "probe_minus_null_median": 2,
+          "probe_usable_attempt_count": 3,
+          "qualifies": false,
+          "sign": "positive"
+        },
+        "wall_time_seconds": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 143.62649612799578,
+          "null_median": 334.375729537991,
+          "null_usable_attempt_count": 3,
+          "probe_median": 233.7736202570086,
+          "probe_minus_null_median": -100.6021092809824,
+          "probe_usable_attempt_count": 3,
+          "qualifies": false,
+          "sign": "negative"
+        }
+      },
+      "task_id": "full-boltons-wraps-forwarding"
+    },
+    {
+      "arms": {
+        "evidence-bounded": {
+          "attempt_count": 3,
+          "attempts": [
+            {
+              "changed_paths": [
+                "src/flask/sansio/app.py",
+                "tests/test_basic.py",
+                "tests/test_views.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-1",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 1,
+              "primary_token_cost": 35772,
+              "recorded_duration_seconds": 109.88837108800362,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 165120,
+                "input_tokens": 196283,
+                "output_tokens": 4609
+              },
+              "trajectory_length": 10,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 109.88837108800362
+            },
+            {
+              "changed_paths": [
+                "src/flask/sansio/app.py",
+                "tests/test_basic.py",
+                "tests/test_views.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-2",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 2,
+              "primary_token_cost": 30015,
+              "recorded_duration_seconds": 115.31738509699062,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 132608,
+                "input_tokens": 157889,
+                "output_tokens": 4734
+              },
+              "trajectory_length": 10,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 115.31738509699062
+            },
+            {
+              "changed_paths": [
+                "src/flask/sansio/app.py",
+                "tests/test_basic.py",
+                "tests/test_views.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-3",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 3,
+              "primary_token_cost": 51150,
+              "recorded_duration_seconds": 116.2003485969908,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 131584,
+                "input_tokens": 178250,
+                "output_tokens": 4484
+              },
+              "trajectory_length": 11,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 116.2003485969908
+            }
+          ],
+          "correctness": {
+            "expected_attempts": 3,
+            "regression_risk": false,
+            "resolved_attempts": 3,
+            "score": "3/3"
+          },
+          "finalized_attempt_count": 3,
+          "metrics": {
+            "primary_token_cost": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 35772,
+              "usable_attempt_count": 3,
+              "values": [
+                35772,
+                30015,
+                51150
+              ]
+            },
+            "trajectory_length": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 10,
+              "usable_attempt_count": 3,
+              "values": [
+                10,
+                10,
+                11
+              ]
+            },
+            "wall_time_seconds": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "censored_attempt_count": 0,
+              "excluded_attempt_count": 0,
+              "median": 115.31738509699062,
+              "usable_attempt_count": 3,
+              "values": [
+                109.88837108800362,
+                115.31738509699062,
+                116.2003485969908
+              ]
+            }
+          },
+          "usage_completeness": {
+            "complete": true,
+            "finalized_attempts": 3,
+            "usage_reported_attempts": 3
+          },
+          "valid_attempt_count": 3
+        },
+        "null": {
+          "attempt_count": 3,
+          "attempts": [
+            {
+              "changed_paths": [
+                "src/flask/sansio/app.py",
+                "tests/test_basic.py",
+                "tests/test_views.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-1",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 1,
+              "primary_token_cost": 64119,
+              "recorded_duration_seconds": 127.77708438500122,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 188416,
+                "input_tokens": 247889,
+                "output_tokens": 4646
+              },
+              "trajectory_length": 19,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 127.77708438500122
+            },
+            {
+              "changed_paths": [
+                "src/flask/sansio/app.py",
+                "tests/test_basic.py",
+                "tests/test_views.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-2",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 2,
+              "primary_token_cost": 56260,
+              "recorded_duration_seconds": 184.1844318240037,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 452864,
+                "input_tokens": 502242,
+                "output_tokens": 6882
+              },
+              "trajectory_length": 24,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 184.1844318240037
+            },
+            {
+              "changed_paths": [
+                "src/flask/sansio/app.py",
+                "tests/test_basic.py",
+                "tests/test_views.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-3",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 3,
+              "primary_token_cost": 44037,
+              "recorded_duration_seconds": 170.38338389599812,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 375296,
+                "input_tokens": 413931,
+                "output_tokens": 5402
+              },
+              "trajectory_length": 21,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 170.38338389599812
+            }
+          ],
+          "correctness": {
+            "expected_attempts": 3,
+            "regression_risk": false,
+            "resolved_attempts": 3,
+            "score": "3/3"
+          },
+          "finalized_attempt_count": 3,
+          "metrics": {
+            "primary_token_cost": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 56260,
+              "usable_attempt_count": 3,
+              "values": [
+                64119,
+                56260,
+                44037
+              ]
+            },
+            "trajectory_length": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 21,
+              "usable_attempt_count": 3,
+              "values": [
+                19,
+                24,
+                21
+              ]
+            },
+            "wall_time_seconds": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "censored_attempt_count": 0,
+              "excluded_attempt_count": 0,
+              "median": 170.38338389599812,
+              "usable_attempt_count": 3,
+              "values": [
+                127.77708438500122,
+                184.1844318240037,
+                170.38338389599812
+              ]
+            }
+          },
+          "usage_completeness": {
+            "complete": true,
+            "finalized_attempts": 3,
+            "usage_reported_attempts": 3
+          },
+          "valid_attempt_count": 3
+        }
+      },
+      "comparisons": {
+        "primary_token_cost": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 20082,
+          "null_median": 56260,
+          "null_usable_attempt_count": 3,
+          "probe_median": 35772,
+          "probe_minus_null_median": -20488,
+          "probe_usable_attempt_count": 3,
+          "qualifies": true,
+          "sign": "negative"
+        },
+        "trajectory_length": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 5,
+          "null_median": 21,
+          "null_usable_attempt_count": 3,
+          "probe_median": 10,
+          "probe_minus_null_median": -11,
+          "probe_usable_attempt_count": 3,
+          "qualifies": true,
+          "sign": "negative"
+        },
+        "wall_time_seconds": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 56.40734743900248,
+          "null_median": 170.38338389599812,
+          "null_usable_attempt_count": 3,
+          "probe_median": 115.31738509699062,
+          "probe_minus_null_median": -55.0659987990075,
+          "probe_usable_attempt_count": 3,
+          "qualifies": false,
+          "sign": "negative"
+        }
+      },
+      "task_id": "full-flask-automatic-options"
+    },
+    {
+      "arms": {
+        "evidence-bounded": {
+          "attempt_count": 3,
+          "attempts": [
+            {
+              "changed_paths": [
+                "starlette/responses.py",
+                "tests/test_websockets.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-1",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 1,
+              "primary_token_cost": 74015,
+              "recorded_duration_seconds": 305.1040034780017,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 379648,
+                "input_tokens": 444435,
+                "output_tokens": 9228
+              },
+              "trajectory_length": 15,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 305.1040034780017
+            },
+            {
+              "changed_paths": [
+                "starlette/responses.py",
+                "tests/test_websockets.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-2",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 2,
+              "primary_token_cost": 55287,
+              "recorded_duration_seconds": 303.43542553701263,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 505600,
+                "input_tokens": 550828,
+                "output_tokens": 10059
+              },
+              "trajectory_length": 22,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 303.43542553701263
+            },
+            {
+              "changed_paths": [
+                "starlette/responses.py",
+                "tests/test_websockets.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-3",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 3,
+              "primary_token_cost": 73313,
+              "recorded_duration_seconds": 352.58809153799666,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 574464,
+                "input_tokens": 635270,
+                "output_tokens": 12507
+              },
+              "trajectory_length": 35,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 352.58809153799666
+            }
+          ],
+          "correctness": {
+            "expected_attempts": 3,
+            "regression_risk": false,
+            "resolved_attempts": 3,
+            "score": "3/3"
+          },
+          "finalized_attempt_count": 3,
+          "metrics": {
+            "primary_token_cost": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 73313,
+              "usable_attempt_count": 3,
+              "values": [
+                74015,
+                55287,
+                73313
+              ]
+            },
+            "trajectory_length": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 22,
+              "usable_attempt_count": 3,
+              "values": [
+                15,
+                22,
+                35
+              ]
+            },
+            "wall_time_seconds": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "censored_attempt_count": 0,
+              "excluded_attempt_count": 0,
+              "median": 305.1040034780017,
+              "usable_attempt_count": 3,
+              "values": [
+                305.1040034780017,
+                303.43542553701263,
+                352.58809153799666
+              ]
+            }
+          },
+          "usage_completeness": {
+            "complete": true,
+            "finalized_attempts": 3,
+            "usage_reported_attempts": 3
+          },
+          "valid_attempt_count": 3
+        },
+        "null": {
+          "attempt_count": 3,
+          "attempts": [
+            {
+              "changed_paths": [
+                "starlette/responses.py",
+                "tests/test_websockets.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-1",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 1,
+              "primary_token_cost": 194166,
+              "recorded_duration_seconds": 655.1160096300009,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 2903040,
+                "input_tokens": 3077834,
+                "output_tokens": 19372
+              },
+              "trajectory_length": 34,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 655.1160096300009
+            },
+            {
+              "changed_paths": [
+                "starlette/responses.py",
+                "tests/test_websockets.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-2",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 2,
+              "primary_token_cost": 111354,
+              "recorded_duration_seconds": 531.9962500330003,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 2234368,
+                "input_tokens": 2327468,
+                "output_tokens": 18254
+              },
+              "trajectory_length": 49,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 531.9962500330003
+            },
+            {
+              "changed_paths": [
+                "starlette/responses.py",
+                "tests/test_websockets.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-3",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 3,
+              "primary_token_cost": 100854,
+              "recorded_duration_seconds": 606.6713311889907,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 1568256,
+                "input_tokens": 1653593,
+                "output_tokens": 15517
+              },
+              "trajectory_length": 38,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 606.6713311889907
+            }
+          ],
+          "correctness": {
+            "expected_attempts": 3,
+            "regression_risk": false,
+            "resolved_attempts": 3,
+            "score": "3/3"
+          },
+          "finalized_attempt_count": 3,
+          "metrics": {
+            "primary_token_cost": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 111354,
+              "usable_attempt_count": 3,
+              "values": [
+                194166,
+                111354,
+                100854
+              ]
+            },
+            "trajectory_length": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 38,
+              "usable_attempt_count": 3,
+              "values": [
+                34,
+                49,
+                38
+              ]
+            },
+            "wall_time_seconds": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "censored_attempt_count": 0,
+              "excluded_attempt_count": 0,
+              "median": 606.6713311889907,
+              "usable_attempt_count": 3,
+              "values": [
+                655.1160096300009,
+                531.9962500330003,
+                606.6713311889907
+              ]
+            }
+          },
+          "usage_completeness": {
+            "complete": true,
+            "finalized_attempts": 3,
+            "usage_reported_attempts": 3
+          },
+          "valid_attempt_count": 3
+        }
+      },
+      "comparisons": {
+        "primary_token_cost": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 93312,
+          "null_median": 111354,
+          "null_usable_attempt_count": 3,
+          "probe_median": 73313,
+          "probe_minus_null_median": -38041,
+          "probe_usable_attempt_count": 3,
+          "qualifies": false,
+          "sign": "negative"
+        },
+        "trajectory_length": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 15,
+          "null_median": 38,
+          "null_usable_attempt_count": 3,
+          "probe_median": 22,
+          "probe_minus_null_median": -16,
+          "probe_usable_attempt_count": 3,
+          "qualifies": true,
+          "sign": "negative"
+        },
+        "wall_time_seconds": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 123.11975959700067,
+          "null_median": 606.6713311889907,
+          "null_usable_attempt_count": 3,
+          "probe_median": 305.1040034780017,
+          "probe_minus_null_median": -301.56732771098905,
+          "probe_usable_attempt_count": 3,
+          "qualifies": true,
+          "sign": "negative"
+        }
+      },
+      "task_id": "full-starlette-websocket-denial"
+    },
+    {
+      "arms": {
+        "evidence-bounded": {
+          "attempt_count": 3,
+          "attempts": [
+            {
+              "changed_paths": [
+                "src/click/testing.py",
+                "tests/test_testing.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": false,
+                  "R2": true
+                },
+                "resolved": false
+              },
+              "directory": "attempt-1",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 1,
+              "primary_token_cost": 56540,
+              "recorded_duration_seconds": 260.81649372001993,
+              "resolved": false,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 400640,
+                "input_tokens": 445164,
+                "output_tokens": 12016
+              },
+              "trajectory_length": 23,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 260.81649372001993
+            },
+            {
+              "changed_paths": [
+                "src/click/testing.py",
+                "tests/test_testing.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": false,
+                  "R2": true
+                },
+                "resolved": false
+              },
+              "directory": "attempt-2",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 2,
+              "primary_token_cost": 55897,
+              "recorded_duration_seconds": 259.08675898899673,
+              "resolved": false,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 216832,
+                "input_tokens": 261586,
+                "output_tokens": 11143
+              },
+              "trajectory_length": 13,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 259.08675898899673
+            },
+            {
+              "changed_paths": [
+                "src/click/testing.py",
+                "tests/test_testing.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-3",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 3,
+              "primary_token_cost": 62357,
+              "recorded_duration_seconds": 277.2813535119931,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 387584,
+                "input_tokens": 437368,
+                "output_tokens": 12573
+              },
+              "trajectory_length": 23,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 277.2813535119931
+            }
+          ],
+          "correctness": {
+            "expected_attempts": 3,
+            "regression_risk": true,
+            "resolved_attempts": 1,
+            "score": "1/3"
+          },
+          "finalized_attempt_count": 3,
+          "metrics": {
+            "primary_token_cost": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 56540,
+              "usable_attempt_count": 3,
+              "values": [
+                56540,
+                55897,
+                62357
+              ]
+            },
+            "trajectory_length": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 23,
+              "usable_attempt_count": 3,
+              "values": [
+                23,
+                13,
+                23
+              ]
+            },
+            "wall_time_seconds": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "censored_attempt_count": 0,
+              "excluded_attempt_count": 0,
+              "median": 260.81649372001993,
+              "usable_attempt_count": 3,
+              "values": [
+                260.81649372001993,
+                259.08675898899673,
+                277.2813535119931
+              ]
+            }
+          },
+          "usage_completeness": {
+            "complete": true,
+            "finalized_attempts": 3,
+            "usage_reported_attempts": 3
+          },
+          "valid_attempt_count": 3
+        },
+        "null": {
+          "attempt_count": 3,
+          "attempts": [
+            {
+              "changed_paths": [
+                "src/click/testing.py",
+                "tests/test_testing.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-1",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 1,
+              "primary_token_cost": 116909,
+              "recorded_duration_seconds": 341.83106310199946,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 958208,
+                "input_tokens": 1063467,
+                "output_tokens": 11650
+              },
+              "trajectory_length": 30,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 341.83106310199946
+            },
+            {
+              "changed_paths": [
+                "src/click/testing.py",
+                "tests/test_testing.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-2",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 2,
+              "primary_token_cost": 77955,
+              "recorded_duration_seconds": 265.36576424501254,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 450048,
+                "input_tokens": 517737,
+                "output_tokens": 10266
+              },
+              "trajectory_length": 34,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 265.36576424501254
+            },
+            {
+              "changed_paths": [
+                "src/click/testing.py",
+                "tests/test_testing.py"
+              ],
+              "checker": {
+                "regressions": {
+                  "G1": true
+                },
+                "requirements": {
+                  "R1": true,
+                  "R2": true
+                },
+                "resolved": true
+              },
+              "directory": "attempt-3",
+              "exclusion_reason": null,
+              "finalized": true,
+              "metric_exclusion_reasons": {
+                "primary_token_cost": null,
+                "trajectory_length": null,
+                "wall_time_seconds": null
+              },
+              "metric_usable": {
+                "primary_token_cost": true,
+                "trajectory_length": true,
+                "wall_time_seconds": true
+              },
+              "ordered_tool_call_categories": [
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "file_change",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution",
+                "command_execution"
+              ],
+              "ordinal": 3,
+              "primary_token_cost": 86371,
+              "recorded_duration_seconds": 276.7969455529819,
+              "resolved": true,
+              "status": "finalized",
+              "status_evidence": null,
+              "token_totals": {
+                "cached_input_tokens": 443904,
+                "input_tokens": 519156,
+                "output_tokens": 11119
+              },
+              "trajectory_length": 31,
+              "usable": true,
+              "usage_reported": true,
+              "valid": true,
+              "wall_time_censored": false,
+              "wall_time_seconds": 276.7969455529819
+            }
+          ],
+          "correctness": {
+            "expected_attempts": 3,
+            "regression_risk": false,
+            "resolved_attempts": 3,
+            "score": "3/3"
+          },
+          "finalized_attempt_count": 3,
+          "metrics": {
+            "primary_token_cost": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 86371,
+              "usable_attempt_count": 3,
+              "values": [
+                116909,
+                77955,
+                86371
+              ]
+            },
+            "trajectory_length": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "excluded_attempt_count": 0,
+              "median": 31,
+              "usable_attempt_count": 3,
+              "values": [
+                30,
+                34,
+                31
+              ]
+            },
+            "wall_time_seconds": {
+              "attempt_ordinals": [
+                1,
+                2,
+                3
+              ],
+              "censored_attempt_count": 0,
+              "excluded_attempt_count": 0,
+              "median": 276.7969455529819,
+              "usable_attempt_count": 3,
+              "values": [
+                341.83106310199946,
+                265.36576424501254,
+                276.7969455529819
+              ]
+            }
+          },
+          "usage_completeness": {
+            "complete": true,
+            "finalized_attempts": 3,
+            "usage_reported_attempts": 3
+          },
+          "valid_attempt_count": 3
+        }
+      },
+      "comparisons": {
+        "primary_token_cost": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 38954,
+          "null_median": 86371,
+          "null_usable_attempt_count": 3,
+          "probe_median": 56540,
+          "probe_minus_null_median": -29831,
+          "probe_usable_attempt_count": 3,
+          "qualifies": false,
+          "sign": "negative"
+        },
+        "trajectory_length": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 4,
+          "null_median": 31,
+          "null_usable_attempt_count": 3,
+          "probe_median": 23,
+          "probe_minus_null_median": -8,
+          "probe_usable_attempt_count": 3,
+          "qualifies": true,
+          "sign": "negative"
+        },
+        "wall_time_seconds": {
+          "has_two_usable_attempts_per_arm": true,
+          "null_arm_range": 76.46529885698692,
+          "null_median": 276.7969455529819,
+          "null_usable_attempt_count": 3,
+          "probe_median": 260.81649372001993,
+          "probe_minus_null_median": -15.98045183296199,
+          "probe_usable_attempt_count": 3,
+          "qualifies": false,
+          "sign": "negative"
+        }
+      },
+      "task_id": "full-click-stream-lifecycle"
+    }
+  ]
+}

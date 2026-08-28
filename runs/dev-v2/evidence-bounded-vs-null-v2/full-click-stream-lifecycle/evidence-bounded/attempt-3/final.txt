@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated Click stream ownership so named wrappers detach without closing shared buffers, and `StreamMixer` no longer closes externally retained outputs. Added lifecycle regressions covering GC, repeated invocation, logging, threads, and exceptions.
+
+Direct reproducer and adjacent input-echo regression passed. Pytest could not run because it is unavailable in the repository environment.

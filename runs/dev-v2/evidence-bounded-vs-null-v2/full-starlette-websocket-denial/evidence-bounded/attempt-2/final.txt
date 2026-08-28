@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Added valid WebSocket denial events for streaming and file responses, including exactly-once streaming background tasks and WebSocket-safe file handling. Added focused tests.
+
+`git diff --check` passed. Focused pytest runs timed out without output; `ruff` was unavailable.

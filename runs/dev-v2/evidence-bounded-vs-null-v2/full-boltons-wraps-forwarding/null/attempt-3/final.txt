@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Corrected `funcutils.wraps` forwarding for defaulted, keyword-only, positional-only, variadic, and `expected` parameters. Positional-only signatures are preserved.
+
+Focused tests: 39 passed. Broader suite: 441 passed; 9 unrelated socket tests were blocked by sandbox restrictions.

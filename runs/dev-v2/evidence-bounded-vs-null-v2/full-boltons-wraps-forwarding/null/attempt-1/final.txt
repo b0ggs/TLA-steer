@@ -1,0 +1,10 @@
+IMPLEMENTED
+
+Updated `funcutils.wraps` to preserve keyword forwarding while correctly handling defaults, keyword-only parameters, positional-only parameters, `*args`, `**kwargs`, injection, and `expected`.
+
+Verification:
+
+- 39 focused tests passed.
+- 439 sandbox-compatible tests passed.
+- 9 socket tests were blocked by sandbox network restrictions.
+- Diff whitespace checks passed.

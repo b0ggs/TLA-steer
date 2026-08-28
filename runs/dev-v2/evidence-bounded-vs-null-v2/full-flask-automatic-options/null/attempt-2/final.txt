@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated route registration so explicit automatic `OPTIONS` enablement overrides the disabled global default for function and class-based views. Preserved explicit disablement and custom `OPTIONS` dispatch.
+
+Validation: full suite passes, `490 passed`. Ruff was unavailable in the environment.

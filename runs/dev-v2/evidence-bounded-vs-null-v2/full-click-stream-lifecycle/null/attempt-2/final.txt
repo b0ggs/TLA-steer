@@ -1,0 +1,5 @@
+IMPLEMENTED
+
+Updated `CliRunner` stream lifecycles to flush and detach text wrappers without closing shared binary buffers, and removed destructive `StreamMixer` finalization. Added regression tests for shared buffers and post-GC output readability.
+
+Verification: 1,313 passed, 21 skipped, 1 xfailed. The 30 excluded pager tests require unavailable `less`; all 30 `cat` variants passed.
