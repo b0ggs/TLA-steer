@@ -31,6 +31,59 @@ SAFE_ENVIRONMENT_NAMES = (
 )
 IMPOSSIBLE_SESSION_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
+# The subject is being evaluated as a local coding agent.  Account-level apps and
+# other remote or delegated capabilities are outside that contract.  Keep this
+# list explicit so a newly introduced capability cannot silently become part of
+# an experiment merely because it is enabled in an evaluator's account.
+SUBJECT_CAPABILITY_CONFIGS = (
+    'web_search="disabled"',
+    "agents.enabled=false",
+    "apps._default.enabled=false",
+    "apps._default.destructive_enabled=false",
+    "apps._default.open_world_enabled=false",
+    "features.apps=false",
+    "features.auth_elicitation=false",
+    "features.browser_use=false",
+    "features.browser_use_external=false",
+    "features.browser_use_full_cdp_access=false",
+    "features.code_mode=false",
+    "features.code_mode_host=false",
+    "features.computer_use=false",
+    "features.enable_mcp_apps=false",
+    "features.goals=false",
+    "features.guardian_approval=false",
+    "features.hooks=false",
+    "features.image_generation=false",
+    "features.in_app_browser=false",
+    "features.in_app_updates=false",
+    "features.memories=false",
+    "features.multi_agent=false",
+    "features.multi_agent_v2=false",
+    "features.plugin_sharing=false",
+    "features.plugins=false",
+    "features.remote_plugin=false",
+    "features.request_permissions_tool=false",
+    "features.skill_mcp_dependency_install=false",
+    "features.skill_search=false",
+    "features.tool_call_mcp_elicitation=false",
+    "features.tool_suggest=false",
+    "features.workspace_dependencies=false",
+    "skills.bundled={enabled=false}",
+    "skills.include_instructions=false",
+    "skills.config=[]",
+)
+SUBJECT_PERMISSION_CONFIGS = (
+    'default_permissions="mdseval"',
+    'permissions.mdseval.description="MD Eval local coding subject"',
+    'permissions.mdseval.extends=":workspace"',
+    'permissions.mdseval.filesystem={"/agent-home/auth.json"="deny","/agent-home/sessions"="deny","/evaluator-output"="deny","/proc"="deny"}',
+)
+
+
+def config_arguments(values: tuple[str, ...]) -> list[str]:
+    """Render frozen Codex configuration overrides in command-line order."""
+    return [item for value in values for item in ("--config", value)]
+
 
 def isolated_environment(codex_home: str) -> dict[str, str]:
     environment = safe_process_environment()
@@ -54,8 +107,6 @@ def build_codex_command(
         "--strict-config",
         "--ephemeral",
         "--json",
-        "--sandbox",
-        config.sandbox,
         "--ignore-user-config",
         "--ignore-rules",
         "--model",
@@ -66,8 +117,8 @@ def build_codex_command(
         'project_doc_fallback_filenames=["CODER.md"]',
         "--config",
         "project_doc_max_bytes=65536",
-        "--config",
-        "agents.enabled=false",
+        *config_arguments(SUBJECT_CAPABILITY_CONFIGS),
+        *config_arguments(SUBJECT_PERMISSION_CONFIGS),
         "--config",
         "sandbox_workspace_write.network_access=false",
         "--cd",

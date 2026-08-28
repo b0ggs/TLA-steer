@@ -2,6 +2,7 @@
 """Queue, run, and verify one- or two-arm task-layout development batches."""
 import argparse
 import json
+import math
 import os
 import re
 import secrets
@@ -15,13 +16,15 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from mdseval.capture import Redactor, capture_git, redact_event_stream  # noqa: E402
+from mdseval.capture import (Redactor, audit_event_evidence, capture_git,
+                             is_secret_name, redact_event_stream)  # noqa: E402
 from mdseval.config import RunnerConfig  # noqa: E402
 from mdseval.fixtures import audit_final_subject_tree  # noqa: E402
 from mdseval.gitutils import init_repository, run_git  # noqa: E402
 from mdseval.hashing import sha256_file, tree_sha256  # noqa: E402
 from mdseval.processutils import ProcessOutcome, run_process_group  # noqa: E402
-from mdseval.runner.codex_cli import build_codex_command, isolated_environment  # noqa: E402
+from mdseval.runner.codex_cli import (build_codex_command, config_arguments,
+                                      isolated_environment)  # noqa: E402
 from mdseval.scout import classify_infrastructure_failure  # noqa: E402
 from scripts.contain import runtime as sealed  # noqa: E402
 from tooling import taskcheck  # noqa: E402
@@ -386,6 +389,26 @@ def _auth_home() -> str:
     _ensure(bool(auth) and not auth.is_symlink() and auth.is_file() and bool(auth.stat().st_size),
             "MDSEVAL_CODEX_HOME must contain a nonempty non-symlink auth.json")
     return str(auth.parent)
+def _auth_secret_values(codex_home: str) -> tuple[str, ...]:
+    path = Path(codex_home) / "auth.json"
+    if path.is_symlink() or not path.is_file():
+        return ()
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return ()
+    secrets_found: set[str] = set()
+    def visit(item: Any, secret_context: bool = False) -> None:
+        if isinstance(item, dict):
+            for key, child in item.items():
+                visit(child, secret_context or isinstance(key, str) and is_secret_name(key))
+        elif isinstance(item, list):
+            for child in item:
+                visit(child, secret_context)
+        elif secret_context and isinstance(item, str) and item:
+            secrets_found.add(item)
+    visit(value)
+    return tuple(sorted(secrets_found, key=len, reverse=True))
 def _expose(task: Path, batch_id: str) -> None:
     path = task.parent / "exposures.jsonl"
     rows = taskcheck._verify_exposures(path)
@@ -462,38 +485,61 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
               "md_filename": md_filename, "wrapper_sha256": wrapper_sha, "runner": request["runner"]}
     if container:
         intent.update({"container": container, "container_preflight": seal})
-    redactor = Redactor()
-    with tempfile.TemporaryDirectory(prefix=f"batch-{task.name}-") as temporary:
+    redactor = Redactor(_auth_secret_values(codex_home))
+    with tempfile.TemporaryDirectory(prefix="mdseval-attempt-") as temporary:
         workspace, baseline = _workspace(task, arm_path.read_bytes(), Path(temporary), md_filename)
         _reserve(destination, intent)
         _write_once(destination / "wrapper.txt", wrapper.encode())
         final_temp = Path(temporary) / "final.txt"
         command = build_codex_command(runner, workspace, final_temp)
-        command[command.index("--cd"):command.index("--cd")] = ["--config", sealed.WEB_SEARCH_DISABLED_CONFIG]
+        command[command.index("--cd"):command.index("--cd")] = config_arguments(
+            sealed.SUBJECT_SHELL_CONFIGS)
         marker = 'project_doc_fallback_filenames=["CODER.md"]'
         _ensure(command.count(marker) == 1, "frozen project-document argument is missing")
         command[command.index(marker)] = (
             f"project_doc_fallback_filenames={json.dumps([md_filename], separators=(',', ':'))}")
         _write_once(destination / "launch.json", _bytes({**intent, "started": time.time(), "command": command}))
         _expose(task, request["batch_id"])
-        started = time.monotonic()
+        attempt_started = time.monotonic()
         try:
-            outcome = (sealed.subject(command, workspace, final_temp, wrapper, runner.timeout_seconds,
-                       Path(codex_home), container["image_digests"][task.name],
-                       container["interpreter_pins"][task.name], seal) if container else
-                       process_runner(command, cwd=workspace, input_text=wrapper, timeout=runner.timeout_seconds,
-                                      environment=isolated_environment(codex_home)))
+            if container:
+                subject_result = sealed.subject(
+                    command, workspace, final_temp, wrapper, runner.timeout_seconds,
+                    Path(codex_home), container["image_digests"][task.name],
+                    container["interpreter_pins"][task.name], seal)
+                _ensure(isinstance(subject_result, sealed.SubjectOutcome),
+                        "sealed subject returned an invalid outcome")
+                outcome = subject_result.process
+                duration = subject_result.duration_seconds
+            else:
+                outcome = process_runner(
+                    command, cwd=workspace, input_text=wrapper,
+                    timeout=runner.timeout_seconds,
+                    environment=isolated_environment(codex_home))
+                duration = time.monotonic() - attempt_started
         except Exception as exc:
             if container: _write_once(destination / "build-rejected.json", _bytes({"error": redactor.text(f"{type(exc).__name__}: {exc}")})); raise BatchError("BUILD_REJECTED: sealed runtime prelaunch failed") from exc
             if not isinstance(exc, OSError): raise
             _write_once(destination / "pre-spawn.json", _bytes({"error": f"{type(exc).__name__}: {exc}"})); raise BatchError("subject process did not spawn; preserved as pre-spawn failure") from exc
-        duration = time.monotonic() - started
+        attempt_elapsed = time.monotonic() - attempt_started
         final = final_temp.read_text(encoding="utf-8", errors="replace") if final_temp.is_file() else ""
+        raw_events = Path(temporary) / "subject-events.raw.jsonl"
+        raw_events.write_text(outcome.stdout, encoding="utf-8")
+        event_audit = audit_event_evidence(raw_events)
         events = destination / "events.jsonl"
         _write_once(events, redact_event_stream(outcome.stdout, redactor).encode())
         _write_once(destination / "stderr.txt", redactor.text(outcome.stderr).encode())
         _write_once(destination / "final.txt", redactor.text(final).encode())
-        usage, web_search_seen = sealed.event_usage_and_web_search(events)
+        persisted_audit = audit_event_evidence(events)
+        if persisted_audit.valid != event_audit.valid or persisted_audit.usage != event_audit.usage:
+            event_audit = type(event_audit)(
+                fatal_defects=(*event_audit.fatal_defects,
+                               "redacted_event_evidence_mismatch"),
+                observed_item_types=event_audit.observed_item_types,
+                usage=event_audit.usage,
+                event_count=event_audit.event_count,
+            )
+        usage = event_audit.usage
         infra_events = outcome.stdout
         stderr_lower = outcome.stderr.lower()
         if "401 unauthorized" in stderr_lower and "token_expired" in stderr_lower:
@@ -504,7 +550,9 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                   "total_tokens": usage["total_tokens"], "usage_reported": usage["usage_reported"]}
         requirements = _json(task / "manifest.json")["requirements"]
         blank = {"requirements": {key: False for key in requirements}, "regressions": {}, "resolved": False}
-        invalid, scoreable, changes, final_hash, checker_duration = "", True, (), "", 0.0
+        event_reason = ("fatal event evidence defect: " + ";".join(event_audit.fatal_defects)
+                        if event_audit.fatal_defects else "")
+        invalid, scoreable, changes, final_hash, checker_duration = event_reason, True, (), "", 0.0
         try:
             audit_final_subject_tree(workspace)
         except Exception as exc:
@@ -518,12 +566,17 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                 changes = capture.changed_paths
                 _write_once(destination / "capture.json", _bytes(asdict(capture)))
                 _write_once(destination / "diff.patch", capture.diff.encode())
-                if not web_search_seen and (outcome.interrupted or classify_infrastructure_failure(
+                if event_audit.valid and not outcome.interrupted and classify_infrastructure_failure(
                         spawn_error=None, timed_out=outcome.timed_out, returncode=outcome.returncode,
                         events_jsonl=infra_events, stderr=outcome.stderr, final_text=final,
-                        changed_paths=capture.changed_paths, untracked=capture.untracked)):
+                        changed_paths=capture.changed_paths, untracked=capture.untracked):
                     _write_once(destination / "infra-invalid.json", _bytes({"error": "runner infrastructure failure"}))
                     return False
+                if not invalid and (outcome.returncode != 0 or outcome.timed_out
+                                    or outcome.interrupted):
+                    invalid = ("subject process did not complete cleanly: "
+                               f"returncode={outcome.returncode},timed_out={outcome.timed_out},"
+                               f"interrupted={outcome.interrupted}")
                 md_path = workspace / md_filename
                 contract = workspace / ".issue-contract.md"
                 if (md_path.is_symlink() or not md_path.is_file() or sha256_file(md_path) != arm["sha256"]
@@ -532,7 +585,6 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                         or capture.unauthorized_commit):
                     invalid = "protected input changed or subject committed"
             except Exception as exc:
-                if not web_search_seen: _write_once(destination / "infra-invalid.json", _bytes({"error": f"{type(exc).__name__}: {exc}"})); return False
                 invalid, scoreable, checked = f"capture failed: {type(exc).__name__}: {exc}", False, blank
             try:
                 if container:
@@ -553,7 +605,9 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
         target_changes = {key: [path for path in requirements[key]["target_paths"] if path in changes]
                           for key in failed}
         result = {"task_id": task.name, "arm": arm["name"], "ordinal": ordinal,
-                  "duration_seconds": duration, "checker_duration_seconds": checker_duration,
+                  "duration_seconds": duration,
+                  "attempt_elapsed_seconds": attempt_elapsed,
+                  "checker_duration_seconds": checker_duration,
                   "final_tree_sha256": final_hash, "task_manifest_sha256": expected,
                   "arm_sha256": arm["sha256"], "md_filename": md_filename,
                   "wrapper_sha256": wrapper_sha, "runner": request["runner"],
@@ -562,7 +616,9 @@ def _attempt(task: Path, request: dict[str, Any], arm: dict[str, str], ordinal: 
                   "regressions": checked["regressions"], "resolved": checked["resolved"],
                   "omissions": omissions, "omission_only": bool(failed) and all(omissions.values())
                   and all(checked["regressions"].values()), "target_path_changes": target_changes,
-                  "valid": not invalid and not web_search_seen, "invalid_reason": "fatal evidence defect: web_search tool item in events" if web_search_seen else invalid}
+                  "event_fatal_defects": list(event_audit.fatal_defects),
+                  "observed_item_types": list(event_audit.observed_item_types),
+                  "valid": not invalid, "invalid_reason": invalid}
         if container:
             result.update({"container": container, "container_preflight": seal, "token_totals": tokens})
         _write_once(destination / "checker.json", _bytes(checked))
@@ -583,6 +639,12 @@ def _retired(task: Path) -> list[str]:
 def _state(base: Path) -> tuple[list[dict[str, Any]], int, int, int]:
     dirs = sorted(base.glob("attempt-*"), key=lambda path: int(path.name.split("-")[-1])) if base.exists() else []
     _ensure(not any(os.path.lexists(path / "build-rejected.json") for path in dirs), "BUILD_REJECTED sealed attempt cannot be retried")
+    ambiguous = [path for path in dirs if (path / "launch.json").is_file()
+                 and not (path / "pre-spawn.json").exists()
+                 and not (path / "attempt-manifest.json").exists()
+                 and not (path / "infra-invalid.json").is_file()]
+    _ensure(not ambiguous, "unfinished exposed attempt cannot be classified or retried: "
+            + ", ".join(path.name for path in ambiguous))
     anchored, _ = _ledger(base.parents[1])
     results = []
     for path in dirs:
@@ -590,15 +652,11 @@ def _state(base: Path) -> tuple[list[dict[str, Any]], int, int, int]:
         if manifest.is_file():
             relative = path.relative_to(base.parents[1]).as_posix()
             digest = sha256_file(manifest)
-            if relative not in anchored:
-                _attempt_manifest(path)
-                taskcheck._append_chain(base.parents[1] / "evidence-ledger.jsonl",
-                                        {"attempt": relative, "manifest_sha256": digest},
-                                        "evidence ledger")
-                anchored[relative] = digest
+            _ensure(relative in anchored,
+                    f"finalized attempt is absent from evidence ledger: {relative}")
             _ensure(anchored[relative] == digest, f"unanchored finalized attempt: {relative}")
             results.append(_json(path / "result.json"))
-    infra = sum((path / "launch.json").is_file() and not (path / "pre-spawn.json").exists()
+    infra = sum((path / "infra-invalid.json").is_file()
                 and not (path / "attempt-manifest.json").exists() for path in dirs)
     launched = sum((path / "launch.json").is_file() and not (path / "pre-spawn.json").exists()
                    for path in dirs)
@@ -623,6 +681,14 @@ def _fast_seal_echo(attempt: Path, request: dict[str, Any], task_id: str) -> dic
             and seal.get("spec_sha256") == container["spec_sha256"]
             and task_id in seal.get("task_ids", []),
             f"fast-preflight seal binding mismatch: {attempt}")
+    _ensure(
+        sealed._validate_fast_seal(
+            seal,
+            container["image_digests"][task_id],
+            container["interpreter_pins"][task_id],
+        ),
+        f"fast-preflight seal is not valid under the current runtime policy: {attempt}",
+    )
     return seal
 def _disposition(task: Path, arm: dict[str, str], results: list[dict[str, Any]], infra: int,
         request: dict[str, Any], *, legacy: bool = False) -> dict[str, Any]:
@@ -684,9 +750,9 @@ def launch(batch_id: str, runs_root: Path = ROOT / "runs" / "dev-v2",
         require_auth: bool = True) -> None:
     batch = runs_root / batch_id
     request, version = _approved(batch)
-    _ensure(version in {2, 3}, "launch accepts REQUEST schema v2 or v3 only")
+    _ensure(version == 3, "live launch requires REQUEST schema v3")
     container = request["runner"].get("container")
-    codex_home: str | None = (_auth_home() if require_auth else str(Path(tempfile.gettempdir()))) if version == 2 else None
+    codex_home: str | None = None
     invocation_seals: dict[str, dict[str, Any]] | None = None
     for task_index, row in enumerate(request["tasks"]):
         task = _resolve(f"tasks/{row['id']}")
@@ -733,6 +799,36 @@ def _verify_attempts(batch: Path, *, allow_dispositions: bool) -> None:
     for relative, path in manifests.items():
         _ensure(sha256_file(path) == attempts[relative], f"attempt manifest hash mismatch: {relative}")
         _attempt_manifest(path.parent)
+def _verify_event_evidence(attempt: Path, result: dict[str, Any], *, hardened: bool) -> None:
+    audit = audit_event_evidence(attempt / "events.jsonl")
+    _ensure(audit.valid or not result.get("valid"),
+            f"result accepts fatal event evidence: {attempt}")
+    if hardened:
+        _ensure(result.get("event_fatal_defects") == list(audit.fatal_defects)
+                and result.get("observed_item_types") == list(audit.observed_item_types),
+                f"result/event policy evidence mismatch: {attempt}")
+    totals = result.get("token_totals")
+    if isinstance(totals, dict):
+        expected = {"input_tokens": audit.usage["input_tokens"],
+                    "cached_input_tokens": audit.usage["cached_input_tokens"],
+                    "output_tokens": audit.usage["output_tokens"],
+                    "reasoning_tokens": audit.usage["reasoning_output_tokens"],
+                    "total_tokens": audit.usage["total_tokens"],
+                    "usage_reported": audit.usage["usage_reported"]}
+        _ensure(totals == expected, f"result/event token totals mismatch: {attempt}")
+    if hardened and result.get("valid"):
+        _ensure(result.get("returncode") == 0 and result.get("timed_out") is False
+                and result.get("interrupted") is False and audit.usage["usage_reported"],
+                f"valid attempt lacks a clean terminal process and usage: {attempt}")
+    if hardened:
+        duration = result.get("duration_seconds")
+        elapsed = result.get("attempt_elapsed_seconds")
+        _ensure(isinstance(duration, (int, float)) and not isinstance(duration, bool)
+                and math.isfinite(float(duration)) and duration >= 0,
+                f"invalid subject duration evidence: {attempt}")
+        _ensure(isinstance(elapsed, (int, float)) and not isinstance(elapsed, bool)
+                and math.isfinite(float(elapsed)) and elapsed >= duration,
+                f"invalid attempt elapsed evidence: {attempt}")
 def verify_batch(batch: Path) -> None:
     request, version = _approved(batch)
     legacy = version == 1
@@ -765,6 +861,10 @@ def verify_batch(batch: Path) -> None:
         for arm in arms:
             base = batch / task.name / arm["name"]
             results, infra, _, launched = _state(base)
+            if version == 3:
+                for result in results:
+                    attempt = base / f"attempt-{result['ordinal']}"
+                    _verify_event_evidence(attempt, result, hardened=True)
             _ensure(all(_container_echo(attempt, request) for attempt in base.glob("attempt-*")), f"container echo evidence mismatch: {task.name}")
             if version == 3 and container:
                 echoed = [_fast_seal_echo(attempt, request, task.name)

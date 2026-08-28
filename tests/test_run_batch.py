@@ -56,7 +56,9 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         (request.parent / "APPROVED.json").write_text(json.dumps({
             "request_sha256": batch.sha256_file(request)}))
     def runner(self, calls: list[tuple[str, bytes]], *, interrupt_first: bool = False,
-               web_search_first: bool = False, expired_auth_first: bool = False):
+               web_search_first: bool = False, mcp_first: bool = False,
+               malformed_first: bool = False,
+               expired_auth_first: bool = False):
         def fake(command, *, cwd, **_kwargs):
             md_name = next(item for item in ("ALT.md", "CODER.md") if (cwd / item).is_file())
             arm = (cwd / md_name).read_bytes()
@@ -73,7 +75,18 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
             interrupted = interrupt_first and len(calls) == 1
             search = ('{"type":"item.started","item":{"id":"search-1","type":"web_search","query":"upstream fix"}}\n'
                       if web_search_first and len(calls) == 1 else "")
-            return ProcessOutcome(0, search + '{"type":"turn.completed"}\n', "", False, interrupted)
+            if mcp_first and len(calls) == 1:
+                search = ('{"type":"item.completed","item":{"id":"mcp-1",'
+                          '"type":"mcp_tool_call","server":"codex_apps",'
+                          '"tool":"github.search","status":"completed"}}\n')
+            events = ('{"type":"thread.started"}\n{"type":"turn.started"}\n'
+                      + search
+                      + '{"type":"turn.completed","usage":{"input_tokens":3,'
+                        '"cached_input_tokens":1,"cache_write_input_tokens":0,'
+                        '"output_tokens":2,"reasoning_output_tokens":1}}\n')
+            if malformed_first and len(calls) == 1:
+                events = "{malformed\n"
+            return ProcessOutcome(0, events, "", False, interrupted)
         return fake
     def queued(self, task_names: list[str], *, same_arm: bool = False,
                md_filename: str = "ALT.md", seed: int = 7):
@@ -87,6 +100,33 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
                                           require_auth=False)
         self.approve(request)
         return request, runs
+    @staticmethod
+    def fast_seal(task_id: str, image: str, spec_sha256: str):
+        runtime = batch.sealed
+        core = {
+            "seal_schema": runtime.FAST_SEAL_SCHEMA,
+            "image_digest": image,
+            "interpreter_pin": "3.11.5",
+            "task_ids": [task_id],
+            "spec_sha256": spec_sha256,
+            "runtime_security_sha256": runtime.security_sha256(image, "3.11.5"),
+            "policy_sha256": "2" * 64,
+            "identity": {
+                "image_digest": image,
+                "canonical_executable": "/python/bin/python3.11",
+            },
+            "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE,
+            "subject_surface_sha256": "3" * 64,
+            "mounts": runtime.FAST_MOUNTS,
+            "sandbox": runtime.FAST_SANDBOX,
+            "home": {
+                "credential": "absent",
+                "profile_sha256": runtime.sha(runtime.SHELL_PROFILE),
+                "pytest_wrapper_sha256": runtime.sha(runtime.PYTEST_WRAPPER),
+            },
+            "target_checks_sha256": "4" * 64,
+        }
+        return runtime._seal(core)
     def test_fast_preflight_groups_pairs_is_hash_only_and_never_calls_subject(self):
         names = ["full-boltons-wraps-forwarding", "full-click-stream-lifecycle",
                  "full-flask-automatic-options", "full-starlette-websocket-denial"]
@@ -215,11 +255,8 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
                 "sealed-batch", [task], [("a", arm_a), ("b", arm_b)], runs,
                 task_order_seed=1, container=container, require_auth=False)
         self.approve(request_path)
-        identity = {"image_digest": image, "canonical_executable": "/python/bin/python3.11"}
-        seal = {"seal_schema": batch.sealed.FAST_SEAL_SCHEMA,
-                "image_digest": image, "interpreter_pin": "3.11.5",
-                "task_ids": [task.name], "spec_sha256": container["spec_sha256"],
-                "identity": identity}
+        seal = self.fast_seal(task.name, image, container["spec_sha256"])
+        identity = seal["identity"]
         preflight = {"status": "PASS", "duration_seconds": 1.0,
                      "failed_checks": [], "errors": {}, "seals": {task.name: seal}}
         def subject(_command, workspace, final_path, _stdin, _timeout, _home,
@@ -227,7 +264,13 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
             if (workspace / "CODER.md").read_bytes():
                 (workspace / "solution.txt").write_text("done\n")
             final_path.write_text("done\n")
-            return ProcessOutcome(0, '{"type":"turn.completed"}\n', "", False, False)
+            process = ProcessOutcome(0, ('{"type":"thread.started"}\n'
+                                         '{"type":"turn.started"}\n'
+                                         '{"type":"turn.completed","usage":'
+                                         '{"input_tokens":3,"cached_input_tokens":1,'
+                                         '"cache_write_input_tokens":0,"output_tokens":2,'
+                                         '"reasoning_output_tokens":1}}\n'), "", False, False)
+            return batch.sealed.SubjectOutcome(process, 0.0)
         def checker(task_arg, workspace, _image, _pin, _home, expected):
             result, deterministic, duration = batch._checker(task_arg, workspace)
             return result, deterministic, duration, {"identity": expected, "runs": []}
@@ -237,10 +280,17 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
              patch.object(batch.sealed, "checker", side_effect=checker):
             batch.launch("sealed-batch", runs, require_auth=False)
         checked.assert_called_once()
+        recorded = batch._json(
+            request_path.parent / task.name / "a" / "attempt-1" / "result.json"
+        )
+        self.assertEqual(recorded["duration_seconds"], 0.0)
+        self.assertGreaterEqual(recorded["attempt_elapsed_seconds"], 0.0)
         with patch.object(batch, "ROOT", self.root.resolve()), \
              patch.object(batch, "_launch_record", side_effect=AssertionError("legacy evidence")), \
              patch.object(batch, "preflight_request", side_effect=AssertionError("runtime preflight")), \
              patch.object(batch.sealed, "fast_smoke", side_effect=AssertionError("Docker")), \
+             patch.object(batch.sealed, "_smoke_spec",
+                          return_value=({task.name: {}}, container["spec_sha256"])), \
              patch.object(batch.sealed, "subject", side_effect=AssertionError("model call")):
             batch.verify_batch(request_path.parent)
 
@@ -301,6 +351,10 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         launch_command = " ".join(json.loads(next(request.parent.glob("task-*/b/attempt-1/launch.json")).read_text())["command"])
         self.assertIn('project_doc_fallback_filenames=["ALT.md"]', launch_command)
         self.assertIn('web_search="disabled"', launch_command)
+        self.assertIn("features.apps=false", launch_command)
+        self.assertIn('default_permissions="mdseval"', launch_command)
+        self.assertIn('shell_environment_policy.inherit="none"', launch_command)
+        self.assertNotIn("--sandbox ", launch_command)
         first_task = json.loads(request.read_text())["tasks"][0]["id"]
         first = [arm for task_name, arm in calls if task_name == first_task]
         self.assertEqual(first, [b"", b"help\n", b"help\n", b"", b"", b"help\n"])
@@ -320,14 +374,16 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         verdict = compare.compare_batch(request.parent)
         self.assertEqual((len(calls), verdict["verdict"], verdict["n_effective"]),
                          (6, "INCONCLUSIVE", 0))
-    def test_infrastructure_attempt_is_replaced_and_bounded(self):
+    def test_interrupted_attempt_is_finalized_and_never_replaced(self):
         request, runs = self.queued(["task-1"])
         calls: list[tuple[str, bytes]] = []
         with patch.object(batch, "ROOT", self.root.resolve()):
             batch.launch("fake-batch", runs, self.runner(calls, interrupt_first=True), require_auth=False)
             batch.verify_batch(request.parent)
-        self.assertEqual(len(calls), 7)
-        self.assertTrue(any(request.parent.glob("task-1/a/attempt-*/infra-invalid.json")))
+        self.assertEqual(len(calls), 6)
+        first = request.parent / "task-1/a/attempt-1"
+        self.assertFalse((first / "infra-invalid.json").exists())
+        self.assertFalse(json.loads((first / "result.json").read_text())["valid"])
     def test_expired_provider_token_is_replaced_without_altering_raw_events(self):
         request, runs = self.queued(["task-1"])
         calls: list[tuple[str, bytes]] = []
@@ -347,10 +403,32 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
                 calls, interrupt_first=True, web_search_first=True), require_auth=False)
             batch.verify_batch(request.parent)
         result = json.loads((request.parent / "task-1/a/attempt-1/result.json").read_text())
-        self.assertEqual((len(calls), result["valid"], result["invalid_reason"]),
-                         (6, False, "fatal evidence defect: web_search tool item in events"))
+        self.assertEqual((len(calls), result["valid"]), (6, False))
+        self.assertIn('unknown_item_type:"web_search"', result["invalid_reason"])
         self.assertFalse((request.parent / "task-1/a/attempt-1/infra-invalid.json").exists())
         self.assertEqual(json.loads((request.parent / "task-1/a/disposition.json").read_text())["label"], "invalid")
+    def test_mcp_event_is_fatal_evidence_not_a_replacement(self):
+        request, runs = self.queued(["task-1"])
+        calls: list[tuple[str, bytes]] = []
+        with patch.object(batch, "ROOT", self.root.resolve()):
+            batch.launch("fake-batch", runs, self.runner(
+                calls, interrupt_first=True, mcp_first=True), require_auth=False)
+            batch.verify_batch(request.parent)
+        result = json.loads((request.parent / "task-1/a/attempt-1/result.json").read_text())
+        self.assertEqual((len(calls), result["valid"]), (6, False))
+        self.assertIn('unknown_item_type:"mcp_tool_call"', result["invalid_reason"])
+        self.assertFalse((request.parent / "task-1/a/attempt-1/infra-invalid.json").exists())
+    def test_malformed_event_stream_is_fatal_and_not_a_replacement(self):
+        request, runs = self.queued(["task-1"])
+        calls: list[tuple[str, bytes]] = []
+        with patch.object(batch, "ROOT", self.root.resolve()):
+            batch.launch("fake-batch", runs, self.runner(
+                calls, interrupt_first=True, malformed_first=True), require_auth=False)
+            batch.verify_batch(request.parent)
+        result = json.loads((request.parent / "task-1/a/attempt-1/result.json").read_text())
+        self.assertEqual((len(calls), result["valid"]), (6, False))
+        self.assertIn("malformed_json", result["invalid_reason"])
+        self.assertFalse((request.parent / "task-1/a/attempt-1/infra-invalid.json").exists())
     def test_v3_queue_uses_hash_only_verification_and_needs_no_preflight_directory(self):
         task, arm = self.task("task-1", alt_sensitive=True), self.arm("a", b"")
         container = {"image_digests": {task.name: "sha256:" + "a" * 64}, "spec_sha256": "b" * 64,
@@ -410,6 +488,9 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         legacy["comparability_note"] += " altered"
         with self.assertRaisesRegex(taskcheck.TaskError, "REQUEST schema"):
             taskcheck._validate_batch_request(legacy, "full-scale", {1})
+        with patch.object(batch, "_approved", return_value=(legacy, 2)):
+            with self.assertRaisesRegex(batch.BatchError, "requires REQUEST schema v3"):
+                batch.launch("legacy", self.root / "runs", require_auth=False)
     def test_section14_preflight_accepts_bound_host_na(self):
         ids = ["task-1", "task-2"]; image, spec, manifest = "sha256:" + "a" * 64, "b" * 64, "e" * 64
         container = {"image_digests": {key: image for key in ids}, "spec_sha256": spec,
@@ -467,17 +548,30 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
                     self.assertEqual(batch.sealed.main(), 2)
                 self.assertEqual(json.loads(output.read_text())["status"], status)
                 self.assertIn("simulated failure", output.with_suffix(output.suffix + ".stderr").read_text())
-    def test_unfinished_launched_attempt_consumes_replacement(self):
+    def test_auth_secret_values_are_seeded_for_redaction(self):
+        home = self.root / "auth-home"; home.mkdir()
+        (home / "auth.json").write_text(json.dumps({
+            "tokens": {"access_token": "ACCESS-CANARY",
+                       "refresh_token": "REFRESH-CANARY"},
+            "account_id": "not-a-secret",
+            "OPENAI_API_KEY": "KEY-CANARY",
+        }))
+        values = batch._auth_secret_values(str(home))
+        self.assertEqual(set(values), {"ACCESS-CANARY", "REFRESH-CANARY", "KEY-CANARY"})
+        self.assertNotIn("not-a-secret", values)
+        redacted = batch.Redactor(values).text("ACCESS-CANARY REFRESH-CANARY KEY-CANARY")
+        self.assertNotIn("CANARY", redacted)
+    def test_unfinished_launched_attempt_blocks_resume_without_replacement(self):
         request, runs = self.queued(["task-1"]); calls = []
         def crash(*_args, **_kwargs):
             raise RuntimeError("simulated process crash")
         with patch.object(batch, "ROOT", self.root.resolve()):
             with self.assertRaisesRegex(RuntimeError, "simulated"):
                 batch.launch("fake-batch", runs, crash, require_auth=False)
-            batch.launch("fake-batch", runs, self.runner(calls), require_auth=False)
-            batch.verify_batch(request.parent)
-        self.assertEqual((len(calls), len(list(request.parent.glob("task-1/a/attempt-*/launch.json")))), (6, 4))
-    def test_orphan_attempt_manifest_recovers_ledger_anchor(self):
+            with self.assertRaisesRegex(batch.BatchError, "unfinished exposed attempt"):
+                batch.launch("fake-batch", runs, self.runner(calls), require_auth=False)
+        self.assertEqual((len(calls), len(list(request.parent.glob("task-1/a/attempt-*/launch.json")))), (0, 1))
+    def test_orphan_attempt_manifest_blocks_resume_without_posthoc_anchor(self):
         request, runs = self.queued(["task-1"]); calls = []; failed = [False]
         original = batch.taskcheck._append_chain
         def flaky(path, row, kind):
@@ -489,8 +583,9 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
             with self.assertRaisesRegex(RuntimeError, "ledger crash"):
                 batch.launch("fake-batch", runs, self.runner(calls), require_auth=False)
         with patch.object(batch, "ROOT", self.root.resolve()):
-            batch.launch("fake-batch", runs, self.runner(calls), require_auth=False); batch.verify_batch(request.parent)
-        self.assertEqual(len(calls), 6)
+            with self.assertRaisesRegex(batch.BatchError, "absent from evidence ledger"):
+                batch.launch("fake-batch", runs, self.runner(calls), require_auth=False)
+        self.assertEqual(len(calls), 1)
     def test_disposition_tamper_yields_invalid_verdict(self):
         request, runs = self.queued(["task-1"], same_arm=True)
         with patch.object(batch, "ROOT", self.root.resolve()):
@@ -502,13 +597,18 @@ print(json.dumps({"requirements":{"R1":ok},"regressions":{"G1":regression},"reso
         self.assertEqual(verdict["verdict"], "INVALID")
         self.assertIn("disposition", verdict["integrity_error"])
         self.assertEqual((verdict["tasks"][0]["task_id"], verdict["evidence_ledger_head"] == "UNVERIFIED"), ("task-1", False))
-    def test_frozen_v1_batch_still_verifies_read_only(self):
+    def test_frozen_legacy_batches_verify_read_only_but_cannot_launch(self):
         frozen = REPO / "runs" / "dev-v2" / "salience-probe-v2"
         before = self.tree_digest(frozen)
         batch.verify_batch(frozen)
         self.assertEqual(self.tree_digest(frozen), before)
         sealed = REPO / "runs" / "dev-v2" / "phase3-real-null-sealed-v1"; before = self.tree_digest(sealed)
-        with patch.object(batch.taskcheck, "verify", wraps=taskcheck.verify) as verified: batch.verify_batch(sealed); batch.launch(sealed.name, sealed.parent, lambda *_a, **_k: self.fail("unexpected launch"), require_auth=False)
+        with patch.object(batch.taskcheck, "verify", wraps=taskcheck.verify) as verified:
+            batch.verify_batch(sealed)
+            with self.assertRaisesRegex(batch.BatchError, "requires REQUEST schema v3"):
+                batch.launch(sealed.name, sealed.parent,
+                             lambda *_a, **_k: self.fail("unexpected launch"),
+                             require_auth=False)
         self.assertEqual(self.tree_digest(sealed), before)
         self.assertEqual({call.kwargs["md_filename"] for call in verified.call_args_list}, {None})
     @staticmethod

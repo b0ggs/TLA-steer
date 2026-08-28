@@ -7,7 +7,13 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from mdseval.capture import Redactor, capture_git, parse_event_stream, redact_event_stream
+from mdseval.capture import (
+    Redactor,
+    audit_event_evidence,
+    capture_git,
+    parse_event_stream,
+    redact_event_stream,
+)
 from mdseval.fixtures import prepare_fixture
 from mdseval.hashing import sha256_file
 
@@ -172,3 +178,201 @@ class CaptureTests(unittest.TestCase):
         parsed = parse_event_stream(path)
         self.assertEqual(parsed.usage["total_tokens"], 10)
         self.assertFalse(parsed.usage["usage_reported"])
+
+    def test_event_evidence_audit_accepts_only_the_current_codex_surface(self) -> None:
+        path = self.prepared.temporary_root / "audited-events.jsonl"
+        events = [
+            {"type": "thread.started", "thread_id": "thread-1"},
+            {"type": "turn.started"},
+            {
+                "type": "item.started",
+                "item": {"id": "1", "type": "command_execution"},
+            },
+            {
+                "type": "item.completed",
+                "item": {"id": "1", "type": "command_execution"},
+            },
+            {
+                "type": "item.completed",
+                "item": {"id": "2", "type": "file_change"},
+            },
+            {
+                "type": "item.completed",
+                "item": {"id": "3", "type": "agent_message"},
+            },
+            {
+                "type": "item.updated",
+                "item": {"id": "4", "type": "todo_list"},
+            },
+            {
+                "type": "turn.completed",
+                "usage": {
+                    "input_tokens": 10,
+                    "cached_input_tokens": 7,
+                    "cache_write_input_tokens": 1,
+                    "output_tokens": 3,
+                    "reasoning_output_tokens": 2,
+                },
+            },
+        ]
+        path.write_text("\n".join(json.dumps(event) for event in events) + "\n")
+
+        audit = audit_event_evidence(path)
+
+        self.assertTrue(audit.valid, audit.fatal_defects)
+        self.assertEqual(
+            audit.observed_item_types,
+            ("agent_message", "command_execution", "file_change", "todo_list"),
+        )
+        self.assertEqual(audit.event_count, len(events))
+        self.assertEqual(audit.usage["input_tokens"], 10)
+        self.assertEqual(audit.usage["cache_write_input_tokens"], 1)
+        self.assertEqual(audit.usage["total_tokens"], 13)
+        self.assertTrue(audit.usage["usage_reported"])
+
+    def test_event_evidence_audit_rejects_unknown_tool_and_event_types(self) -> None:
+        path = self.prepared.temporary_root / "unknown-events.jsonl"
+        events = [
+            {"type": "thread.started", "thread_id": "thread-1"},
+            {"type": "turn.started"},
+            {
+                "type": "item.started",
+                "item": {"id": "1", "type": "mcp_tool_call"},
+            },
+            {"type": "future.event"},
+            {
+                "type": "turn.completed",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ]
+        path.write_text("\n".join(json.dumps(event) for event in events) + "\n")
+
+        audit = audit_event_evidence(path)
+
+        self.assertFalse(audit.valid)
+        self.assertIn("mcp_tool_call", audit.observed_item_types)
+        self.assertIn(
+            'line:3:unknown_item_type:"mcp_tool_call"', audit.fatal_defects
+        )
+        self.assertIn(
+            'line:4:unknown_event_type:"future.event"', audit.fatal_defects
+        )
+
+    def test_event_evidence_audit_rejects_every_external_capability_family(
+        self,
+    ) -> None:
+        forbidden_item_types = (
+            "web_search",
+            "mcp_tool_call",
+            "browser_use",
+            "computer_use",
+            "image_generation",
+            "collaboration_tool_call",
+            "dynamic_tool_call",
+        )
+        for item_type in forbidden_item_types:
+            with self.subTest(item_type=item_type):
+                path = self.prepared.temporary_root / f"forbidden-{item_type}.jsonl"
+                events = [
+                    {"type": "thread.started", "thread_id": "thread-1"},
+                    {"type": "turn.started"},
+                    {
+                        "type": "item.completed",
+                        "item": {"id": "1", "type": item_type},
+                    },
+                    {
+                        "type": "turn.completed",
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                ]
+                path.write_text(
+                    "\n".join(json.dumps(event) for event in events) + "\n"
+                )
+
+                audit = audit_event_evidence(path)
+
+                self.assertFalse(audit.valid)
+                self.assertIn(
+                    f'line:3:unknown_item_type:"{item_type}"',
+                    audit.fatal_defects,
+                )
+
+    def test_event_evidence_audit_rejects_malformed_duplicate_and_empty_jsonl(
+        self,
+    ) -> None:
+        cases = {
+            "malformed": ('{"type":\n', "line:1:malformed_json"),
+            "non-object": ("[]\n", "line:1:non_object_event"),
+            "duplicate": (
+                '{"type":"thread.started","type":"turn.started"}\n',
+                'line:1:duplicate_json_key:"type"',
+            ),
+            "nested-duplicate": (
+                '{"type":"item.started","item":{"type":"todo_list",'
+                '"type":"command_execution"}}\n',
+                'line:1:duplicate_json_key:"type"',
+            ),
+            "empty": ("\n\n", "empty_event_stream"),
+        }
+        for name, (contents, expected) in cases.items():
+            with self.subTest(name=name):
+                path = self.prepared.temporary_root / f"{name}.jsonl"
+                path.write_text(contents)
+                audit = audit_event_evidence(path)
+                self.assertFalse(audit.valid)
+                self.assertIn(expected, audit.fatal_defects)
+
+    def test_event_evidence_audit_rejects_invalid_usage(self) -> None:
+        invalid_values = (True, -1, 1.5, "1")
+        for index, invalid in enumerate(invalid_values):
+            with self.subTest(value=invalid):
+                path = self.prepared.temporary_root / f"invalid-usage-{index}.jsonl"
+                events = [
+                    {"type": "thread.started", "thread_id": "thread-1"},
+                    {"type": "turn.started"},
+                    {
+                        "type": "turn.completed",
+                        "usage": {"input_tokens": invalid, "output_tokens": 1},
+                    },
+                ]
+                path.write_text(
+                    "\n".join(json.dumps(event) for event in events) + "\n"
+                )
+                audit = audit_event_evidence(path)
+                self.assertFalse(audit.valid)
+                expected = (
+                    "negative_usage"
+                    if isinstance(invalid, int)
+                    and not isinstance(invalid, bool)
+                    and invalid < 0
+                    else "non_integer_usage"
+                )
+                self.assertIn(
+                    f"line:3:{expected}:input_tokens", audit.fatal_defects
+                )
+                self.assertFalse(audit.usage["usage_reported"])
+
+    def test_event_evidence_audit_requires_ordered_start_and_terminal_events(
+        self,
+    ) -> None:
+        path = self.prepared.temporary_root / "bad-lifecycle.jsonl"
+        events = [
+            {"type": "turn.started"},
+            {"type": "thread.started", "thread_id": "thread-1"},
+            {
+                "type": "turn.completed",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+            {
+                "type": "item.completed",
+                "item": {"id": "1", "type": "agent_message"},
+            },
+        ]
+        path.write_text("\n".join(json.dumps(event) for event in events) + "\n")
+
+        audit = audit_event_evidence(path)
+
+        self.assertFalse(audit.valid)
+        self.assertIn("lifecycle:thread_start_not_first", audit.fatal_defects)
+        self.assertIn("lifecycle:start_order", audit.fatal_defects)
+        self.assertIn("lifecycle:terminal_not_last", audit.fatal_defects)

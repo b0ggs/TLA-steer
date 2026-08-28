@@ -24,6 +24,30 @@ ENV_ASSIGNMENT = re.compile(
 SECRET_NAME_TOKEN = re.compile(
     r"(?i)(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASS|KEY|CREDENTIAL)(?:_|$)"
 )
+ALLOWED_EVENT_TYPES = frozenset(
+    {
+        "thread.started",
+        "turn.started",
+        "turn.completed",
+        "turn.failed",
+        "error",
+        "item.started",
+        "item.completed",
+        "item.updated",
+    }
+)
+ALLOWED_ITEM_TYPES = frozenset(
+    {"command_execution", "file_change", "agent_message", "todo_list"}
+)
+ITEM_EVENT_TYPES = frozenset({"item.started", "item.completed", "item.updated"})
+TERMINAL_EVENT_TYPES = frozenset({"turn.completed", "turn.failed"})
+USAGE_FIELDS = (
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_write_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+)
 
 
 def is_secret_name(name: str) -> bool:
@@ -81,8 +105,12 @@ def redact_event_stream(value: str, redactor: Redactor) -> str:
             safe.append(line)
             continue
         try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
+            event = json.loads(
+                line,
+                object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
             safe.append("!MALFORMED! " + redactor.text(line))
         else:
             safe.append(
@@ -103,6 +131,20 @@ class ParsedEvents:
     file_changes: tuple[dict[str, Any], ...]
     usage: dict[str, int]
     malformed_lines: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class EventEvidenceAudit:
+    """Fail-closed validation of the Codex JSONL evidence surface."""
+
+    fatal_defects: tuple[str, ...]
+    observed_item_types: tuple[str, ...]
+    usage: dict[str, int]
+    event_count: int
+
+    @property
+    def valid(self) -> bool:
+        return not self.fatal_defects
 
 
 @dataclass(frozen=True)
@@ -419,6 +461,199 @@ def parse_event_stream(path: Path) -> ParsedEvents:
         file_changes=tuple(changes),
         usage=usage,
         malformed_lines=tuple(malformed),
+    )
+
+
+class _DuplicateJSONKey(ValueError):
+    def __init__(self, key: str) -> None:
+        super().__init__(key)
+        self.key = key
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise _DuplicateJSONKey(key)
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
+def _empty_audit_usage() -> dict[str, int]:
+    return {
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_output_tokens": 0,
+        "usage_reported": False,
+        "total_tokens": 0,
+    }
+
+
+def audit_event_evidence(path: Path) -> EventEvidenceAudit:
+    """Validate one Codex JSONL stream without accepting unknown tool surfaces.
+
+    Evidence defects are data, not parser exceptions. The caller can therefore
+    preserve a defective stream and deterministically invalidate its attempt.
+    """
+
+    defects: list[str] = []
+    observed_item_types: set[str] = set()
+    usage = _empty_audit_usage()
+    events: list[dict[str, Any]] = []
+
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return EventEvidenceAudit(
+            fatal_defects=("unreadable_event_stream",),
+            observed_item_types=(),
+            usage=usage,
+            event_count=0,
+        )
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return EventEvidenceAudit(
+            fatal_defects=("invalid_utf8_event_stream",),
+            observed_item_types=(),
+            usage=usage,
+            event_count=0,
+        )
+
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(
+                line,
+                object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant,
+            )
+        except _DuplicateJSONKey as exc:
+            key = json.dumps(exc.key, ensure_ascii=True)
+            defects.append(f"line:{line_number}:duplicate_json_key:{key}")
+            continue
+        except (json.JSONDecodeError, ValueError):
+            defects.append(f"line:{line_number}:malformed_json")
+            continue
+        if not isinstance(value, dict):
+            defects.append(f"line:{line_number}:non_object_event")
+            continue
+
+        events.append(value)
+        event_type = value.get("type")
+        if not isinstance(event_type, str) or not event_type:
+            defects.append(f"line:{line_number}:invalid_event_type")
+            continue
+        if event_type not in ALLOWED_EVENT_TYPES:
+            encoded = json.dumps(event_type, ensure_ascii=True)
+            defects.append(f"line:{line_number}:unknown_event_type:{encoded}")
+            continue
+
+        if event_type in ITEM_EVENT_TYPES:
+            item = value.get("item")
+            if not isinstance(item, dict):
+                defects.append(f"line:{line_number}:invalid_item")
+                continue
+            item_type = item.get("type")
+            if not isinstance(item_type, str) or not item_type:
+                defects.append(f"line:{line_number}:invalid_item_type")
+                continue
+            observed_item_types.add(item_type)
+            if item_type not in ALLOWED_ITEM_TYPES:
+                encoded = json.dumps(item_type, ensure_ascii=True)
+                defects.append(f"line:{line_number}:unknown_item_type:{encoded}")
+
+        if event_type == "turn.completed":
+            source = value.get("usage")
+            if not isinstance(source, dict) or not source:
+                defects.append(f"line:{line_number}:invalid_usage")
+                continue
+            primary_complete = True
+            for key in ("input_tokens", "output_tokens"):
+                if key not in source:
+                    defects.append(f"line:{line_number}:missing_usage_field:{key}")
+                    primary_complete = False
+            for key in source:
+                if key not in USAGE_FIELDS:
+                    encoded = json.dumps(key, ensure_ascii=True)
+                    defects.append(
+                        f"line:{line_number}:unknown_usage_field:{encoded}"
+                    )
+            for key in USAGE_FIELDS:
+                if key not in source:
+                    continue
+                amount = source[key]
+                if not isinstance(amount, int) or isinstance(amount, bool):
+                    defects.append(f"line:{line_number}:non_integer_usage:{key}")
+                    if key in {"input_tokens", "output_tokens"}:
+                        primary_complete = False
+                    continue
+                if amount < 0:
+                    defects.append(f"line:{line_number}:negative_usage:{key}")
+                    if key in {"input_tokens", "output_tokens"}:
+                        primary_complete = False
+                    continue
+                usage[key] += amount
+            if primary_complete:
+                usage["usage_reported"] = True
+
+    if not events and not defects:
+        defects.append("empty_event_stream")
+
+    event_types = [event.get("type") for event in events]
+    thread_starts = [
+        index for index, event_type in enumerate(event_types) if event_type == "thread.started"
+    ]
+    turn_starts = [
+        index for index, event_type in enumerate(event_types) if event_type == "turn.started"
+    ]
+    terminals = [
+        index for index, event_type in enumerate(event_types) if event_type in TERMINAL_EVENT_TYPES
+    ]
+
+    if not thread_starts:
+        defects.append("lifecycle:missing_thread_start")
+    elif len(thread_starts) != 1:
+        defects.append("lifecycle:multiple_thread_starts")
+    elif thread_starts[0] != 0:
+        defects.append("lifecycle:thread_start_not_first")
+
+    if not turn_starts:
+        defects.append("lifecycle:missing_turn_start")
+    elif len(turn_starts) != 1:
+        defects.append("lifecycle:multiple_turn_starts")
+
+    if not terminals:
+        defects.append("lifecycle:missing_terminal")
+    elif len(terminals) != 1:
+        defects.append("lifecycle:multiple_terminals")
+    elif terminals[0] != len(events) - 1:
+        defects.append("lifecycle:terminal_not_last")
+
+    if thread_starts and turn_starts and thread_starts[0] >= turn_starts[0]:
+        defects.append("lifecycle:start_order")
+    if turn_starts and terminals and turn_starts[0] >= terminals[-1]:
+        defects.append("lifecycle:terminal_order")
+
+    completed_turns = sum(
+        event_type == "turn.completed" for event_type in event_types
+    )
+    if completed_turns != 1:
+        usage["usage_reported"] = False
+    usage["total_tokens"] = usage["input_tokens"] + usage["output_tokens"]
+
+    return EventEvidenceAudit(
+        fatal_defects=tuple(defects),
+        observed_item_types=tuple(sorted(observed_item_types)),
+        usage=usage,
+        event_count=len(events),
     )
 
 

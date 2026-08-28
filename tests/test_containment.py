@@ -353,12 +353,64 @@ class FastRuntimeSmokeTests(unittest.TestCase):
                                    runtime.sha(signature.encode())
                                    for signature in value[task_id]["fix_signature_strings"])})
         return {"status": "PASS", "identity": self.identity(image),
-                "mounts": runtime.FAST_MOUNTS, "auth": "isolated-readable",
+                "mounts": runtime.FAST_MOUNTS,
+                "home": {"credential": "absent",
+                         "profile_sha256": runtime.sha(runtime.SHELL_PROFILE),
+                         "pytest_wrapper_sha256": runtime.sha(runtime.PYTEST_WRAPPER),
+                         "shell": {}},
                 "bare_connect": True, "target_checks": checks}
+
+    def subject_command(self, workspace):
+        return ["codex", *runtime.config_arguments(runtime.SUBJECT_REQUIRED_CONFIGS),
+                "--cd", str(workspace), "--output-last-message",
+                str(workspace / "final")]
+
+    def config_reply(self):
+        features = {name: False for name in runtime.DISABLED_FEATURES}
+        apps = {"_default": {"enabled": False, "destructive_enabled": False,
+                             "open_world_enabled": False,
+                             "approvals_reviewer": None,
+                             "default_tools_approval_mode": None}}
+        skills = {"bundled": {"enabled": False}, "include_instructions": False}
+        session = {"web_search": "disabled", "features": features,
+                   "apps": {"_default": {"enabled": False,
+                                           "destructive_enabled": False,
+                                           "open_world_enabled": False}},
+                   "skills": {**skills, "config": []}}
+        return {"id": 2, "result": {
+            "config": {"web_search": "disabled", "features": features,
+                       "apps": apps, "skills": skills, "mcp_servers": {},
+                       "plugins": {}, "marketplaces": {},
+                       "agents": {"enabled": False},
+                       "default_permissions": "mdseval"},
+            "origins": {"web_search": {"name": {"type": "sessionFlags"}}},
+            "layers": [{"name": {"type": "sessionFlags"}, "config": session},
+                       {"name": {"type": "user"}, "config": {}},
+                       {"name": {"type": "system"}, "config": {}}]}}
 
     @contextlib.contextmanager
     def network(self, unused_image, **unused):
         yield "isolated-network", "172.20.0.2"
+
+    def test_profiled_home_is_fresh_exact_and_security_bound(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            (source / "auth.json").write_text('{"access_token":"secret"}\n')
+            with runtime._home(source, include_auth=True, profiled_shell=True) as first:
+                self.assertEqual((first / ".bash_profile").read_bytes(),
+                                 runtime.SHELL_PROFILE)
+                self.assertEqual((first / "bin/pytest").read_bytes(),
+                                 runtime.PYTEST_WRAPPER)
+                self.assertEqual((first / ".bash_profile").stat().st_mode & 0o777, 0o600)
+                self.assertEqual((first / "bin/pytest").stat().st_mode & 0o777, 0o500)
+                (first / ".bash_profile").write_text("tampered\n")
+            with runtime._home(source, profiled_shell=True) as second:
+                self.assertEqual((second / ".bash_profile").read_bytes(),
+                                 runtime.SHELL_PROFILE)
+                self.assertFalse((second / "auth.json").exists())
+            original = runtime.security_sha256(IMAGE, "3.11.5")
+            with mock.patch.object(runtime, "SHELL_PROFILE", b"different\n"):
+                self.assertNotEqual(runtime.security_sha256(IMAGE, "3.11.5"), original)
 
     def test_fast_smoke_returns_compact_deterministic_pair_seal(self):
         value = spec()
@@ -369,6 +421,7 @@ class FastRuntimeSmokeTests(unittest.TestCase):
             selected = {key: value[key] for key in ("cohort-task-1", "cohort-task-0")}
             inspection = self.inspection(selected)
             policy = {"identity": self.identity(), "policy_sha256": "2" * 64,
+                      "subject_surface_sha256": "4" * 64,
                       "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE}
             deadline = runtime.time.monotonic() + 60
             with mock.patch.object(runtime, "SPEC", spec_path), \
@@ -437,7 +490,8 @@ class FastRuntimeSmokeTests(unittest.TestCase):
             with mock.patch.object(runtime, "_run", return_value=(outcome, [])):
                 return runtime._targeted_smoke(
                     IMAGE, "3.11.5", selected, Path("workspace"), Path("auth"),
-                    "network", "172.20.0.2", runtime.time.monotonic() + 60)
+                    "network", "172.20.0.2", runtime.time.monotonic() + 60,
+                    Path("output"))
 
         self.assertEqual(run(good)["target_checks"], good["target_checks"])
         bad_mount = {**good, "mounts": {"/workspace": "ro"}}
@@ -452,29 +506,48 @@ class FastRuntimeSmokeTests(unittest.TestCase):
              self.assertRaisesRegex(RuntimeError, "fix signature present"):
             runtime._targeted_smoke(
                 IMAGE, "3.11.5", selected, Path("workspace"), Path("auth"),
-                "network", "172.20.0.2", runtime.time.monotonic() + 60)
+                "network", "172.20.0.2", runtime.time.monotonic() + 60,
+                Path("output"))
 
     def test_fast_policy_requires_network_denial_and_effective_disabled_search(self):
         identity = self.identity()
         source = {"status": "DENIED", "identity": identity,
                   "permission_profile": {"type": "managed"},
                   "policy_sha256": "2" * 64, "socket_target": ["172.20.0.2", 8888],
+                  "auth_denial": "PermissionError: [Errno 13] Permission denied",
+                  "sessions_denial": "PermissionError: [Errno 13] Permission denied",
+                  "output_denial": "PermissionError: [Errno 13] Permission denied",
+                  "git_denial": "OSError: [Errno 30] Read-only file system",
+                  "profile_denial": "PermissionError: [Errno 13] Permission denied",
+                  "wrapper_denial": "PermissionError: [Errno 13] Permission denied",
+                  "udp_denial": {"type": "PermissionError", "errno": errno.EPERM},
+                  "dns_denial": {"type": "gaierror",
+                                 "errno": runtime.LINUX_EAI_AGAIN},
+                  "proc_denial": "PermissionError: [Errno 13] Permission denied",
+                  "workspace_write": True,
+                  "shell": {"path": runtime.SHELL_PATH,
+                            "library_path": "/python/lib",
+                            "python": "/python/bin/python",
+                            "python3": "/python/bin/python3",
+                            "pytest": "/agent-home/bin/pytest",
+                            "pytest_origin": "/sealed-deps/pytest/__init__.py",
+                            "forbidden_environment": []},
                   "denial": "PermissionError: [Errno 1] Operation not permitted",
                   "exit_status": errno.EPERM}
-        config = {"id": 2, "result": {
-            "config": {"web_search": "disabled"},
-            "origins": {"web_search": {"name": {"type": "sessionFlags"}}},
-            "layers": [{"name": {"type": "sessionFlags"},
-                        "config": {"web_search": "disabled"}}]}}
+        config = self.config_reply()
 
         def run(source_row, config_row=config):
-            reply = {"id": 3, "result": {"stdout": runtime.canonical(source_row) + "\n"}}
-            stdout = runtime.canonical(config_row) + "\n" + runtime.canonical(reply) + "\n"
+            profile = {"id": 3, "result": {"data": [
+                {"id": "mdseval", "description": "MD Eval local coding subject",
+                 "allowed": True}], "nextCursor": None}}
+            reply = {"id": 4, "result": {"stdout": runtime.canonical(source_row) + "\n"}}
+            stdout = (runtime.canonical(config_row) + "\n" + runtime.canonical(profile)
+                      + "\n" + runtime.canonical(reply) + "\n")
             outcome = runtime.ProcessOutcome(0, stdout, "", False, False)
             with mock.patch.object(runtime, "_run", return_value=(outcome, [])):
                 return runtime._fast_policy(
                     IMAGE, "3.11.5", Path("workspace"), Path("auth"), "network",
-                    "172.20.0.2", runtime.time.monotonic() + 60)
+                    "172.20.0.2", runtime.time.monotonic() + 60, Path("output"))
 
         self.assertEqual(run(source)["web_search"], runtime.WEB_SEARCH_DISABLED_EVIDENCE)
         allowed = {**source, "status": "FAIL", "denial": None, "exit_status": 0}
@@ -484,6 +557,13 @@ class FastRuntimeSmokeTests(unittest.TestCase):
         enabled["result"]["config"]["web_search"] = "live"
         with self.assertRaisesRegex(RuntimeError, "web search"):
             run(source, enabled)
+        exposed = json.loads(json.dumps(config))
+        exposed["result"]["config"]["mcp_servers"] = {"github": {}}
+        with self.assertRaisesRegex(RuntimeError, "capability surface"):
+            run(source, exposed)
+        routed = {**source, "udp_denial": {"type": "OSError", "errno": 101}}
+        with self.assertRaisesRegex(RuntimeError, "network-denied"):
+            run(routed)
 
     def test_fast_scripts_are_targeted_and_make_no_model_request(self):
         compile(runtime._TARGETED_SMOKE_SCRIPT, "<targeted-smoke>", "exec")
@@ -492,7 +572,8 @@ class FastRuntimeSmokeTests(unittest.TestCase):
         self.assertNotIn("rglob", runtime._TARGETED_SMOKE_SCRIPT)
         messages = runtime._fast_policy_messages("172.20.0.2", IMAGE)
         self.assertEqual([row["method"] for row in messages],
-                         ["initialize", "initialized", "config/read", "command/exec"])
+                         ["initialize", "initialized", "config/read",
+                          "permissionProfile/list", "command/exec"])
         rendered = runtime.canonical(messages).lower()
         for forbidden in ("turn/start", "thread/start", "model/request", "responses"):
             self.assertNotIn(forbidden, rendered)
@@ -508,45 +589,50 @@ class FastRuntimeSmokeTests(unittest.TestCase):
                 "runtime_security_sha256": runtime.security_sha256(IMAGE, "3.11.5"),
                 "policy_sha256": "2" * 64, "identity": identity,
                 "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE,
+                "subject_surface_sha256": "4" * 64,
                 "mounts": runtime.FAST_MOUNTS, "sandbox": runtime.FAST_SANDBOX,
-                "auth": "isolated-readable", "target_checks_sha256": "3" * 64}
+                "home": {"credential": "absent",
+                         "profile_sha256": runtime.sha(runtime.SHELL_PROFILE),
+                         "pytest_wrapper_sha256": runtime.sha(runtime.PYTEST_WRAPPER),
+                         "shell": {}}, "target_checks_sha256": "3" * 64}
         seal = runtime._seal(core)
         outcome = runtime.ProcessOutcome(0, "", "", False, False)
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
-            command = ["codex", "--config", runtime.WEB_SEARCH_DISABLED_CONFIG,
-                       "--cd", str(workspace), "--output-last-message", str(workspace / "final")]
+            command = self.subject_command(workspace)
             with mock.patch.object(runtime, "_network", side_effect=self.network), \
                  mock.patch.object(runtime, "_run", return_value=(outcome, [])) as run, \
                  mock.patch.object(runtime, "_policy") as policy, \
                  mock.patch.object(runtime, "image_id") as image_check:
                 result = runtime.subject(command, workspace, workspace / "last.txt", "prompt", 900,
                                          workspace, IMAGE, "3.11.5", seal)
-        self.assertIs(result, outcome)
+        self.assertIs(result.process, outcome)
+        self.assertGreaterEqual(result.duration_seconds, 0.0)
         policy.assert_not_called()
         image_check.assert_not_called()
         self.assertEqual(run.call_count, 1)
+        self.assertTrue(run.call_args.kwargs["include_auth"])
+        self.assertTrue(run.call_args.kwargs["profiled_shell"])
+        self.assertTrue(run.call_args.kwargs["protect_git"])
+        self.assertIsInstance(run.call_args.kwargs["evaluator_output"], Path)
+        rewritten = run.call_args.args[5]
+        self.assertIn("/evaluator-output/final-message.txt", rewritten)
+        self.assertNotIn("/workspace/.mdseval-final", rewritten)
 
-    def test_subject_preserves_legacy_policy_revalidation(self):
+    def test_subject_rejects_legacy_policy_seal_without_launching(self):
         identity = self.identity()
         seal = {"runtime_security_sha256": runtime.security_sha256(IMAGE, "3.11.5"),
                 "policy_sha256": "2" * 64, "identity": identity,
                 "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE}
-        policy_row = {"source_sha256": "2" * 64, "identity": identity,
-                      "web_search": runtime.WEB_SEARCH_DISABLED_EVIDENCE}
-        outcome = runtime.ProcessOutcome(0, "", "", False, False)
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
-            command = ["codex", "--config", runtime.WEB_SEARCH_DISABLED_CONFIG,
-                       "--cd", str(workspace), "--output-last-message", str(workspace / "final")]
+            command = self.subject_command(workspace)
             with mock.patch.object(runtime, "_network", side_effect=self.network), \
-                 mock.patch.object(runtime, "_run", return_value=(outcome, [])), \
-                 mock.patch.object(runtime, "_policy", return_value=policy_row) as policy, \
-                 mock.patch.object(runtime, "image_id", return_value=IMAGE) as image_check:
+                 mock.patch.object(runtime, "_run") as run, \
+                 self.assertRaisesRegex(RuntimeError, "legacy container policy"):
                 runtime.subject(command, workspace, workspace / "last.txt", "prompt", 900,
                                 workspace, IMAGE, "3.11.5", seal)
-        policy.assert_called_once()
-        image_check.assert_called_once_with(IMAGE)
+        run.assert_not_called()
 
 
 if __name__ == "__main__":

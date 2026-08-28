@@ -1,5 +1,6 @@
-import argparse, errno, hashlib, json, os, re, secrets, shutil, subprocess, sys, tempfile, time
+import argparse, errno, hashlib, json, os, re, secrets, shlex, shutil, stat, subprocess, sys, tempfile, time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -8,23 +9,52 @@ SPEC = ROOT / "scripts/contain/contamination-spec.json"
 sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
 from mdseval.capture import parse_event_stream
 from mdseval.processutils import ProcessOutcome, _stop_group, run_process_group
+from mdseval.runner.codex_cli import (SUBJECT_CAPABILITY_CONFIGS,
+                                      SUBJECT_PERMISSION_CONFIGS,
+                                      config_arguments)
 from tooling import taskcheck
 
 DOCKER = [os.environ.get("MDSEVAL_DOCKER", "/Applications/Docker.app/Contents/Resources/bin/docker"), "--config", os.environ.get("MDSEVAL_DOCKER_CONFIG", "/private/tmp/mdseval-public-docker-config"), "--host", os.environ.get("MDSEVAL_DOCKER_HOST", "unix:///Users/wade/.docker/run/docker.sock")]
 PINS = Path(os.environ.get("MDSEVAL_INTERPRETERS", "/private/tmp/mdseval-interpreters-sealed"))
-SECURITY = ("--cap-drop", "ALL", "--security-opt", "no-new-privileges=true", "--security-opt", "seccomp=unconfined", "--pids-limit", "256")
-FIXED_ENV = ("HOME=/agent-home", "CODEX_HOME=/agent-home", "PYTHONHOME=/python", "PYTHONPATH=/sealed-deps", "PYTHONDONTWRITEBYTECODE=1", "PYTHONNOUSERSITE=1", "LANG=C.UTF-8", "PATH=/usr/lib/codex/bin:/usr/lib/codex/codex-path:/python/bin:/usr/bin:/bin")
+SECURITY = ("--cap-drop", "ALL", "--security-opt", "no-new-privileges=true",
+            "--security-opt", "seccomp=unconfined", "--pids-limit", "256")
+FIXED_ENV = ("HOME=/agent-home", "CODEX_HOME=/agent-home", "PYTHONHOME=/python", "PYTHONPATH=/sealed-deps", "PYTHONDONTWRITEBYTECODE=1", "PYTHONNOUSERSITE=1", "LANG=C.UTF-8", "LD_LIBRARY_PATH=/python/lib", "PATH=/usr/lib/codex/bin:/usr/lib/codex/codex-path:/python/bin:/usr/bin:/bin", "GIT_OPTIONAL_LOCKS=0")
 PROXY_ENV = ("HTTPS_PROXY=http://model-proxy:8888", "HTTP_PROXY=http://model-proxy:8888")
 WEB_SEARCH_DISABLED_CONFIG = 'web_search="disabled"'
+SHELL_PATH = "/agent-home/bin:/usr/lib/codex/codex-path:/python/bin:/usr/bin:/bin"
+SHELL_PROFILE = f"export PATH={SHELL_PATH}\n".encode()
+PYTEST_WRAPPER = b'#!/bin/sh\nexec /python/bin/python3 -m pytest "$@"\n'
+SUBJECT_SHELL_CONFIGS = (
+    'shell_environment_policy.inherit="none"',
+    "shell_environment_policy.ignore_default_excludes=false",
+    'shell_environment_policy.set={HOME="/agent-home",PATH="' + SHELL_PATH
+    + '",PYTHONHOME="/python",PYTHONPATH="/sealed-deps",PYTHONDONTWRITEBYTECODE="1",'
+      'PYTHONNOUSERSITE="1",LANG="C.UTF-8",LC_ALL="C.UTF-8",GIT_CONFIG_NOSYSTEM="1",'
+      'GIT_CONFIG_GLOBAL="/dev/null",GIT_TERMINAL_PROMPT="0",GIT_OPTIONAL_LOCKS="0",'
+      'LD_LIBRARY_PATH="/python/lib"}',
+)
+SUBJECT_REQUIRED_CONFIGS = (*SUBJECT_CAPABILITY_CONFIGS, *SUBJECT_PERMISSION_CONFIGS,
+                            *SUBJECT_SHELL_CONFIGS)
+DISABLED_FEATURES = tuple(value[len("features."):-len("=false")]
+                          for value in SUBJECT_CAPABILITY_CONFIGS
+                          if value.startswith("features.") and value.endswith("=false"))
 WEB_SEARCH_DISABLED_EVIDENCE = {"mode": "disabled", "origin_type": "sessionFlags", "session_layer_modes": ["disabled"]}
-FAST_SEAL_SCHEMA = "fast-preflight-v1"
-FAST_MOUNTS = {"/agent-home": "rw", "/python": "ro", "/workspace": "rw"}
+LINUX_EAI_AGAIN = -3
+FAST_SEAL_SCHEMA = "fast-preflight-v2"
+FAST_MOUNTS = {"/agent-home": "rw", "/evaluator-output": "rw", "/python": "ro",
+               "/workspace": "rw", "/workspace/.git": "ro"}
 FAST_SANDBOX = {"mode": "workspace-write", "network_access": False}
 CONTAINER_KEYSETS = {frozenset({"image_digests", "spec_sha256", "interpreter_pins"}),
                      frozenset({"image_digests", "spec_sha256", "interpreter_pins", "web_search"})}
 
+
+@dataclass(frozen=True)
+class SubjectOutcome:
+    process: ProcessOutcome
+    duration_seconds: float
+
 _TARGETED_SMOKE_SCRIPT = r'''
-import hashlib, inspect, json, os, pathlib, platform, pydoc, re, shutil, socket, stat, sys, time, tokenize
+import hashlib, inspect, json, os, pathlib, platform, pydoc, re, shutil, socket, stat, subprocess, sys, time, tokenize
 
 def need(value, message):
     if not value:
@@ -50,7 +80,8 @@ def mounts():
             need(len(fields) >= 6 and len(right.split()) >= 3, "malformed mount table")
             target = unescape(fields[4])
             found.setdefault(target, []).append(set(fields[5].split(",")))
-    expected = {"/workspace": "rw", "/python": "ro", "/agent-home": "rw"}
+    expected = {"/workspace": "rw", "/workspace/.git": "ro", "/python": "ro",
+                "/agent-home": "rw", "/evaluator-output": "rw"}
     for target, mode in expected.items():
         need(len(found.get(target, [])) == 1 and mode in found[target][0],
              "unexpected mount: " + target)
@@ -70,17 +101,53 @@ def identity(image, pin):
             "executable_sha256": digest(pathlib.Path(executable).read_bytes()),
             "image_digest": image, "path_resolution": resolution}
 
-def auth():
+def home():
     home = pathlib.Path("/agent-home")
-    source = home / "auth.json"
     sessions = home / "sessions"
-    source_mode = os.lstat(source).st_mode
-    need(stat.S_ISREG(source_mode) and not stat.S_ISLNK(source_mode)
-         and source.stat().st_size > 0, "unsafe isolated auth")
     need(sessions.is_dir() and not sessions.is_symlink(), "unsafe isolated sessions")
-    need({path.name for path in home.iterdir()} == {"auth.json", "sessions"},
-         "unsafe isolated auth topology")
-    return "isolated-readable"
+    profile = home / ".bash_profile"
+    wrapper = home / "bin" / "pytest"
+    need(profile.is_file() and not profile.is_symlink()
+         and digest(profile.read_bytes()) == os.environ["MDSEVAL_SHELL_PROFILE_SHA256"]
+         and stat.S_IMODE(profile.stat().st_mode) == 0o600,
+         "unsafe fixed shell profile")
+    need(wrapper.is_file() and not wrapper.is_symlink()
+         and digest(wrapper.read_bytes()) == os.environ["MDSEVAL_PYTEST_WRAPPER_SHA256"]
+         and stat.S_IMODE(wrapper.stat().st_mode) == 0o500,
+         "unsafe pytest wrapper")
+    entries = {path.name for path in home.iterdir()}
+    bin_entries = {path.name for path in (home / "bin").iterdir()}
+    need(entries == {".bash_profile", "bin", "sessions"} and bin_entries == {"pytest"},
+         "unsafe isolated home topology")
+    need(not (home / "auth.json").exists(), "credential reached non-model smoke")
+    command = ["/usr/bin/bash", "-lc", """
+set -eu
+python3 - <<'PY'
+import importlib.util, json, os, pathlib, shutil, sys
+pytest = importlib.util.find_spec("pytest")
+print(json.dumps({
+    "path": os.environ.get("PATH"),
+    "python": shutil.which("python"),
+    "python3": shutil.which("python3"),
+    "pytest": shutil.which("pytest"),
+    "canonical_executable": os.path.realpath(sys.executable),
+    "pytest_origin": pytest.origin if pytest else None,
+}, sort_keys=True, separators=(",", ":")))
+PY
+pytest --version
+"""]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    lines = result.stdout.splitlines()
+    need(result.returncode == 0 and len(lines) >= 2, "login-shell pytest probe failed")
+    row = json.loads(lines[0])
+    need(row == {"path": os.environ["MDSEVAL_EXPECTED_SHELL_PATH"],
+                 "python": "/python/bin/python", "python3": "/python/bin/python3",
+                 "pytest": "/agent-home/bin/pytest",
+                 "canonical_executable": os.path.realpath("/python/bin/python3"),
+                 "pytest_origin": "/sealed-deps/pytest/__init__.py"},
+         "login-shell environment or interpreter mismatch")
+    return {"credential": "absent", "profile_sha256": digest(profile.read_bytes()),
+            "pytest_wrapper_sha256": digest(wrapper.read_bytes()), "shell": row}
 
 def python_source(path):
     with tokenize.open(path) as stream:
@@ -141,7 +208,7 @@ def main():
     payload = json.load(sys.stdin)
     rows = targets(payload["tasks"])
     result = {"status": "PASS", "identity": identity(payload["image"], payload["pin"]),
-              "mounts": mounts(), "auth": auth(), "bare_connect": bare_connect(
+              "mounts": mounts(), "home": home(), "bare_connect": bare_connect(
                   payload["proxy_host"], payload["proxy_port"]),
               "target_checks": rows}
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
@@ -155,14 +222,7 @@ except Exception as exc:
 '''
 
 _POLICY_CHILD_SCRIPT = r'''
-import errno, hashlib, json, os, pathlib, re, shutil, socket, sys
-
-def need(value, message):
-    if not value:
-        raise RuntimeError(message)
-
-def digest_argv(values):
-    return hashlib.sha256(b"\0".join(os.fsencode(value) for value in values) + b"\0").hexdigest()
+import errno, hashlib, importlib.util, json, os, pathlib, shutil, socket, sys
 
 def identity(image):
     executable = os.path.realpath(sys.executable)
@@ -170,35 +230,54 @@ def identity(image):
             "executable_sha256": hashlib.sha256(pathlib.Path(executable).read_bytes()).hexdigest(),
             "image_digest": image, "path_resolution": shutil.which("python3")}
 
-def policy_shape(argv):
-    starts = [index for index, value in enumerate(argv) if value == "--sandbox-policy-cwd"]
-    ends = [index for index, value in enumerate(argv) if value == "--apply-seccomp-then-exec"]
-    need(len(starts) == len(ends) == 1 and starts[0] < ends[0], "non-unique policy bounds")
-    policy = argv[starts[0]:ends[0] + 1]
-    need(sum(os.path.basename(value) == "bwrap" for value in argv) == 1,
-         "non-unique bwrap")
-    need(sum("codex-linux-sandbox" in os.path.basename(value) for value in argv) == 1,
-         "non-unique sandbox helper")
-    need("--use-legacy-landlock" not in argv, "legacy Landlock")
-    for flag in ("--sandbox-policy-cwd", "--command-cwd"):
-        need(policy.count(flag) == 1 and policy[policy.index(flag) + 1] == "/workspace", flag)
-    need(policy.count("--permission-profile") == 1, "missing permission profile")
-    profile = json.loads(policy[policy.index("--permission-profile") + 1])
-    flat = "".join(character for character in json.dumps(profile, sort_keys=True)
-                   if not character.isspace()).lower().replace("-", "").replace("_", "")
-    need('"type":"managed"' in flat and '"path":"/workspace"' in flat
-         and '"access":"write"' in flat and '"network":"restricted"' in flat,
-         "profile is not network-free workspace-write")
-    return policy, profile
-
 def main():
-    status = pathlib.Path("/proc/self/status").read_text(encoding="utf-8")
-    parent_pid = int(re.search(r"^PPid:\s*(\d+)$", status, re.M).group(1))
-    raw = pathlib.Path("/proc/%d/cmdline" % parent_pid).read_bytes()
-    parent = [os.fsdecode(value) for value in raw.rstrip(b"\0").split(b"\0")]
-    policy, profile = policy_shape(parent)
-    row = {"identity": identity(sys.argv[3]), "permission_profile": profile,
-           "policy_sha256": digest_argv(policy), "socket_target": [sys.argv[1], int(sys.argv[2])]}
+    row = {"identity": identity(sys.argv[3]),
+           "socket_target": [sys.argv[1], int(sys.argv[2])]}
+    pytest = importlib.util.find_spec("pytest")
+    row["shell"] = {"path": os.environ.get("PATH"),
+                    "library_path": os.environ.get("LD_LIBRARY_PATH"),
+                    "python": shutil.which("python"),
+                    "python3": shutil.which("python3"),
+                    "pytest": shutil.which("pytest"),
+                    "pytest_origin": pytest.origin if pytest else None,
+                    "forbidden_environment": sorted(name for name in os.environ
+                        if name == "CODEX_HOME" or name.upper().endswith(
+                            ("_PROXY", "_TOKEN", "_SECRET", "_KEY")))}
+    marker = pathlib.Path("/workspace/.mdseval-policy-write")
+    marker.write_text("workspace-write", encoding="utf-8")
+    row["workspace_write"] = marker.read_text(encoding="utf-8") == "workspace-write"
+    marker.unlink()
+    for name, path in (("auth_denial", "/agent-home/auth.json"),
+                       ("sessions_denial", "/agent-home/sessions"),
+                       ("proc_denial", "/proc/self/status")):
+        try:
+            pathlib.Path(path).read_bytes()
+            row[name] = None
+        except PermissionError as exc:
+            row[name] = "PermissionError: " + str(exc)
+        except Exception as exc:
+            row[name] = type(exc).__name__ + ": " + str(exc)
+    for name, path in (("output_denial", "/evaluator-output/model-final.txt"),
+                       ("git_denial", "/workspace/.git/mdseval-write-probe"),
+                       ("profile_denial", "/agent-home/.bash_profile"),
+                       ("wrapper_denial", "/agent-home/bin/pytest")):
+        try:
+            pathlib.Path(path).write_text("forbidden", encoding="utf-8")
+            row[name] = None
+        except OSError as exc:
+            row[name] = type(exc).__name__ + ": " + str(exc)
+    try:
+        udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        udp.sendto(b"mdseval", (sys.argv[1], int(sys.argv[2])))
+        udp.close()
+        row["udp_denial"] = None
+    except OSError as exc:
+        row["udp_denial"] = {"type": type(exc).__name__, "errno": exc.errno}
+    try:
+        resolved = socket.getaddrinfo("model-proxy", int(sys.argv[2]))
+        row["dns_denial"] = None if resolved else {"type": "empty", "errno": None}
+    except OSError as exc:
+        row["dns_denial"] = {"type": type(exc).__name__, "errno": exc.errno}
     try:
         connection = socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=5)
         connection.close()
@@ -256,6 +335,12 @@ def _docker(*args: str, check: bool = True,
         raise RuntimeError((result.stderr or result.stdout).strip())
     return result
 
+def _remove_container(name: str, *, deadline: float | None = None) -> None:
+    result = _docker("rm", "-f", name, check=False, deadline=deadline)
+    detail = (result.stderr or result.stdout).strip()
+    if result.returncode and "No such container" not in detail:
+        raise RuntimeError("sealed container cleanup failed: " + detail)
+
 def image_id(image: str, *, deadline: float | None = None) -> str:
     value = _docker("image", "inspect", "--format", "{{.Id}}", image,
                     deadline=deadline).stdout.strip()
@@ -263,7 +348,15 @@ def image_id(image: str, *, deadline: float | None = None) -> str:
         raise RuntimeError("runtime image is not the approved content-addressed digest")
     return value
 def security_args(image: str, pin: str) -> list[str]:
-    return ["internal-model-proxy", *SECURITY, "--user", f"{os.getuid()}:{os.getgid()}", "--workdir", "/workspace", *FIXED_ENV, *PROXY_ENV, "/workspace:rw", f"interpreter:{pin}:/python:ro", "fresh-agent-home:/agent-home:rw", image]
+    return ["internal-model-proxy", *SECURITY, "--user", f"{os.getuid()}:{os.getgid()}",
+            "--workdir", "/workspace", *FIXED_ENV, *PROXY_ENV, "/workspace:rw",
+            "/workspace/.git:ro", f"interpreter:{pin}:/python:ro",
+            "fresh-agent-home:/agent-home:rw",
+            "fresh-evaluator-output:/evaluator-output:rw",
+            "subject-shell-profile-sha256:" + sha(SHELL_PROFILE),
+            "pytest-wrapper-sha256:" + sha(PYTEST_WRAPPER),
+            "subject-config-sha256:" + sha(canonical(SUBJECT_REQUIRED_CONFIGS).encode()),
+            image]
 
 def security_sha256(image: str, pin: str) -> str:
     return sha(canonical(security_args(image, pin)).encode())
@@ -280,77 +373,153 @@ def _pin_path(pin: str, *, deadline: float | None = None) -> Path:
     return source.resolve()
 
 @contextmanager
-def _home(codex_home: Path, *, deadline: float | None = None):
-    _remaining(deadline, "isolated auth source")
+def _home(codex_home: Path, *, deadline: float | None = None,
+          include_auth: bool = False, profiled_shell: bool = False):
+    _remaining(deadline, "isolated agent home")
     auth = Path(codex_home) / "auth.json"
-    if auth.is_symlink() or not auth.is_file() or not auth.stat().st_size:
+    if include_auth and (auth.is_symlink() or not auth.is_file() or not auth.stat().st_size):
         raise RuntimeError("sealed agent home source lacks safe auth.json")
     with tempfile.TemporaryDirectory(prefix="mdseval-agent-home-") as name:
         root = Path(name)
-        shutil.copyfile(auth, root / "auth.json")
-        os.chmod(root / "auth.json", 0o600)
+        if include_auth:
+            shutil.copyfile(auth, root / "auth.json")
+            os.chmod(root / "auth.json", 0o600)
         (root / "sessions").mkdir()
+        expected = {"sessions"}
+        if include_auth:
+            expected.add("auth.json")
+        if profiled_shell:
+            (root / ".bash_profile").write_bytes(SHELL_PROFILE)
+            os.chmod(root / ".bash_profile", 0o600)
+            (root / "bin").mkdir()
+            (root / "bin" / "pytest").write_bytes(PYTEST_WRAPPER)
+            os.chmod(root / "bin" / "pytest", 0o500)
+            expected.update({".bash_profile", "bin", "bin/pytest"})
         entries = {path.relative_to(root).as_posix() for path in root.rglob("*")}
-        if entries != {"auth.json", "sessions"} or any(path.is_symlink() for path in root.rglob("*")):
+        if entries != expected or any(path.is_symlink() for path in root.rglob("*")):
             raise RuntimeError("unsafe sealed agent home")
-        _remaining(deadline, "isolated auth source")
+        _remaining(deadline, "isolated agent home")
         yield root
 
-def _args(image: str, pin: str, workspace: Path, home: Path, network: str) -> list[str]:
+def _args(image: str, pin: str, workspace: Path, home: Path, network: str,
+          extra_environment: tuple[str, ...] = (), *,
+          evaluator_output: Path | None = None,
+          protect_git: bool = False,
+          container_name: str | None = None) -> list[str]:
     python = _pin_path(pin)
     workspace = workspace.resolve()
     home = home.resolve()
-    if not all(path.is_dir() and not path.is_symlink() for path in (python, workspace, home)):
+    checked = [python, workspace, home]
+    if evaluator_output is not None:
+        evaluator_output = evaluator_output.resolve()
+        checked.append(evaluator_output)
+    git = workspace / ".git"
+    if protect_git:
+        checked.append(git)
+    if not all(path.is_dir() and not path.is_symlink() for path in checked):
         raise RuntimeError("unsafe container bind source")
-    args = [*DOCKER, "run", "--rm", "-i", "--network", network, *SECURITY, "--user", f"{os.getuid()}:{os.getgid()}", "--workdir", "/workspace"]
-    for value in (*FIXED_ENV, *(() if network == "none" else PROXY_ENV)):
+    args = [*DOCKER, "run", "--rm", "-i"]
+    if container_name is not None:
+        if re.fullmatch(r"mdseval-subject-[0-9a-f]{24}", container_name) is None:
+            raise RuntimeError("unsafe sealed container name")
+        args.extend(("--name", container_name))
+    args.extend(("--network", network, *SECURITY, "--user",
+                 f"{os.getuid()}:{os.getgid()}", "--workdir", "/workspace"))
+    for value in (*FIXED_ENV, *(() if network == "none" else PROXY_ENV), *extra_environment):
         args.extend(("-e", value))
-    return [*args, "--mount", f"type=bind,src={workspace},dst=/workspace", "--mount", f"type=bind,src={python},dst=/python,readonly", "--mount", f"type=bind,src={home},dst=/agent-home", image]
+    mounts = ["--mount", f"type=bind,src={workspace},dst=/workspace",
+              "--mount", f"type=bind,src={python},dst=/python,readonly",
+              "--mount", f"type=bind,src={home},dst=/agent-home"]
+    if evaluator_output is not None:
+        mounts.extend(("--mount", f"type=bind,src={evaluator_output},dst=/evaluator-output"))
+    if protect_git:
+        mounts.extend(("--mount", f"type=bind,src={git},dst=/workspace/.git,readonly"))
+    return [*args, *mounts, image]
 
 def _run(image: str, pin: str, workspace: Path, codex_home: Path, network: str,
          command: list[str], *, stdin: str | None = None, timeout: float = 60,
          deadline: float | None = None,
-         linger_seconds: float = 0.0) -> tuple[ProcessOutcome, list[str]]:
-    with _home(codex_home, deadline=deadline) as home:
-        args = [*_args(image, pin, workspace, home, network), *command]
+         linger_seconds: float = 0.0, include_auth: bool = False,
+         profiled_shell: bool = False,
+         evaluator_output: Path | None = None,
+         protect_git: bool = False) -> tuple[ProcessOutcome, list[str]]:
+    extra_environment = (("MDSEVAL_SHELL_PROFILE_SHA256=" + sha(SHELL_PROFILE),
+                          "MDSEVAL_PYTEST_WRAPPER_SHA256=" + sha(PYTEST_WRAPPER),
+                          "MDSEVAL_EXPECTED_SHELL_PATH=" + SHELL_PATH)
+                         if profiled_shell else ())
+    with _home(codex_home, deadline=deadline, include_auth=include_auth,
+               profiled_shell=profiled_shell) as home:
+        container_name = "mdseval-subject-" + secrets.token_hex(12)
+        args = [*_args(image, pin, workspace, home, network, extra_environment,
+                       evaluator_output=evaluator_output, protect_git=protect_git,
+                       container_name=container_name),
+                *command]
         remaining = _remaining(deadline, "sealed container process")
         if remaining is not None and remaining <= 1.1:
             raise TimeoutError("global preflight deadline expired before sealed process cleanup")
         process_timeout = min(timeout, remaining - 1.1) if remaining is not None else timeout
-        if not linger_seconds:
-            result = run_process_group(args, cwd=workspace, input_text=stdin,
-                                       timeout=process_timeout, environment=os.environ.copy())
-        else:
-            if stdin is None or linger_seconds <= 0:
-                raise ValueError("lingering sealed process requires nonempty stdin")
-            process = subprocess.Popen(
-                args, cwd=workspace, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                env=os.environ.copy(), start_new_session=True)
+        result: ProcessOutcome | None = None
+        try:
+            if not linger_seconds:
+                result = run_process_group(args, cwd=workspace, input_text=stdin,
+                                           timeout=process_timeout,
+                                           environment=os.environ.copy())
+            else:
+                if stdin is None or linger_seconds <= 0:
+                    raise ValueError("lingering sealed process requires nonempty stdin")
+                process = subprocess.Popen(
+                    args, cwd=workspace, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                    env=os.environ.copy(), start_new_session=True)
+                try:
+                    assert process.stdin is not None
+                    process.stdin.write(stdin)
+                    process.stdin.flush()
+                    time.sleep(min(linger_seconds, max(0.0, process_timeout - 1.0)))
+                    process.stdin.close()
+                    process.stdin = None
+                    stdout, stderr = process.communicate(
+                        timeout=max(0.1, process_timeout - linger_seconds)
+                    )
+                    result = ProcessOutcome(
+                        process.returncode, stdout or "", stderr or "", False, False
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    _stop_group(process)
+                    process.communicate(timeout=1)
+                    raise TimeoutError(
+                        "global preflight deadline expired during sealed container process"
+                    ) from exc
+                except BaseException:
+                    _stop_group(process)
+                    process.communicate(timeout=1)
+                    raise
+        finally:
+            active_error = sys.exc_info()[0] is not None
+            cleanup_deadline = deadline
+            if cleanup_deadline is None:
+                cleanup_deadline = time.monotonic() + 10.0
             try:
-                assert process.stdin is not None
-                process.stdin.write(stdin)
-                process.stdin.flush()
-                time.sleep(min(linger_seconds, max(0.0, process_timeout - 1.0)))
-                process.stdin.close()
-                process.stdin = None
-                stdout, stderr = process.communicate(timeout=max(0.1, process_timeout - linger_seconds))
-                result = ProcessOutcome(process.returncode, stdout or "", stderr or "", False, False)
-            except subprocess.TimeoutExpired as exc:
-                _stop_group(process)
-                process.communicate(timeout=1)
-                raise TimeoutError("global preflight deadline expired during sealed container process") from exc
-            except BaseException:
-                _stop_group(process)
-                process.communicate(timeout=1)
-                raise
+                _remove_container(container_name, deadline=cleanup_deadline)
+            except Exception as exc:
+                if result is not None and not active_error:
+                    result = ProcessOutcome(
+                        result.returncode if result.returncode else 125,
+                        result.stdout,
+                        result.stderr
+                        + "\nMDSEVAL: " + type(exc).__name__ + ": " + str(exc) + "\n",
+                        result.timed_out,
+                        result.interrupted,
+                    )
         _remaining(deadline, "sealed container process")
+        assert result is not None
         if deadline is not None and result.timed_out:
             raise TimeoutError("global preflight deadline expired during sealed container process")
         return result, args
 
 @contextmanager
-def _network(image: str, *, deadline: float | None = None):
+def _network(image: str, *, deadline: float | None = None,
+             cleanup_grace_seconds: float | None = None):
     suffix = secrets.token_hex(6)
     network = f"mdseval-{suffix}"
     proxy = f"mdseval-proxy-{suffix}"
@@ -365,11 +534,23 @@ def _network(image: str, *, deadline: float | None = None):
         ip = details["NetworkSettings"]["Networks"][network]["IPAddress"]
         yield network, ip
     finally:
+        cleanup_deadline = (
+            time.monotonic() + cleanup_grace_seconds
+            if cleanup_grace_seconds is not None
+            else deadline
+        )
+        failures = []
         for arguments in (("stop", "--time", "1", proxy), ("network", "rm", network)):
             try:
-                _docker(*arguments, check=False, deadline=deadline)
-            except (OSError, RuntimeError, TimeoutError, subprocess.SubprocessError):
-                pass
+                result = _docker(*arguments, check=False, deadline=cleanup_deadline)
+                detail = (result.stderr or result.stdout).strip()
+                if result.returncode and "No such" not in detail:
+                    failures.append(" ".join(arguments) + ": " + detail)
+            except (OSError, RuntimeError, TimeoutError,
+                    subprocess.SubprocessError) as exc:
+                failures.append(" ".join(arguments) + ": " + type(exc).__name__)
+        if failures:
+            raise RuntimeError("sealed network cleanup failed: " + "; ".join(failures))
 
 def _json_line(value: str) -> dict[str, Any]:
     rows = [json.loads(line) for line in value.splitlines() if line.strip()]
@@ -400,6 +581,55 @@ def _resolved_web_search(reply: dict[str, Any]) -> dict[str, Any]:
     if evidence != WEB_SEARCH_DISABLED_EVIDENCE:
         raise RuntimeError("resolved web search is not disabled by the session flag")
     return evidence
+
+def _resolved_subject_surface(reply: dict[str, Any]) -> str:
+    result = reply.get("result") if isinstance(reply, dict) else None
+    config = result.get("config") if isinstance(result, dict) else None
+    layers = result.get("layers") if isinstance(result, dict) else None
+    if not isinstance(config, dict) or not isinstance(layers, list):
+        raise RuntimeError("resolved subject configuration is absent")
+    features = config.get("features")
+    apps = config.get("apps")
+    default_app = apps.get("_default") if isinstance(apps, dict) else None
+    skills = config.get("skills")
+    if (not isinstance(features, dict)
+            or any(features.get(name) is not False for name in DISABLED_FEATURES)
+            or not isinstance(default_app, dict)
+            or any(default_app.get(name) is not False
+                   for name in ("enabled", "destructive_enabled", "open_world_enabled"))
+            or skills != {"bundled": {"enabled": False}, "include_instructions": False}
+            or any(config.get(name) != {} for name in ("mcp_servers", "plugins", "marketplaces"))
+            or config.get("agents", {}).get("enabled") is not False
+            or config.get("default_permissions") != "mdseval"):
+        raise RuntimeError("external subject capability surface is not disabled")
+    session = [layer for layer in layers if isinstance(layer, dict)
+               and layer.get("name") == {"type": "sessionFlags"}]
+    if len(session) != 1 or not isinstance(session[0].get("config"), dict):
+        raise RuntimeError("subject capability overrides lack a unique session layer")
+    session_config = session[0]["config"]
+    session_features = session_config.get("features")
+    session_apps = session_config.get("apps", {}).get("_default")
+    if (not isinstance(session_features, dict)
+            or any(session_features.get(name) is not False for name in DISABLED_FEATURES)
+            or not isinstance(session_apps, dict)
+            or any(session_apps.get(name) is not False
+                   for name in ("enabled", "destructive_enabled", "open_world_enabled"))
+            or session_config.get("skills") != {
+                "bundled": {"enabled": False}, "include_instructions": False,
+                "config": []}):
+        raise RuntimeError("subject capability overrides are not session-bound")
+    lower = [layer for layer in layers if isinstance(layer, dict)
+             and isinstance(layer.get("name"), dict)
+             and layer["name"].get("type") in {"user", "system"}]
+    if len(lower) != 2 or any(layer.get("config") != {} for layer in lower):
+        raise RuntimeError("subject user/system configuration layers are not empty")
+    evidence = {"disabled_features": sorted(DISABLED_FEATURES),
+                "apps": {name: default_app[name] for name in (
+                    "enabled", "destructive_enabled", "open_world_enabled")},
+                "skills": skills, "mcp_servers": {}, "plugins": {}, "marketplaces": {},
+                "agents_enabled": False, "default_permissions": "mdseval",
+                "lower_layers_empty": True}
+    return sha(canonical(evidence).encode())
 
 def container_web_search_valid(value: dict[str, Any], required: bool) -> bool:
     return (("web_search" not in value or value["web_search"] == "disabled")
@@ -514,12 +744,13 @@ def _smoke_spec(task_ids: list[str], pin: str,
 
 def _targeted_smoke(image: str, pin: str, tasks: dict[str, Any], workspace: Path,
                     codex_home: Path, network: str, ip: str,
-                    deadline: float) -> dict[str, Any]:
+                    deadline: float, evaluator_output: Path) -> dict[str, Any]:
     payload = canonical({"image": image, "pin": pin, "proxy_host": ip,
                          "proxy_port": 8888, "tasks": tasks})
     command = ["/python/bin/python3", "-c", _TARGETED_SMOKE_SCRIPT]
     result, _ = _run(image, pin, workspace, codex_home, network, command,
-                     stdin=payload, deadline=deadline)
+                     stdin=payload, deadline=deadline, profiled_shell=True,
+                     evaluator_output=evaluator_output, protect_git=True)
     try:
         row = _json_line(result.stdout)
     except (UnicodeError, json.JSONDecodeError, RuntimeError, TypeError) as exc:
@@ -527,8 +758,11 @@ def _targeted_smoke(image: str, pin: str, tasks: dict[str, Any], workspace: Path
     if result.returncode or row.get("status") != "PASS":
         raise RuntimeError("targeted sealed-runtime smoke failed: "
                            + str(row.get("error", result.stderr[-500:])))
-    if (set(row) != {"status", "identity", "mounts", "auth", "bare_connect", "target_checks"}
-            or row["mounts"] != FAST_MOUNTS or row["auth"] != "isolated-readable"
+    if (set(row) != {"status", "identity", "mounts", "home", "bare_connect", "target_checks"}
+            or row["mounts"] != FAST_MOUNTS or not isinstance(row["home"], dict)
+            or row["home"].get("credential") != "absent"
+            or row["home"].get("profile_sha256") != sha(SHELL_PROFILE)
+            or row["home"].get("pytest_wrapper_sha256") != sha(PYTEST_WRAPPER)
             or row["bare_connect"] is not True or not isinstance(row["identity"], dict)
             or not isinstance(row["target_checks"], list)):
         raise RuntimeError("targeted sealed-runtime smoke proof is incomplete")
@@ -569,7 +803,8 @@ def _targeted_smoke(image: str, pin: str, tasks: dict[str, Any], workspace: Path
     return row
 
 def _fast_policy_messages(ip: str, image: str) -> list[dict[str, Any]]:
-    child = ["/python/bin/python3", "-I", "-c", _POLICY_CHILD_SCRIPT, ip, "8888", image]
+    login_child = ["/usr/bin/bash", "-lc", "exec " + shlex.join(
+        ["python3", "-c", _POLICY_CHILD_SCRIPT, ip, "8888", image])]
     return [
         {"method": "initialize", "id": 1,
          "params": {"clientInfo": {"name": "mdseval_fast_preflight",
@@ -578,54 +813,112 @@ def _fast_policy_messages(ip: str, image: str) -> list[dict[str, Any]]:
         {"method": "initialized", "params": {}},
         {"method": "config/read", "id": 2,
          "params": {"cwd": "/workspace", "includeLayers": True}},
-        {"method": "command/exec", "id": 3,
-         "params": {"command": child, "cwd": "/workspace",
+        {"method": "permissionProfile/list", "id": 3,
+         "params": {"cwd": "/workspace"}},
+        {"method": "command/exec", "id": 4,
+         "params": {"command": login_child, "cwd": "/workspace",
                     "disableOutputCap": True, "timeoutMs": 10000}},
     ]
 
 def _fast_policy(image: str, pin: str, workspace: Path, codex_home: Path,
-                 network: str, ip: str, deadline: float) -> dict[str, Any]:
-    command = ["/usr/lib/codex/bin/codex", "--strict-config", "-c",
-               WEB_SEARCH_DISABLED_CONFIG, "-c", 'sandbox_mode="workspace-write"',
-               "-c", "sandbox_workspace_write.network_access=false", "app-server"]
+                 network: str, ip: str, deadline: float,
+                 evaluator_output: Path) -> dict[str, Any]:
+    command = ["/usr/lib/codex/bin/codex", "--strict-config",
+               *config_arguments(SUBJECT_REQUIRED_CONFIGS), "app-server"]
     stdin = "".join(canonical(row) + "\n" for row in _fast_policy_messages(ip, image))
     result, _ = _run(image, pin, workspace, codex_home, network, command,
-                     stdin=stdin, deadline=deadline, linger_seconds=5.0)
+                     stdin=stdin, deadline=deadline, linger_seconds=5.0,
+                     include_auth=True, profiled_shell=True,
+                     evaluator_output=evaluator_output, protect_git=True)
     try:
         rows = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
     except (UnicodeError, json.JSONDecodeError, TypeError) as exc:
         raise RuntimeError("fast policy smoke returned malformed JSON") from exc
     config_replies = [row for row in rows if isinstance(row, dict) and row.get("id") == 2]
-    command_replies = [row for row in rows if isinstance(row, dict) and row.get("id") == 3]
-    if (result.returncode or len(config_replies) != 1 or len(command_replies) != 1
+    profile_replies = [row for row in rows if isinstance(row, dict) and row.get("id") == 3]
+    command_replies = [row for row in rows if isinstance(row, dict) and row.get("id") == 4]
+    if (result.returncode or len(config_replies) != 1 or len(profile_replies) != 1
+            or len(command_replies) != 1
             or not isinstance(command_replies[0].get("result"), dict)):
         detail = {"returncode": result.returncode, "timed_out": result.timed_out,
                   "interrupted": result.interrupted,
                   "config_reply_count": len(config_replies),
+                  "profile_reply_count": len(profile_replies),
                   "command_reply_count": len(command_replies),
                   "stdout_tail": result.stdout[-1000:], "stderr_tail": result.stderr[-1000:]}
         raise RuntimeError("fast policy smoke failed: " + canonical(detail))
     web_search = _resolved_web_search(config_replies[0])
+    subject_surface_sha256 = _resolved_subject_surface(config_replies[0])
+    profile_result = profile_replies[0].get("result")
+    profiles = profile_result.get("data") if isinstance(profile_result, dict) else None
+    mdseval_profiles = [row for row in profiles if isinstance(row, dict)
+                        and row.get("id") == "mdseval"] if isinstance(profiles, list) else []
+    expected_profile = {"id": "mdseval", "description": "MD Eval local coding subject",
+                        "allowed": True}
+    if len(mdseval_profiles) != 1 or mdseval_profiles[0] != expected_profile:
+        raise RuntimeError("custom permission profile is not registered and allowed")
     try:
         source = _json_line(command_replies[0]["result"]["stdout"])
     except (KeyError, TypeError, UnicodeError, json.JSONDecodeError, RuntimeError) as exc:
-        raise RuntimeError("fast policy child returned malformed JSON") from exc
+        child = command_replies[0].get("result")
+        detail = {
+            "exit_code": child.get("exitCode") if isinstance(child, dict) else None,
+            "stdout_tail": str(child.get("stdout", ""))[-1000:]
+            if isinstance(child, dict)
+            else "",
+            "stderr_tail": str(child.get("stderr", ""))[-1000:]
+            if isinstance(child, dict)
+            else "",
+        }
+        raise RuntimeError(
+            "fast policy child returned malformed JSON: " + canonical(detail)
+        ) from exc
     denial = source.get("denial")
+    shell = source.get("shell")
+    expected_shell = {"path": SHELL_PATH, "library_path": "/python/lib",
+                      "python": "/python/bin/python",
+                      "python3": "/python/bin/python3",
+                      "pytest": "/agent-home/bin/pytest",
+                      "pytest_origin": "/sealed-deps/pytest/__init__.py",
+                      "forbidden_environment": []}
     good = (source.get("status") == "DENIED" and source.get("exit_status") == errno.EPERM
             and isinstance(denial, str) and "PermissionError" in denial
+            and source.get("workspace_write") is True
+            and all(isinstance(source.get(name), str) and "PermissionError" in source[name]
+                    for name in ("auth_denial", "sessions_denial", "proc_denial"))
+            and all(isinstance(source.get(name), str)
+                    and ("PermissionError" in source[name]
+                         or "Read-only file system" in source[name])
+                    for name in ("output_denial", "git_denial", "profile_denial",
+                                 "wrapper_denial"))
+            and source.get("udp_denial") == {
+                "type": "PermissionError", "errno": errno.EPERM}
+            and source.get("dns_denial") == {
+                "type": "gaierror", "errno": LINUX_EAI_AGAIN}
+            and shell == expected_shell
             and source.get("socket_target") == [ip, 8888]
-            and isinstance(source.get("permission_profile"), dict)
-            and isinstance(source.get("policy_sha256"), str)
-            and re.fullmatch(r"[0-9a-f]{64}", source["policy_sha256"]) is not None
             and isinstance(source.get("identity"), dict))
     if not good:
-        raise RuntimeError("workspace-write network-denied policy proof failed")
-    return {"identity": source["identity"], "policy_sha256": source["policy_sha256"],
+        raise RuntimeError(
+            "workspace-write network-denied policy proof failed: "
+            + canonical(source)
+        )
+    policy_evidence = {"profile": expected_profile,
+                       "permissions": SUBJECT_PERMISSION_CONFIGS,
+                       "workspace_write": True, "network_denied": True,
+                       "auth_denied": True, "sessions_denied": True,
+                       "output_denied": True, "git_read_only": True,
+                       "profile_read_only": True, "wrapper_read_only": True,
+                       "udp_denied": True, "dns_denied": True,
+                       "proc_denied": True}
+    return {"identity": source["identity"],
+            "policy_sha256": sha(canonical(policy_evidence).encode()),
+            "subject_surface_sha256": subject_surface_sha256,
             "web_search": web_search}
 
 _FAST_SEAL_KEYS = {"seal_schema", "image_digest", "interpreter_pin", "task_ids",
                    "spec_sha256", "runtime_security_sha256", "policy_sha256", "identity",
-                   "web_search", "mounts", "sandbox", "auth", "target_checks_sha256",
+                   "web_search", "subject_surface_sha256", "mounts", "sandbox", "home", "target_checks_sha256",
                    "seal_sha256"}
 
 def _seal(core: dict[str, Any]) -> dict[str, Any]:
@@ -649,8 +942,13 @@ def _validate_fast_seal(seal: dict[str, Any], image: str, pin: str) -> bool:
             and re.fullmatch(r"[0-9a-f]{64}", seal["policy_sha256"]) is not None
             and isinstance(identity, dict) and identity.get("image_digest") == image
             and seal.get("web_search") == WEB_SEARCH_DISABLED_EVIDENCE
+            and isinstance(seal.get("subject_surface_sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", seal["subject_surface_sha256"]) is not None
             and seal.get("mounts") == FAST_MOUNTS and seal.get("sandbox") == FAST_SANDBOX
-            and seal.get("auth") == "isolated-readable"
+            and isinstance(seal.get("home"), dict)
+            and seal["home"].get("credential") == "absent"
+            and seal["home"].get("profile_sha256") == sha(SHELL_PROFILE)
+            and seal["home"].get("pytest_wrapper_sha256") == sha(PYTEST_WRAPPER)
             and isinstance(seal.get("target_checks_sha256"), str)
             and re.fullmatch(r"[0-9a-f]{64}", seal["target_checks_sha256"]) is not None)
     if not good:
@@ -667,13 +965,17 @@ def fast_smoke(image: str, pin: str, task_ids: list[str], codex_home: Path,
     # Leave time under the caller's one global deadline for Docker cleanup.
     operation_deadline = deadline - 2.0
     _remaining(operation_deadline, "fast sealed-runtime smoke")
-    with tempfile.TemporaryDirectory(prefix="mdseval-fast-smoke-") as name:
+    with tempfile.TemporaryDirectory(prefix="mdseval-fast-smoke-") as name, \
+         tempfile.TemporaryDirectory(prefix="mdseval-output-") as output_name:
         workspace = Path(name)
+        (workspace / ".git").mkdir()
+        evaluator_output = Path(output_name)
         with _network(image, deadline=deadline) as (network, ip):
             inspection = _targeted_smoke(image, pin, tasks, workspace, codex_home,
-                                         network, ip, operation_deadline)
+                                         network, ip, operation_deadline,
+                                         evaluator_output)
             policy = _fast_policy(image, pin, workspace, codex_home, network, ip,
-                                  operation_deadline)
+                                  operation_deadline, evaluator_output)
     _remaining(deadline, "fast sealed-runtime smoke")
     if policy["identity"] != inspection["identity"]:
         raise RuntimeError("sandbox and targeted interpreter identities differ")
@@ -683,8 +985,10 @@ def fast_smoke(image: str, pin: str, task_ids: list[str], codex_home: Path,
             "spec_sha256": spec_sha256,
             "runtime_security_sha256": security_sha256(image, pin),
             "policy_sha256": policy["policy_sha256"], "identity": policy["identity"],
-            "web_search": policy["web_search"], "mounts": dict(FAST_MOUNTS),
-            "sandbox": dict(FAST_SANDBOX), "auth": inspection["auth"],
+            "web_search": policy["web_search"],
+            "subject_surface_sha256": policy["subject_surface_sha256"],
+            "mounts": dict(FAST_MOUNTS),
+            "sandbox": dict(FAST_SANDBOX), "home": inspection["home"],
             "target_checks_sha256": checks_sha256}
     result = _seal(core)
     _validate_fast_seal(result, image, pin)
@@ -694,7 +998,7 @@ def fast_smoke(image: str, pin: str, task_ids: list[str], codex_home: Path,
 def probe(task_id: str, image: str, pin: str, codex_home: Path) -> tuple[str, str, int]:
     image_id(image)
     with tempfile.TemporaryDirectory(prefix="mdseval-probe-") as name, \
-         _network(image) as (network, ip), _home(codex_home) as home:
+         _network(image) as (network, ip), _home(codex_home, include_auth=True) as home:
         workspace = Path(name)
         shutil.copyfile(SPEC, workspace / "contamination-spec.json")
         policy = _policy(image, pin, workspace, codex_home, network, ip)
@@ -711,31 +1015,78 @@ def probe(task_id: str, image: str, pin: str, codex_home: Path) -> tuple[str, st
                                    environment=os.environ.copy())
         return result.stdout, result.stderr, result.returncode
 
-def subject(command: list[str], workspace: Path, final_path: Path, stdin: str, timeout: int, codex_home: Path, image: str, pin: str, seal: dict[str, Any]) -> ProcessOutcome:
+def subject(command: list[str], workspace: Path, final_path: Path, stdin: str,
+            timeout: int, codex_home: Path, image: str, pin: str,
+            seal: dict[str, Any]) -> SubjectOutcome:
     fast = _validate_fast_seal(seal, image, pin)
     if not fast:
-        image_id(image)
-    if command.count(WEB_SEARCH_DISABLED_CONFIG) != 1:
-        raise RuntimeError("subject command does not disable web search exactly once")
+        raise RuntimeError("legacy container policy seals cannot authorize a subject launch")
+    missing = [value for value in SUBJECT_REQUIRED_CONFIGS if command.count(value) != 1]
+    if missing:
+        raise RuntimeError("subject command does not contain each required capability, "
+                           "permission, and shell policy exactly once: " + canonical(missing))
     if seal.get("runtime_security_sha256") != security_sha256(image, pin):
         raise RuntimeError("approved runtime security mismatch")
     rewritten = list(command)
     rewritten[0] = "/usr/lib/codex/bin/codex"
     rewritten[rewritten.index("--cd") + 1] = "/workspace"
-    temporary = workspace / ".mdseval-final"
-    rewritten[rewritten.index("--output-last-message") + 1] = "/workspace/.mdseval-final"
-    with _network(image) as (network, ip):
-        if not fast:
-            policy = _policy(image, pin, workspace, codex_home, network, ip)
-            if (policy["source_sha256"] != seal.get("policy_sha256") or policy["identity"] != seal.get("identity")
-                    or seal.get("web_search") is not None and policy["web_search"] != seal["web_search"]):
-                raise RuntimeError("subject policy or identity mismatch")
-        result, _ = _run(image, pin, workspace, codex_home, network, rewritten,
-                         stdin=stdin, timeout=timeout)
-    if temporary.is_file() and not temporary.is_symlink():
-        final_path.write_bytes(temporary.read_bytes())
-    temporary.unlink(missing_ok=True)
-    return result
+    with tempfile.TemporaryDirectory(prefix="mdseval-output-") as output_name:
+        evaluator_output = Path(output_name)
+        temporary = evaluator_output / "final-message.txt"
+        rewritten[rewritten.index("--output-last-message") + 1] = (
+            "/evaluator-output/final-message.txt"
+        )
+        result: ProcessOutcome | None = None
+        subject_duration: float | None = None
+        try:
+            with _network(
+                image,
+                deadline=time.monotonic() + 15.0,
+                cleanup_grace_seconds=10.0,
+            ) as (network, ip):
+                subject_started = time.monotonic()
+                result, _ = _run(
+                    image,
+                    pin,
+                    workspace,
+                    codex_home,
+                    network,
+                    rewritten,
+                    stdin=stdin,
+                    timeout=timeout,
+                    include_auth=True,
+                    profiled_shell=True,
+                    evaluator_output=evaluator_output,
+                    protect_git=True,
+                )
+                subject_duration = time.monotonic() - subject_started
+        except Exception as exc:
+            if result is None:
+                raise
+            result = ProcessOutcome(
+                result.returncode if result.returncode else 125,
+                result.stdout,
+                result.stderr
+                + "\nMDSEVAL: " + type(exc).__name__ + ": " + str(exc) + "\n",
+                result.timed_out,
+                result.interrupted,
+            )
+        assert result is not None
+        assert subject_duration is not None
+        if os.path.lexists(temporary):
+            mode = os.lstat(temporary).st_mode
+            if stat.S_ISREG(mode) and not temporary.is_symlink():
+                final_path.write_bytes(temporary.read_bytes())
+            else:
+                result = ProcessOutcome(
+                    result.returncode if result.returncode else 125,
+                    result.stdout,
+                    result.stderr
+                    + "\nMDSEVAL: evaluator final-message path was not a regular file\n",
+                    result.timed_out,
+                    result.interrupted,
+                )
+    return SubjectOutcome(result, subject_duration)
 
 def checker(task: Path, source: Path, image: str, pin: str, codex_home: Path, expected: dict[str, Any] | None = None) -> tuple[dict[str, Any], bool, float, dict[str, Any]]:
     image_id(image)

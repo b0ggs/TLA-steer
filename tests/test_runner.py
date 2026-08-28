@@ -8,6 +8,8 @@ from unittest import mock
 
 from mdseval.runner.codex_cli import (
     CodexCLI,
+    SUBJECT_CAPABILITY_CONFIGS,
+    SUBJECT_PERMISSION_CONFIGS,
     build_codex_command,
     doctor,
     isolated_environment,
@@ -33,16 +35,32 @@ class RunnerTests(unittest.TestCase):
             "--ephemeral",
             "--strict-config",
             "--json",
-            "--sandbox workspace-write",
             "--ignore-user-config",
             "--ignore-rules",
             "--model gpt-5.6-sol",
             'model_reasoning_effort="high"',
             'project_doc_fallback_filenames=["CODER.md"]',
-            "agents.enabled=false",
             "sandbox_workspace_write.network_access=false",
         ):
             self.assertIn(value, joined)
+        for value in SUBJECT_CAPABILITY_CONFIGS:
+            self.assertEqual(command.count(value), 1)
+        for value in SUBJECT_PERMISSION_CONFIGS:
+            self.assertEqual(command.count(value), 1)
+        self.assertNotIn("--sandbox", command)
+        self.assertIn('default_permissions="mdseval"', SUBJECT_PERMISSION_CONFIGS)
+        self.assertTrue(any("/agent-home/auth.json" in value and '="deny"' in value
+                            for value in SUBJECT_PERMISSION_CONFIGS))
+        for value in (
+            'web_search="disabled"',
+            "apps._default.enabled=false",
+            "features.apps=false",
+            "features.browser_use=false",
+            "features.computer_use=false",
+            "features.plugins=false",
+            "features.remote_plugin=false",
+        ):
+            self.assertIn(value, SUBJECT_CAPABILITY_CONFIGS)
         self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", joined)
         self.assertNotIn("--skip-git-repo-check", joined)
 
