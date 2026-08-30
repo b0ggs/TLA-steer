@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tla-steer.local/schemas/proposal.schema.json",
+  "title": "TLA-Steer Follower proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "step_id", "python_fragment"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "tla-steer-proposal/0.1"
+    },
+    "step_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "python_fragment": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16000
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": "tla-steer-rate-card/0.1",
+  "observed_date": "2026-08-30",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+  "source_urls": [
+    "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+    "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
+  ],
+  "models": {
+    "gpt-5.6-sol": {
+      "input": 4.0,
+      "cached_input": 0.4,
+      "cache_write_input": 5.0,
+      "output": 20.0
+    },
+    "gpt-5.6-luna": {
+      "input": 0.2,
+      "cached_input": 0.02,
+      "cache_write_input": 0.25,
+      "output": 1.2
+    }
+  },
+  "notes": [
+    "These are dated API-price-equivalent rates, not marginal Codex OAuth charges.",
+    "Cached reads and cache writes are subcounts removed from total input before their own rates are applied.",
+    "Reported cache-write tokens are priced at 1.25 times the uncached input rate.",
+    "Reasoning-output tokens are retained as a diagnostic subcount and are not charged a second time."
+  ]
+}

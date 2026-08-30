@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tla-steer.local/schemas/controller.schema.json",
+  "title": "TLA-Steer declarative controller",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "steps"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "tla-steer-controller/0.1"
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  },
+  "$defs": {
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clock", "lightA", "timerA", "lightB", "timerB"],
+      "properties": {
+        "clock": {"type": "integer", "minimum": 0, "maximum": 7},
+        "lightA": {"type": "string", "enum": ["red", "green", "yellow"]},
+        "timerA": {"type": "integer", "minimum": 0, "maximum": 6},
+        "lightB": {"type": "string", "enum": ["red", "green", "yellow"]},
+        "timerB": {"type": "integer", "minimum": 0, "maximum": 6}
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "expected_successor"],
+      "properties": {
+        "state": {"$ref": "#/$defs/state"},
+        "expected_successor": {
+          "anyOf": [
+            {"$ref": "#/$defs/state"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "initial_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "target",
+        "python_symbol",
+        "proposal_instruction",
+        "expected_initial"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "kind": {"type": "string", "const": "initial"},
+        "target": {"type": "string", "const": "INITIAL"},
+        "python_symbol": {"type": "string", "const": "INITIAL"},
+        "proposal_instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "expected_initial": {"$ref": "#/$defs/state"}
+      }
+    },
+    "action_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "target",
+        "python_symbol",
+        "proposal_instruction",
+        "probes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "kind": {"type": "string", "const": "action"},
+        "target": {
+          "type": "string",
+          "enum": [
+            "Tick",
+            "AGreenToYellow",
+            "AYellowToRed",
+            "ARedToGreen",
+            "BGreenToYellow",
+            "BYellowToRed",
+            "BRedToGreen"
+          ]
+        },
+        "python_symbol": {
+          "type": "string",
+          "enum": [
+            "tick",
+            "a_green_to_yellow",
+            "a_yellow_to_red",
+            "a_red_to_green",
+            "b_green_to_yellow",
+            "b_yellow_to_red",
+            "b_red_to_green"
+          ]
+        },
+        "proposal_instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "probes": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 16,
+          "items": {"$ref": "#/$defs/probe"}
+        }
+      }
+    },
+    "step": {
+      "anyOf": [
+        {"$ref": "#/$defs/initial_step"},
+        {"$ref": "#/$defs/action_step"}
+      ]
+    }
+  }
+}

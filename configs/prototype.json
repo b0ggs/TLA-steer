@@ -1,0 +1,54 @@
+{
+  "schema_version": "tla-steer-config/0.1",
+  "experiment_id": "twolights-prototype",
+  "input": {
+    "tla_path": "TwoLights.tla",
+    "cfg_path": "TwoLights.cfg",
+    "constants": {
+      "CYCLE_LENGTH": 8,
+      "MIN_GREEN": 3,
+      "MIN_YELLOW": 1,
+      "MIN_RED": 4,
+      "MAX_PHASE": 6,
+      "OFFSET": 2
+    }
+  },
+  "models": {
+    "direct": {
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "xhigh",
+      "max_attempts": 1,
+      "internal_subagents": false
+    },
+    "planner": {
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "xhigh",
+      "max_attempts": 2,
+      "internal_subagents": false
+    },
+    "follower": {
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "max_attempts": 1,
+      "internal_subagents": false
+    }
+  },
+  "smc": {
+    "logical_particles": 8,
+    "max_active_follower_calls": 4,
+    "semantic_steps": 8,
+    "ess_threshold": 4.0,
+    "resampling": "multinomial",
+    "seed": 20260830
+  },
+  "containment_mode": "prototype_local",
+  "paths": {
+    "runs_root": "runs",
+    "rate_card": "configs/rate-card-2026-08-30.json",
+    "controller_schema": "schemas/controller.schema.json",
+    "proposal_schema": "schemas/proposal.schema.json",
+    "direct_prompt": "prompts/direct.md",
+    "planner_prompt": "prompts/planner.md",
+    "follower_prompt": "prompts/follower.md"
+  }
+}
