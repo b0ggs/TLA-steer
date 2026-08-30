@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .coverage
 .venv/
+.scope-gate-venv/
 runs/*
 !runs/dev-v2/
 !runs/.gitkeep

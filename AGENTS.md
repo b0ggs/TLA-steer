@@ -1,5 +1,11 @@
 # Repository instructions
 
+## Active TLA-Steer project
+
+The active product and approved hackathon scope are defined by `README.md` and
+`IMPLEMENTATION_PLAN.md`. The MDs_EVAL product instructions below govern the
+preserved foundation; they do not redefine TLA-Steer's approved prototype.
+
 ## Product definition
 
 We are building a controlled benchmark and regression system for coder.md: it runs the same LLM on a validated suite of coding tasks with no coder.md, with the current coder.md, and with a candidate replacement, then uses objective checkers to determine whether coder.md beats the bare model and whether the candidate beats the incumbent without regressions. The finished product is the reusable task suite, runner, checkers, preserved evidence, and comparison report needed to make reliable keep-or-replace decisions.
@@ -24,3 +30,28 @@ This repository evaluates instruction files. It is not an instruction optimizer 
 - Sub-agent concurrency is unlimited for implementing sessions (per Wade, 2026-08-23).
 - Do not build enforcement or receipt infrastructure beyond taskcheck's manifest and ledger unless Wade separately authorizes it.
 - Audit and review findings do not expand the requested scope; recommendations are advisory unless Wade explicitly adopts them.
+
+<!-- BEGIN SCOPE-GATE GUARDRAIL -->
+## Audit and review scope guardrail
+
+- Audit and review findings do not expand the approved task. Recommendations
+  are advisory unless Wade explicitly adopts them.
+- The orchestrator/controller freezes a per-task Scope Gate contract containing
+  approved requirement and invariant IDs, exclusions, allowed paths, and
+  mapped checks. An explicit user instruction or accepted roadmap supplies
+  approval; creating its matching contract requires no additional approval
+  ceremony.
+- Auditors may submit structured findings only. They may not change the
+  contract or mappings, mark results trusted, determine changed paths, dispatch
+  work, or create requirements.
+- Only the orchestrator/controller runs trusted checks, determines changed
+  paths, constructs the evaluation bundle, invokes `scope-gate evaluate`, and
+  obeys the result.
+- Exit 0 means no Scope Gate blocker; it does not prove task completion. Exit 2
+  blocks completion. Exit 3, malformed output, or an unexpected process
+  failure fails closed as an integration error.
+- Completion independently requires every required controller-run check to
+  pass against the final artifact.
+- Once work begins, the active contract, revision, and digest are immutable.
+  Any scope change requires Wade's approval and a new revision and digest.
+<!-- END SCOPE-GATE GUARDRAIL -->

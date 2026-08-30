@@ -1,0 +1,101 @@
+{
+  "schema_version": "scope-gate-contract-v1",
+  "scope_revision": "TLA-STEER-PROTOTYPE-r1",
+  "approved_requirements": [
+    {
+      "id": "REQ-DIRECT-ARM",
+      "mapped_check_ids": [
+        "check-offline-report"
+      ]
+    },
+    {
+      "id": "REQ-DISCIPL-ARM",
+      "mapped_check_ids": [
+        "check-focused-tests",
+        "check-offline-report"
+      ]
+    },
+    {
+      "id": "REQ-EXACT-VERIFIER",
+      "mapped_check_ids": [
+        "check-focused-tests",
+        "check-offline-report"
+      ]
+    },
+    {
+      "id": "REQ-EVIDENCE-COMPARISON",
+      "mapped_check_ids": [
+        "check-offline-report"
+      ]
+    }
+  ],
+  "approved_invariants": [
+    {
+      "id": "INV-BOUNDED-TWO-LIGHTS",
+      "mapped_check_ids": [
+        "check-focused-tests",
+        "check-offline-report"
+      ]
+    },
+    {
+      "id": "INV-DISABLED-MODEL-CAPABILITIES",
+      "mapped_check_ids": [
+        "check-offline-report"
+      ]
+    },
+    {
+      "id": "INV-HONEST-CONTAINMENT-LABEL",
+      "mapped_check_ids": [
+        "check-offline-report"
+      ]
+    },
+    {
+      "id": "INV-PREVERIFICATION-SELECTION",
+      "mapped_check_ids": [
+        "check-focused-tests",
+        "check-offline-report"
+      ]
+    }
+  ],
+  "excluded_capability_ids": [
+    "CAP-ADDITIONAL-EXPERIMENTAL-ARMS",
+    "CAP-ADDITIONAL-SPECS-OR-CONSTANTS",
+    "CAP-ARBITRARY-PLANNER-CODE",
+    "CAP-DASHBOARD-DATABASE-CI",
+    "CAP-GENERAL-TLA-COMPILER",
+    "CAP-NEW-APP-SERVER",
+    "CAP-OAUTH-REFRESH-REDESIGN",
+    "CAP-PRODUCTION-HARDENING",
+    "CAP-COUNTEREXAMPLE-REPAIR-OR-MCMC-REJUVENATION",
+    "CAP-STATISTICAL-CLAIMS",
+    "CAP-TLC-INTEGRATION",
+    "CAP-TOKEN-LEVEL-INFERENCE"
+  ],
+  "allowed_path_patterns": [
+    "configs/prototype.json",
+    "configs/rate-card-2026-08-30.json",
+    "prompts/direct.md",
+    "prompts/follower.md",
+    "prompts/planner.md",
+    "runs/**",
+    "schemas/controller.schema.json",
+    "schemas/proposal.schema.json",
+    "src/tla_steer/**",
+    "tests/fixtures/candidates/**",
+    "tests/test_oracle.py",
+    "tests/test_smc.py",
+    "tests/test_verifier.py",
+    "tests/test_worker_fake.py"
+  ],
+  "checks": [
+    {
+      "id": "check-focused-tests",
+      "definition": "From the repository root, run the controller interpreter with -m pytest -q tests/test_oracle.py tests/test_verifier.py tests/test_worker_fake.py tests/test_smc.py; pass only on exit 0."
+    },
+    {
+      "id": "check-offline-report",
+      "definition": "Select the lexicographically latest runs/* directory containing summary.json, then run the controller interpreter with -m tla_steer report <selected-run> from the repository root with PYTHONPATH=src; pass only on exit 0."
+    }
+  ],
+  "canonical_digest": "23d96b6195cf28bb6e045baea874b77c48e65614143df3a80853285fd1082ef2"
+}
