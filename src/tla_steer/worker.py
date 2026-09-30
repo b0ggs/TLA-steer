@@ -9,6 +9,7 @@ MDs_EVAL container boundary.  Every result records that fact as
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -61,6 +62,7 @@ class RolePolicy:
 
 ROLE_POLICIES: Mapping[str, RolePolicy] = {
     "direct": RolePolicy("direct", "gpt-5.6-sol", "xhigh"),
+    "cheap_alone": RolePolicy("cheap_alone", "gpt-5.6-luna", "low"),
     "planner": RolePolicy("planner", "gpt-5.6-sol", "xhigh"),
     "follower": RolePolicy("follower", "gpt-5.6-luna", "low"),
 }
@@ -429,7 +431,7 @@ def run_worker(
         usage: dict[str, int | bool] = {
             field: int(audit.usage[field]) for field in USAGE_FIELDS
         }
-        usage["usage_reported"] = bool(audit.usage["usage_reported"])
+        usage["usage_reported"] = bool(audit.usage["usage_reported"]) and not event_fatal_defects
         returned_model, turn_failed = _event_metadata(events_path)
 
         artifact_path, artifact_sha, artifact_size, artifact_error = _capture_artifact(
@@ -479,3 +481,88 @@ def run_worker(
         )
         _write_once(request.spool_dir / "result.json", _json_bytes(result.to_dict()))
         return result
+
+
+class ReviewedFixtureWorker:
+    """Fixed offline data, passed through real worker capture without a provider.
+
+    This is a synthetic accounting fixture, not simulated model performance.
+    The only executable fragments come from two hash-pinned reviewed fixtures.
+    No user-supplied candidate, fixture path, process runner or credential is used.
+    """
+
+    FIXTURE_HASHES = {
+        "golden.py": "ec8f6d5d1b0613b44803135a59b5dd2a1b163ce22225dda564cae79da50b01dc",
+        "frame_copy_error.py": "5fcd4e2d0e3d81593accc155ae911620b42a42e243415324e0dbd300ffa77c8e",
+    }
+
+    def __init__(self, root: Path):
+        from .contract import CONTROLLER_SCHEMA_VERSION
+        from .oracle import ACTION_SYMBOLS, INITIAL, iter_type_correct_states, oracle_successor
+
+        sources = {}
+        for name, expected in self.FIXTURE_HASHES.items():
+            data = (root / "tests/fixtures/candidates" / name).read_bytes()
+            if _sha256(data) != expected:
+                raise ValueError(f"unreviewed offline fixture: {name}")
+            sources[name] = data.decode("utf-8")
+        self.golden = sources["golden.py"]
+        self.fragments = {
+            name: {node.name: ast.get_source_segment(source, node)
+                   for node in ast.parse(source).body if isinstance(node, ast.FunctionDef)}
+            for name, source in sources.items()
+        }
+        self.initial = "INITIAL = " + repr(INITIAL)
+        self.allowed_fragments = {self.initial}
+        for fragments in self.fragments.values():
+            self.allowed_fragments.update(fragments.values())
+        steps = [{"id": "initial", "kind": "initial", "target": "INITIAL",
+                  "python_symbol": "INITIAL", "proposal_instruction": "Return INITIAL.",
+                  "expected_initial": dict(INITIAL)}]
+        states = list(iter_type_correct_states())
+        for label, symbol in ACTION_SYMBOLS.items():
+            enabled = next(state for state in states if oracle_successor(label, state) is not None)
+            disabled = next(state for state in states if oracle_successor(label, state) is None)
+            steps.append({
+                "id": symbol, "kind": "action", "target": label, "python_symbol": symbol,
+                "proposal_instruction": f"Return {symbol}.",
+                "probes": [{"state": enabled, "expected_successor": oracle_successor(label, enabled)},
+                           {"state": disabled, "expected_successor": None}],
+            })
+        self.controller = {"schema_version": CONTROLLER_SCHEMA_VERSION, "steps": steps}
+
+    def validate_particle(self, particle: Any) -> None:
+        for fragment in particle.fragments:
+            if fragment.python_fragment not in self.allowed_fragments:
+                raise ValueError("offline screen refused unreviewed candidate fragment")
+
+    def __call__(self, request: WorkerRequest) -> WorkerResult:
+        from .contract import PROPOSAL_SCHEMA_VERSION
+
+        def fixture_process(command: list[str], **kwargs: Any) -> ProcessOutcome:
+            if request.role in {"direct", "cheap_alone"}:
+                document = self.golden
+            elif request.role == "planner":
+                document = json.dumps(self.controller)
+            else:
+                step = json.loads(request.input_files["controller-step.json"])
+                symbol = step["python_symbol"]
+                source = "golden.py"
+                # Literal reviewed wrong-copy fixture makes particle 0 less
+                # likely, yet the seeded weighted draw still selects it.
+                if request.call_id.endswith("p00-0000") and symbol == "b_green_to_yellow":
+                    source = "frame_copy_error.py"
+                fragment = self.initial if symbol == "INITIAL" else self.fragments[source][symbol]
+                document = json.dumps({"schema_version": PROPOSAL_SCHEMA_VERSION,
+                                       "step_id": step["id"], "python_fragment": fragment})
+            Path(command[command.index("--output-last-message") + 1]).write_text(document, encoding="utf-8")
+            rows = [
+                {"type": "thread.started", "model": ROLE_POLICIES[request.role].model},
+                {"type": "turn.started"},
+                {"type": "turn.completed", "usage": {
+                    "input_tokens": 101, "cached_input_tokens": 41, "cache_write_input_tokens": 7,
+                    "output_tokens": 23, "reasoning_output_tokens": 11}},
+            ]
+            return ProcessOutcome(0, "".join(json.dumps(row) + "\n" for row in rows), "", False, False)
+
+        return run_worker(request, process_runner=fixture_process)

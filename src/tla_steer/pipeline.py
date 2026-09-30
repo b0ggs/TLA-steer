@@ -46,12 +46,16 @@ from .smc import (
     run_smc,
 )
 from .verifier import INVALID_CANDIDATE, verify_candidate
-from .worker import PROTOTYPE_LOCAL, ROLE_POLICIES, WorkerRequest, WorkerResult, run_worker
+from .worker import PROTOTYPE_LOCAL, ROLE_POLICIES, WorkerRequest, WorkerResult, ReviewedFixtureWorker, run_worker
 
 
 SCHEMA_VERSION = "tla-steer-run/0.1"
 WORKER_TIMEOUT_SECONDS = 300
 PROBE_TIMEOUT_SECONDS = 5
+SOURCE_HASHES = {
+    "TwoLights.tla": "7717242a40bcd6ed57380ca7a4f2e1e756d5432470c3162a3a31e15309f4b4aa",
+    "TwoLights.cfg": "ae94c273187b35d55831f4b272c0b229437e82758c2be7f9a0921830b288ce40",
+}
 
 
 class PipelineError(RuntimeError):
@@ -264,7 +268,7 @@ def _validate_fixed_configuration(
         or smc.get("max_active_follower_calls") != 4
         or smc.get("semantic_steps") != 8
         or smc.get("resampling") != "multinomial"
-        or not isinstance(smc.get("seed"), int)
+        or smc.get("seed") != 20260830
     ):
         raise PipelineError("SMC config differs from the frozen prototype")
     if config.get("containment_mode") != PROTOTYPE_LOCAL:
@@ -425,6 +429,7 @@ def _planner(
     codex_home: Path,
     base_prompt: str,
     common_inputs: dict[str, str],
+    invoke: Any,
 ) -> tuple[Controller | None, int, str | None]:
     invalid_document: str | None = None
     validation_error: str | None = None
@@ -451,7 +456,7 @@ def _planner(
             )
             inputs["invalid-controller.json"] = invalid_document
             inputs["validation-error.txt"] = validation_error
-        result = run_worker(
+        result = invoke(
             WorkerRequest(
                 call_id=call_id,
                 role="planner",
@@ -485,8 +490,9 @@ def run_comparison(
     particle_count: int,
     max_concurrency: int,
     smoke: bool,
+    offline_screen: bool = False,
 ) -> Path:
-    """Run exactly the direct and DisCIPL-style TwoLights arms.
+    """Run the frozen comparison, optionally with the fixture-only cheap control.
 
     Model failures and semantic mismatches are experiment results.  Harness
     failures raise ``PipelineError`` after the partial run manifest and report
@@ -501,11 +507,23 @@ def run_comparison(
         max_concurrency=max_concurrency,
         smoke=smoke,
     )
-    codex_home, codex_home_variable = _codex_home()
     paths = _object(config.get("paths"), "paths")
     input_config = _object(config.get("input"), "input")
     tla_path = _relative_file(root, input_config.get("tla_path"), "input.tla_path")
     cfg_path = _relative_file(root, input_config.get("cfg_path"), "input.cfg_path")
+    source_bytes = {"TwoLights.tla": tla_path.read_bytes(), "TwoLights.cfg": cfg_path.read_bytes()}
+    if input_config.get("sha256") != SOURCE_HASHES:
+        raise PipelineError("configured TwoLights hashes differ from the approved source pins")
+    for name, data in source_bytes.items():
+        if _sha256_bytes(data) != SOURCE_HASHES[name]:
+            raise PipelineError(f"TwoLights source hash mismatch: {name}; no worker launched")
+    if offline_screen and (not smoke or (particle_count, max_concurrency) != (2, 2)):
+        raise PipelineError("offline screen requires N=2, C=2")
+    fixture = ReviewedFixtureWorker(root) if offline_screen else None
+    if fixture is None:
+        codex_home, codex_home_variable = _codex_home()
+    else:
+        codex_home_variable = "offline_empty_profile_no_credentials"
     rate_card_path = _relative_file(root, paths.get("rate_card"), "paths.rate_card")
     controller_schema_path = _relative_file(
         root, paths.get("controller_schema"), "paths.controller_schema"
@@ -522,7 +540,7 @@ def run_comparison(
     if not isinstance(controller_schema, dict) or not isinstance(proposal_schema, dict):
         raise PipelineError("controller and proposal schemas must be JSON objects")
 
-    runs_root = _run_root(root, paths.get("runs_root"))
+    runs_root = _run_root(root, "runs/offline-cost-screen-r2" if offline_screen else paths.get("runs_root"))
     runs_root.mkdir(parents=True, exist_ok=True)
     run_id = (
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -532,6 +550,9 @@ def run_comparison(
     )
     run_dir = runs_root / run_id
     run_dir.mkdir(exist_ok=False)
+    if offline_screen:
+        codex_home = run_dir / ".offline-profile"
+        codex_home.mkdir()
     started = time.monotonic()
     start_timestamp = _utc_now()
     shutil.copyfile(rate_card_path, run_dir / "rate-card.json")
@@ -549,6 +570,15 @@ def run_comparison(
         ),
         "codex_home_source": codex_home_variable,
         "smoke": smoke,
+        "offline_fixture": offline_screen,
+        "measurement_note": (
+            "Reviewed local fixtures and synthetic token counters only. No provider calls, "
+            "live model performance, actual charges, or research savings are measured."
+            if offline_screen else None
+        ),
+        "arms": ["direct", "cheap_alone", "discipl"] if offline_screen else ["direct", "discipl"],
+        "attempted_calls_by_role": {role: 0 for role in ROLE_POLICIES
+                                    if offline_screen or role != "cheap_alone"},
         "configuration": {
             "logical_particles": particle_count,
             "max_active_follower_calls": max_concurrency,
@@ -560,8 +590,9 @@ def run_comparison(
         },
         "inputs": {
             "config": {"path": str(config_path.relative_to(root)), "sha256": sha256_file(config_path)},
-            "tla": {"path": str(tla_path.relative_to(root)), "sha256": sha256_file(tla_path)},
-            "cfg": {"path": str(cfg_path.relative_to(root)), "sha256": sha256_file(cfg_path)},
+            "tla": {"path": str(tla_path.relative_to(root)), "sha256": _sha256_bytes(source_bytes["TwoLights.tla"])},
+            "cfg": {"path": str(cfg_path.relative_to(root)), "sha256": _sha256_bytes(source_bytes["TwoLights.cfg"])},
+            "rate_card_sha256": sha256_file(run_dir / "rate-card.json"),
             "controller_schema_sha256": sha256_file(controller_schema_path),
             "proposal_schema_sha256": sha256_file(proposal_schema_path),
             "prompt_sha256": {
@@ -569,12 +600,21 @@ def run_comparison(
             },
         },
         "selection_policy": "sample one official particle from final normalized weights before verification",
+        "selection_complete": False,
+        "official_direct_candidate_sha256": None,
+        "official_discipl_candidate_sha256": None,
+        "arm_timing_note": (
+            "Per-arm times sum generation and verification phases; deliberate "
+            "waiting at the selection barrier is excluded. Run wall time includes all phases."
+        ),
         "nonconformities": [],
     }
     write_json(run_dir / "manifest.json", manifest)
 
-    tla_source = tla_path.read_text(encoding="utf-8")
-    cfg_source = cfg_path.read_text(encoding="utf-8")
+    tla_source = source_bytes["TwoLights.tla"].decode("utf-8")
+    cfg_source = source_bytes["TwoLights.cfg"].decode("utf-8")
+    for name, data in source_bytes.items():
+        _write_once(run_dir / "inputs" / name, data)
     direct_prompt = prompt_paths["direct"].read_text(encoding="utf-8")
     planner_prompt = prompt_paths["planner"].read_text(encoding="utf-8")
     follower_prompt = prompt_paths["follower"].read_text(encoding="utf-8")
@@ -584,6 +624,21 @@ def run_comparison(
         "artifact-contract.md": direct_prompt,
     }
 
+    attempt_lock = threading.Lock()
+
+    def invoke(request: WorkerRequest) -> WorkerResult:
+        # Count before entering the worker, including setup/spawn exceptions.
+        # Reconcile this existing manifest with intent/result spools on replay.
+        with attempt_lock:
+            manifest["attempted_calls_by_role"][request.role] += 1
+            write_json(run_dir / "manifest.json", manifest)
+        return fixture(request) if fixture is not None else run_worker(request)
+
+    def score(particle: Particle, step: ControllerStep, proposal: Proposal) -> IncrementalScore:
+        if fixture is not None:
+            fixture.validate_particle(particle)
+        return _incremental_score(particle, step, proposal)
+
     nonconformities: list[str] = manifest["nonconformities"]
     nonconformity_lock = threading.Lock()
     active_followers = 0
@@ -592,53 +647,53 @@ def run_comparison(
     follower_counter = itertools.count(1)
     follower_count_lock = threading.Lock()
     planner_repair_count = 0
-    direct_makespan = 0.0
     discipl_makespan = 0.0
     official_hash: str | None = None
+    discipl_verification: dict[str, Any] | None = None
+    selected_path: Path | None = None
+    selected_metadata: dict[str, Any] = {}
 
     try:
-        direct_started = time.monotonic()
-        direct_spool = run_dir / "direct" / "calls" / "direct-0001"
-        direct_result = run_worker(
-            WorkerRequest(
-                call_id="direct-0001",
-                role="direct",
-                prompt=_prompt_with_inputs(
-                    direct_prompt,
-                    {
-                        "TwoLights.tla": tla_source,
-                        "TwoLights.cfg": cfg_source,
-                    },
-                ),
-                input_files={
-                    "TwoLights.tla": tla_source,
-                    "TwoLights.cfg": cfg_source,
-                },
-                artifact_path=None,
-                spool_dir=direct_spool,
-                codex_home=codex_home,
+        direct_arms = ["direct", "cheap_alone"] if offline_screen else ["direct"]
+        direct_records = {}
+        for arm in direct_arms:
+            arm_started = time.monotonic()
+            spool = run_dir / arm / "calls" / f"{arm}-0001"
+            result = invoke(WorkerRequest(
+                call_id=f"{arm}-0001", role=arm,
+                prompt=_prompt_with_inputs(direct_prompt, {
+                    "TwoLights.tla": tla_source, "TwoLights.cfg": cfg_source}),
+                input_files={"TwoLights.tla": tla_source, "TwoLights.cfg": cfg_source},
+                artifact_path=None, spool_dir=spool, codex_home=codex_home,
                 timeout_seconds=WORKER_TIMEOUT_SECONDS,
-            )
-        )
-        _context(direct_spool, arm="direct", result=direct_result)
-        direct_issue = _call_issue(direct_result)
-        direct_candidate = run_dir / "direct" / "candidate.py"
-        if direct_issue is None:
-            _write_once(direct_candidate, (direct_spool / "final.txt").read_bytes())
-            frozen_direct_hash = sha256_file(direct_candidate)
-            direct_verification = verify_candidate(direct_candidate)
-            direct_verification["frozen_candidate_sha256"] = frozen_direct_hash
-        else:
-            nonconformities.append(direct_issue)
-            direct_verification = _failed_verification(direct_issue)
-        _write_json_once(run_dir / "direct" / "verification.json", direct_verification)
-        direct_makespan = time.monotonic() - direct_started
+            ))
+            _context(spool, arm=arm, result=result)
+            issue = _call_issue(result)
+            candidate = run_dir / arm / "candidate.py"
+            digest = None
+            verification = None
+            if issue is None:
+                data = (spool / "final.txt").read_bytes()
+                if fixture is not None and data != fixture.golden.encode("utf-8"):
+                    raise PipelineError("offline screen refused unreviewed direct candidate")
+                _write_once(candidate, data)
+                digest = sha256_file(candidate)
+            else:
+                nonconformities.append(issue)
+                verification = _failed_verification(issue)
+            manifest[f"official_{arm}_candidate_sha256"] = digest
+            write_json(run_dir / "manifest.json", manifest)
+            direct_records[arm] = {
+                "path": candidate, "hash": digest, "verification": verification,
+                "seconds": time.monotonic() - arm_started,
+            }
 
         discipl_started = time.monotonic()
         controller, planner_repair_count, planner_error = _planner(
             run_dir=run_dir,
             codex_home=codex_home,
             base_prompt=planner_prompt,
+            invoke=invoke,
             common_inputs={
                 **common_inputs,
                 "controller.schema.json": controller_schema_path.read_text(encoding="utf-8"),
@@ -647,9 +702,8 @@ def run_comparison(
         if planner_error is not None:
             nonconformities.append(planner_error)
         if controller is None:
-            _write_json_once(
-                run_dir / "discipl" / "verification.json",
-                _failed_verification(planner_error or "Planner produced no controller"),
+            discipl_verification = _failed_verification(
+                planner_error or "Planner produced no controller"
             )
         else:
             _write_json_once(
@@ -681,7 +735,7 @@ def run_comparison(
                     active_followers += 1
                     maximum_followers = max(maximum_followers, active_followers)
                 try:
-                    result = run_worker(
+                    result = invoke(
                         WorkerRequest(
                             call_id=call_id,
                             role="follower",
@@ -716,7 +770,7 @@ def run_comparison(
             result = run_smc(
                 controller,
                 follower,
-                _incremental_score,
+                score,
                 config=SMCConfig(
                     population_size=particle_count,
                     concurrency=max_concurrency,
@@ -748,23 +802,52 @@ def run_comparison(
                 discipl_verification = _failed_verification(result.stopping_reason)
                 nonconformities.append(result.stopping_reason)
             else:
+                if fixture is not None:
+                    fixture.validate_particle(result.official_particle)
                 selected = _candidate_source(result.official_particle).encode("utf-8")
                 official_hash = _sha256_bytes(selected)
                 selected_path = run_dir / "discipl" / "selected-candidate.py"
                 _write_once(selected_path, selected)
-                # Selection, bytes, and digest are fixed before this call.
-                discipl_verification = verify_candidate(selected_path)
-                discipl_verification["frozen_candidate_sha256"] = official_hash
-                discipl_verification["official_particle_id"] = (
-                    result.official_particle.particle_id
-                )
-                discipl_verification["official_particle_index"] = (
-                    result.official_particle_index
-                )
-            _write_json_once(
-                run_dir / "discipl" / "verification.json", discipl_verification
-            )
+                selected_metadata = {
+                    "frozen_candidate_sha256": official_hash,
+                    "official_particle_id": result.official_particle.particle_id,
+                    "official_particle_index": result.official_particle_index,
+                }
         discipl_makespan = time.monotonic() - discipl_started
+
+        # Resolve both arms and persist their official bytes/digests before any
+        # final grading. A failed arm has a null hash and a recorded reason;
+        # it must not prevent the independently selected other arm being graded.
+        manifest.update(
+            {
+                "selection_complete": True,
+                "official_discipl_candidate_sha256": official_hash,
+            }
+        )
+        write_json(run_dir / "manifest.json", manifest)
+
+        for arm, record in direct_records.items():
+            verification_started = time.monotonic()
+            verification = record["verification"]
+            if verification is None:
+                if sha256_file(record["path"]) != record["hash"]:
+                    raise PipelineError("official candidate changed after selection")
+                if fixture is not None and record["path"].read_bytes() != fixture.golden.encode("utf-8"):
+                    raise PipelineError("offline screen refused unreviewed direct candidate")
+                verification = verify_candidate(record["path"])
+                verification["frozen_candidate_sha256"] = record["hash"]
+            _write_json_once(run_dir / arm / "verification.json", verification)
+            record["seconds"] += time.monotonic() - verification_started
+
+        verification_started = time.monotonic()
+        if discipl_verification is None:
+            assert selected_path is not None
+            if sha256_file(selected_path) != official_hash:
+                raise PipelineError("official candidate changed after selection")
+            discipl_verification = verify_candidate(selected_path)
+            discipl_verification.update(selected_metadata)
+        _write_json_once(run_dir / "discipl" / "verification.json", discipl_verification)
+        discipl_makespan += time.monotonic() - verification_started
 
         manifest.update(
             {
@@ -773,7 +856,7 @@ def run_comparison(
                 "run_wall_time_seconds": time.monotonic() - started,
                 "maximum_observed_concurrency": max(1, maximum_followers),
                 "arm_makespan_seconds": {
-                    "direct": direct_makespan,
+                    **{arm: record["seconds"] for arm, record in direct_records.items()},
                     "discipl": discipl_makespan,
                 },
                 "planner_schema_repair_count": planner_repair_count,

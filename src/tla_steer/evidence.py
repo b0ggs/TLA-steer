@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import tempfile
 from collections.abc import Iterable, Mapping
@@ -30,10 +31,23 @@ class EvidenceError(ValueError):
     """Raised when durable run evidence cannot be interpreted safely."""
 
 
+def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON value: {value}")
+
+
 def _read_object(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
+    except (OSError, ValueError, UnicodeError) as exc:
         raise EvidenceError(f"invalid JSON object at {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise EvidenceError(f"expected JSON object at {path}")
@@ -76,38 +90,29 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def normalize_usage(source: Mapping[str, Any] | None) -> dict[str, int | bool]:
-    """Retain every exposed token counter with a stable zero-filled shape."""
+def normalize_usage(source: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Unknown or invalid usage is null, never a zero-cost observation."""
 
     source = source or {}
-    usage: dict[str, int | bool] = {}
-    for field in USAGE_FIELDS:
-        amount = source.get(field, 0)
-        if isinstance(amount, bool) or not isinstance(amount, int) or amount < 0:
-            amount = 0
-        usage[field] = amount
-    usage["usage_reported"] = bool(source.get("usage_reported", False))
-    usage["total_tokens"] = int(usage["input_tokens"]) + int(
-        usage["output_tokens"]
+    valid = source.get("usage_reported") is True and all(
+        isinstance(source.get(field), int) and not isinstance(source.get(field), bool)
+        and source[field] >= 0 for field in USAGE_FIELDS
     )
+    if valid:
+        valid = (source["cached_input_tokens"] + source["cache_write_input_tokens"]
+                 <= source["input_tokens"] and source["reasoning_output_tokens"] <= source["output_tokens"])
+    usage = {field: source[field] if valid else None for field in USAGE_FIELDS}
+    usage["usage_reported"] = valid
+    usage["total_tokens"] = source["input_tokens"] + source["output_tokens"] if valid else None
     return usage
 
 
-def add_usage(values: Iterable[Mapping[str, Any]]) -> dict[str, int | bool]:
-    totals: dict[str, int | bool] = {field: 0 for field in USAGE_FIELDS}
-    reported = True
-    count = 0
-    for value in values:
-        normalized = normalize_usage(value)
-        count += 1
-        for field in USAGE_FIELDS:
-            totals[field] = int(totals[field]) + int(normalized[field])
-        reported = reported and bool(normalized["usage_reported"])
-    totals["usage_reported"] = bool(count and reported)
-    totals["total_tokens"] = int(totals["input_tokens"]) + int(
-        totals["output_tokens"]
-    )
-    return totals
+def add_usage(values: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    normalized = [normalize_usage(value) for value in values]
+    if not all(value["usage_reported"] for value in normalized):
+        return normalize_usage(None)
+    totals = {field: sum(value[field] for value in normalized) for field in USAGE_FIELDS}
+    return normalize_usage({**totals, "usage_reported": True})
 
 
 def load_rate_card(path: Path) -> dict[str, Any]:
@@ -139,15 +144,17 @@ def price_equivalent(
 
     normalized = normalize_usage(usage)
     models = rate_card.get("models", {})
-    rates = models.get(model) if isinstance(models, dict) and model else None
+    rates = models.get(model) if isinstance(models, dict) and isinstance(model, str) else None
     base = {
         "currency": rate_card.get("currency", "USD"),
         "rate_card_date": rate_card.get("observed_date"),
         "model": model,
         "usage_reported": normalized["usage_reported"],
     }
+    if not normalized["usage_reported"]:
+        return {**base, "priced": False, "total_usd": None, "reason": "usage_unknown_or_invalid"}
     if not isinstance(rates, dict):
-        return {**base, "priced": False, "reason": "model_not_in_rate_card"}
+        return {**base, "priced": False, "reason": "model_not_in_rate_card", "total_usd": None}
 
     try:
         input_rate = Decimal(str(rates["input"]))
@@ -159,6 +166,8 @@ def price_equivalent(
     except (KeyError, ArithmeticError, ValueError) as exc:
         raise EvidenceError(f"invalid rates for {model}") from exc
 
+    if not all(rate.is_finite() and rate >= 0 for rate in (input_rate, cached_rate, output_rate, cache_write_rate)):
+        raise EvidenceError(f"invalid rates for {model}")
     input_tokens = int(normalized["input_tokens"])
     cached_tokens = int(normalized["cached_input_tokens"])
     cache_write_tokens = int(normalized["cache_write_input_tokens"])
@@ -174,6 +183,8 @@ def price_equivalent(
     output_multiplier = Decimal(
         str(rates.get("long_context_output_multiplier", 1) if long_context else 1)
     )
+    if not all(rate.is_finite() and rate >= 0 for rate in (input_multiplier, output_multiplier)):
+        raise EvidenceError(f"invalid rate multipliers for {model}")
     million = Decimal(1_000_000)
     input_cost = Decimal(ordinary_tokens) * input_rate * input_multiplier / million
     cached_cost = Decimal(cached_tokens) * cached_rate * input_multiplier / million
@@ -205,8 +216,8 @@ def price_equivalent(
 
 def _role_and_arm(path: Path, run_dir: Path) -> tuple[str, str]:
     relative = path.relative_to(run_dir).parts
-    if relative and relative[0] == "direct":
-        return "direct", "direct"
+    if relative and relative[0] in {"direct", "cheap_alone"}:
+        return relative[0], relative[0]
     if len(relative) > 1 and relative[:2] == ("discipl", "planner"):
         return "planner", "discipl"
     if relative and relative[0] == "discipl":
@@ -215,82 +226,125 @@ def _role_and_arm(path: Path, run_dir: Path) -> tuple[str, str]:
 
 
 def _discover_result_paths(run_dir: Path) -> list[Path]:
-    expected = [
-        *run_dir.glob("direct/calls/*/result.json"),
-        *run_dir.glob("discipl/planner/result.json"),
-        *run_dir.glob("discipl/calls/*/result.json"),
-    ]
-    seen = {path.resolve() for path in expected if path.is_file()}
-    for path in run_dir.glob("**/result.json"):
-        if path.is_file():
-            seen.add(path.resolve())
-    return sorted(seen, key=lambda item: item.relative_to(run_dir.resolve()).as_posix())
+    # Include intent-only attempts; missing terminal evidence must not disappear.
+    spools = {path.parent for pattern in ("**/result.json", "**/intent.json")
+              for path in run_dir.glob(pattern) if path.is_file()}
+    return [directory / "result.json" for directory in sorted(spools)]
 
 
 def _call_record(path: Path, run_dir: Path) -> dict[str, Any]:
-    result = _read_object(path)
-    intent_path = path.parent / "intent.json"
-    intent = _read_object(intent_path) if intent_path.is_file() else {}
-    context_path = path.parent / "context.json"
-    context = _read_object(context_path) if context_path.is_file() else {}
-    default_role, default_arm = _role_and_arm(path, run_dir)
-    usage_source = result.get("usage")
-    if not isinstance(usage_source, dict):
-        usage_source = result
-    requested_model = (
-        result.get("requested_model")
-        or intent.get("requested_model")
-        or intent.get("model")
-    )
+    issues: list[str] = []
+
+    def read(name: str, *, required: bool = True) -> dict[str, Any]:
+        target = path.parent / name
+        if not required and not target.is_file():
+            return {}
+        try:
+            return _read_object(target)
+        except EvidenceError as exc:
+            issues.append(str(exc))
+            return {}
+
+    result = read("result.json")
+    intent = read("intent.json")
+    context = read("context.json", required=False)
+    role, arm = _role_and_arm(path, run_dir)
+    for name, document in (("intent", intent), ("result", result)):
+        if document.get("call_id") != path.parent.name:
+            issues.append(f"{name} call_id differs from spool")
+        if document.get("role") != role or role == "unknown":
+            issues.append(f"{name} role differs from spool")
+    for field in ("requested_model", "reasoning_effort"):
+        if (not isinstance(intent.get(field), str) or not intent[field]
+                or result.get(field) != intent[field]):
+            issues.append(f"intent/result {field} missing or inconsistent")
     returned_model = result.get("returned_model")
-    status = str(result.get("status", "unknown"))
+    if returned_model is not None and (not isinstance(returned_model, str) or not returned_model):
+        issues.append("invalid returned_model")
+        returned_model = None
+    status = result.get("status")
+    if not isinstance(status, str) or not status:
+        issues.append("missing or invalid result status")
+        status = "INVALID_EVIDENCE"
     exit_code = result.get("exit_code")
-    retry_count = result.get("retry_count", intent.get("retry_count"))
-    if isinstance(retry_count, bool) or not isinstance(retry_count, int):
-        attempt = context.get("attempt")
-        retry_count = (
-            max(attempt - 1, 0)
-            if isinstance(attempt, int) and not isinstance(attempt, bool)
-            else 0
-        )
+    if exit_code is not None and (isinstance(exit_code, bool) or not isinstance(exit_code, int)):
+        issues.append("invalid exit code")
+        exit_code = None
+    usage = normalize_usage(result.get("usage") if isinstance(result.get("usage"), dict) else None)
+    if not usage["usage_reported"]:
+        issues.append("usage missing, incomplete or invalid")
+    if result.get("event_fatal_defects"):
+        issues.append("worker recorded invalid event evidence")
+    durations = {}
+    for field in ("duration_seconds", "queue_duration_seconds"):
+        value = result.get(field)
+        if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
+            issues.append(f"missing or invalid {field}")
+            value = 0.0
+        durations[field] = float(value)
+    attempt = context.get("attempt", 1)
+    retry_count = max(attempt - 1, 0) if isinstance(attempt, int) and not isinstance(attempt, bool) else 0
+    if issues:
+        usage = normalize_usage(None)
     return {
         "call_id": str(result.get("call_id") or intent.get("call_id") or path.parent.name),
-        "role": str(
-            result.get("role") or intent.get("role") or context.get("role") or default_role
-        ),
-        "arm": str(
-            result.get("arm") or intent.get("arm") or context.get("arm") or default_arm
-        ),
-        "particle_id": result.get("particle_id")
-        or intent.get("particle_id")
-        or context.get("particle_id"),
-        "parent_id": result.get("parent_id")
-        or intent.get("parent_id")
-        or context.get("parent_id"),
-        "step_id": result.get("step_id")
-        or intent.get("step_id")
-        or context.get("step_id"),
-        "requested_model": requested_model,
+        "role": role, "arm": arm,
+        "particle_id": context.get("particle_id"), "parent_id": context.get("parent_id"),
+        "step_id": context.get("step_id"),
+        "requested_model": result.get("requested_model") or intent.get("requested_model"),
         "returned_model": returned_model,
-        "reasoning_effort": result.get("reasoning_effort")
-        or intent.get("reasoning_effort"),
-        "status": status,
-        "exit_code": exit_code,
-        "duration_seconds": float(result.get("duration_seconds") or 0.0),
-        "queue_duration_seconds": float(result.get("queue_duration_seconds") or 0.0),
+        "reasoning_effort": result.get("reasoning_effort") or intent.get("reasoning_effort"),
+        "status": status, "exit_code": exit_code, **durations,
         "retry_count": retry_count,
-        "timed_out": bool(result.get("timed_out")) or "timeout" in status.lower(),
-        "error": result.get("error"),
-        "usage": normalize_usage(usage_source),
-        "evidence_path": path.relative_to(run_dir).as_posix(),
+        "timed_out": result.get("timed_out") is True or "timeout" in status.lower(),
+        "error": result.get("error"), "usage": usage,
+        "evidence_path": path.relative_to(run_dir).as_posix(), "evidence_errors": issues,
     }
 
 
 def load_call_records(run_dir: Path) -> list[dict[str, Any]]:
-    """Load completed worker result records in deterministic path order."""
+    """Reconcile both sides of every observed intent/result spool."""
 
     run_dir = run_dir.resolve()
-    return [_call_record(path, run_dir) for path in _discover_result_paths(run_dir)]
+    calls = [_call_record(path, run_dir) for path in _discover_result_paths(run_dir)]
+    ids: dict[str, list[dict[str, Any]]] = {}
+    for call in calls:
+        ids.setdefault(call["call_id"], []).append(call)
+    for call_id, duplicates in ids.items():
+        if len(duplicates) > 1:
+            for call in duplicates:
+                call["evidence_errors"].append(f"duplicate call_id: {call_id}")
+                call["usage"] = normalize_usage(None)
+    return calls
+
+
+def _accounting(manifest: Mapping[str, Any], calls: list[dict[str, Any]]) -> dict[str, Any]:
+    expected = manifest.get("attempted_calls_by_role")
+    observed = {role: sum(call["role"] == role for call in calls)
+                for role in ("direct", "cheap_alone", "planner", "follower")}
+    issues = []
+    bad_arms = set()
+    if (not isinstance(expected, dict) or not expected or any(
+        role not in observed or isinstance(count, bool) or not isinstance(count, int) or count < 0
+        for role, count in expected.items()
+    )):
+        issues.append("missing or invalid coordinator attempted-call counts")
+        expected = None
+        bad_arms.update(("direct", "cheap_alone", "discipl"))
+    else:
+        for role in observed:
+            if observed[role] != expected.get(role, 0):
+                issues.append(f"{role}: coordinator attempted {expected.get(role, 0)}, observed {observed[role]}")
+                bad_arms.add(role if role in {"direct", "cheap_alone"} else "discipl")
+    for call in calls:
+        if call["evidence_errors"]:
+            bad_arms.add(call["arm"])
+            issues.extend(f"{call['evidence_path']}: {error}" for error in call["evidence_errors"])
+        if call["arm"] == "unknown":
+            bad_arms.update(("direct", "cheap_alone", "discipl"))
+    return {"complete": not issues, "attempted_by_role": expected,
+            "observed_by_role": observed, "observed_records": len(calls),
+            "incomplete_arms": sorted(bad_arms), "issues": issues}
 
 
 def _load_optional_object(path: Path) -> dict[str, Any] | None:
@@ -364,6 +418,7 @@ def _arm_summary(
     calls: list[dict[str, Any]],
     rate_card: Mapping[str, Any] | None,
     verification: dict[str, Any] | None,
+    *, complete: bool,
 ) -> dict[str, Any]:
     arm_calls = [call for call in calls if call["arm"] == arm]
     priced_calls: list[dict[str, Any]] = []
@@ -376,7 +431,9 @@ def _arm_summary(
         and (call["exit_code"] in (None, 0))
         for call in arm_calls
     )
+    fully_priced = complete and rate_card is not None and all(item.get("priced") for item in priced_calls)
     return {
+        "accounting_complete": complete,
         "call_count": len(arm_calls),
         "successful_calls": successful,
         "failed_calls": len(arm_calls) - successful,
@@ -386,18 +443,12 @@ def _arm_summary(
         "queue_duration_seconds": sum(
             call["queue_duration_seconds"] for call in arm_calls
         ),
-        "usage": add_usage(call["usage"] for call in arm_calls),
+        "usage": add_usage(call["usage"] for call in arm_calls) if complete else normalize_usage(None),
         "api_price_equivalent": {
             "currency": (rate_card or {}).get("currency", "USD"),
             "rate_card_date": (rate_card or {}).get("observed_date"),
-            "fully_priced": bool(rate_card is not None)
-            and all(item.get("priced") for item in priced_calls),
-            "total_usd": _money(
-                sum(
-                    (Decimal(str(item.get("total_usd", 0))) for item in priced_calls),
-                    Decimal(0),
-                )
-            ),
+            "fully_priced": fully_priced,
+            "total_usd": _money(sum((Decimal(str(item["total_usd"])) for item in priced_calls), Decimal(0))) if fully_priced else None,
         },
         "verification": verification,
     }
@@ -413,16 +464,18 @@ def aggregate_run(
         raise EvidenceError(f"run directory does not exist: {run_dir}")
     manifest = _load_optional_object(run_dir / "manifest.json") or {}
     card_path = rate_card_path or (run_dir / "rate-card.json")
+    expected_card_hash = manifest.get("inputs", {}).get("rate_card_sha256")
+    if card_path.is_file() and expected_card_hash and sha256_file(card_path) != expected_card_hash:
+        raise EvidenceError("rate card differs from the frozen run snapshot")
     rate_card = load_rate_card(card_path) if card_path.is_file() else None
     calls = load_call_records(run_dir)
-    direct_verification = _verification_summary(run_dir, "direct")
-    discipl_verification = _verification_summary(run_dir, "discipl")
-    arms = {
-        "direct": _arm_summary("direct", calls, rate_card, direct_verification),
-        "discipl": _arm_summary(
-            "discipl", calls, rate_card, discipl_verification
-        ),
-    }
+    accounting = _accounting(manifest, calls)
+    arm_names = ["direct", "cheap_alone", "discipl"] if (
+        "cheap_alone" in manifest.get("arms", []) or any(call["arm"] == "cheap_alone" for call in calls)
+    ) else ["direct", "discipl"]
+    arms = {arm: _arm_summary(arm, calls, rate_card, _verification_summary(run_dir, arm),
+                              complete=arm not in accounting["incomplete_arms"])
+            for arm in arm_names}
     errors = [
         {
             "call_id": call["call_id"],
@@ -435,6 +488,15 @@ def aggregate_run(
         if call["status"].lower() not in SUCCESS_STATUSES
         or call["exit_code"] not in (None, 0)
     ]
+    errors.extend({"kind": "incomplete_accounting", "message": issue} for issue in accounting["issues"])
+    if manifest.get("pipeline_error"):
+        errors.append({"kind": "pipeline_error", "message": manifest["pipeline_error"]})
+    nonconformities = manifest.get("nonconformities", [])
+    if isinstance(nonconformities, list):
+        errors.extend(
+            {"kind": "nonconformity", "message": message}
+            for message in nonconformities
+        )
     if rate_card is None:
         errors.append(
             {
@@ -443,7 +505,7 @@ def aggregate_run(
                 "message": "API-price-equivalent totals are unavailable",
             }
         )
-    totals_usage = add_usage(call["usage"] for call in calls)
+    totals_usage = add_usage(call["usage"] for call in calls) if accounting["complete"] else normalize_usage(None)
     return {
         "schema_version": "tla-steer-summary/0.1",
         "run_id": manifest.get("run_id", run_dir.name),
@@ -454,7 +516,11 @@ def aggregate_run(
             "run_wall_time_seconds", manifest.get("duration_seconds")
         ),
         "run_status": manifest.get("status"),
+        "offline_fixture": manifest.get("offline_fixture", False),
+        "measurement_note": manifest.get("measurement_note"),
+        "accounting": accounting,
         "arm_makespan_seconds": manifest.get("arm_makespan_seconds"),
+        "arm_timing_note": manifest.get("arm_timing_note"),
         "maximum_observed_concurrency": manifest.get(
             "maximum_observed_concurrency"
         ),
@@ -474,12 +540,10 @@ def aggregate_run(
         "totals": {
             "calls": len(calls),
             "usage": totals_usage,
-            "api_price_equivalent_usd": _money(
-                Decimal(str(arms["direct"]["api_price_equivalent"]["total_usd"]))
-                + Decimal(
-                    str(arms["discipl"]["api_price_equivalent"]["total_usd"])
-                )
-            ),
+            "attempted_calls": sum(accounting["attempted_by_role"].values()) if accounting["attempted_by_role"] is not None else None,
+            "api_price_equivalent_usd": _money(sum(
+                (Decimal(str(arm["api_price_equivalent"]["total_usd"])) for arm in arms.values()), Decimal(0)
+            )) if accounting["complete"] and all(arm["api_price_equivalent"]["fully_priced"] for arm in arms.values()) else None,
         },
         "smc": _trace_summary(run_dir),
         "calls": calls,
@@ -494,19 +558,24 @@ def _display(value: Any, default: str = "—") -> str:
 def render_markdown(summary: Mapping[str, Any]) -> str:
     """Render a compact, presentation-oriented report from a summary object."""
 
+    arm_time_label = "Arm active times" if summary.get("arm_timing_note") else "Arm makespans"
     lines = [
         f"# TLA-Steer comparison: {summary.get('run_id', 'unknown')}",
         "",
-        "This is an exploratory comparison; no metric is designated primary and no statistical claim is made.",
+        summary.get("measurement_note") or "This is an exploratory comparison; no metric is designated primary and no statistical claim is made.",
         "",
         f"- Containment mode: `{summary.get('containment_mode', 'unknown')}`",
+        f"- Run status: `{summary.get('run_status', 'unknown')}`",
         f"- Run wall time (seconds): {_display(summary.get('run_wall_time_seconds'))}",
-        f"- Arm makespans (seconds): {_display(summary.get('arm_makespan_seconds'))}",
+        f"- {arm_time_label} (seconds): {_display(summary.get('arm_makespan_seconds'))}",
+        *([f"- Timing: {summary['arm_timing_note']}"] if summary.get("arm_timing_note") else []),
         f"- Maximum observed concurrency: {_display(summary.get('maximum_observed_concurrency'))}",
         f"- Planner schema repairs: {_display(summary.get('planner_schema_repair_count'))}",
         f"- Follower calls: {_display(summary.get('follower_call_count'))}",
-        f"- Total calls: {summary.get('totals', {}).get('calls', 0)}",
-        f"- Total API-price-equivalent (USD): {summary.get('totals', {}).get('api_price_equivalent_usd', 0)}",
+        f"- Observed call records: {summary.get('totals', {}).get('calls', 0)}",
+        f"- Coordinator attempted calls: {_display(summary.get('totals', {}).get('attempted_calls'), 'UNKNOWN')}",
+        f"- Accounting complete: {summary.get('accounting', {}).get('complete', False)}",
+        f"- Total API-price-equivalent (USD): {_display(summary.get('totals', {}).get('api_price_equivalent_usd'), 'UNKNOWN')}",
         "",
         "| Arm | Verifier outcome | Calls | Input tokens | Cached input | Cache writes | Output tokens | Reasoning output | Call seconds | API-price-equivalent USD |",
         "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -514,7 +583,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
     arms = summary.get("arms", {})
     if not isinstance(arms, Mapping):
         arms = {}
-    for arm in ("direct", "discipl"):
+    for arm in arms:
         item = arms.get(arm, {})
         if not isinstance(item, Mapping):
             item = {}
@@ -528,10 +597,10 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             price = {}
         lines.append(
             f"| {arm} | {outcome} | {item.get('call_count', 0)} | "
-            f"{usage.get('input_tokens', 0)} | {usage.get('cached_input_tokens', 0)} | "
-            f"{usage.get('cache_write_input_tokens', 0)} | {usage.get('output_tokens', 0)} | "
-            f"{usage.get('reasoning_output_tokens', 0)} | {item.get('call_duration_seconds', 0):.3f} | "
-            f"{price.get('total_usd', 0)} |"
+            f"{_display(usage.get('input_tokens'), 'UNKNOWN')} | {_display(usage.get('cached_input_tokens'), 'UNKNOWN')} | "
+            f"{_display(usage.get('cache_write_input_tokens'), 'UNKNOWN')} | {_display(usage.get('output_tokens'), 'UNKNOWN')} | "
+            f"{_display(usage.get('reasoning_output_tokens'), 'UNKNOWN')} | {item.get('call_duration_seconds', 0):.3f} | "
+            f"{_display(price.get('total_usd'), 'UNKNOWN')} |"
         )
     smc = summary.get("smc")
     if isinstance(smc, Mapping):

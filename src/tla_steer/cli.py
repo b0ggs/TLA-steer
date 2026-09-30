@@ -32,6 +32,10 @@ def _parser() -> argparse.ArgumentParser:
     smoke = commands.add_parser("smoke", help="run the permitted N=2, C=2 smoke path")
     smoke.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
 
+    offline = commands.add_parser(
+        "offline-screen", help="N=2/C=2 three-arm reviewed fixtures; synthetic usage, no provider calls")
+    offline.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+
     verify = commands.add_parser("verify", help="exhaustively verify one candidate")
     verify.add_argument("candidate", type=Path)
     verify.add_argument("--output", type=Path)
@@ -67,6 +71,7 @@ def load_config(path: Path) -> tuple[dict[str, Any], Path]:
         raise ConfigError("prototype config is missing models, smc, or paths")
     expected_models = {
         "direct": ("gpt-5.6-sol", "xhigh", 1),
+        "cheap_alone": ("gpt-5.6-luna", "low", 1),
         "planner": ("gpt-5.6-sol", "xhigh", 2),
         "follower": ("gpt-5.6-luna", "low", 1),
     }
@@ -194,8 +199,7 @@ def _command_report(run_dir: Path, rate_card: Path | None, as_json: bool) -> int
 def _command_live(config_path: Path, *, smoke: bool) -> int:
     config, root = load_config(config_path)
     run_dir = _comparison_adapter(config_path, config, root, smoke=smoke).resolve()
-    card = root / str(config["paths"]["rate_card"])
-    summary = write_run_report(run_dir, rate_card_path=card)
+    summary = write_run_report(run_dir)
     print(render_markdown(summary), end="")
     return 0
 
@@ -207,6 +211,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _command_verify(args.candidate, args.output)
         if args.command == "report":
             return _command_report(args.run_dir, args.rate_card, args.json)
+        if args.command == "offline-screen":
+            from .pipeline import run_comparison
+            config, root = load_config(args.config)
+            run_dir = run_comparison(config, args.config, root, 2, 2, True, offline_screen=True)
+            print(render_markdown(write_run_report(run_dir)), end="")
+            return 0
         if args.command == "smoke":
             return _command_live(args.config, smoke=True)
         if args.command == "compare":
