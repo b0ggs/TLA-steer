@@ -1,0 +1,106 @@
+{
+  "allowed_path_patterns": [
+    "src/tla_steer/pipeline.py",
+    "src/tla_steer/worker.py",
+    "src/tla_steer/evidence.py",
+    "src/tla_steer/cli.py",
+    "configs/prototype.json",
+    "tests/test_worker_fake.py",
+    "docs/COST_SCREEN_RUN_GUIDE.md",
+    ".scope-gate/contracts/tla-steer-cost-screen-r2.json",
+    "runs/offline-cost-screen-r2/**"
+  ],
+  "approved_invariants": [
+    {
+      "id": "INV-EXACT-TWOLIGHTS-SOURCE-HASHES",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "INV-ALL-ARMS-FROZEN-BEFORE-GRADING",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "INV-WEIGHTED-SELECTION-NO-GRADE-CHERRY-PICK",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "INV-REVIEWED-FIXTURES-ONLY-NO-LIVE-LAUNCH",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "INV-NO-SAVINGS-OR-PERFORMANCE-CLAIM",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "INV-N2-C2-ONLY-SCREEN",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    }
+  ],
+  "approved_requirements": [
+    {
+      "id": "REQ-THREE-ARM-SOURCE-PINNED-COST-SCREEN",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "REQ-SAME-PATH-CHEAP-ALONE-CONTROL",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "REQ-ALL-ATTEMPT-ACCOUNTING",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "REQ-UNKNOWN-USAGE-NOT-ZERO",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    },
+    {
+      "id": "REQ-OFFLINE-THREE-ARM-REPORT",
+      "mapped_check_ids": [
+        "check-cost-screen-suite"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "definition": "From repository root run PYTHONPATH=src python3 -m unittest tests.test_oracle tests.test_verifier tests.test_smc tests.test_worker_fake -v. Pass only on exit 0. New cost-screen tests must independently cover (1) same frozen inputs/direct path with cheap-alone model/effort-only differences and no Planner, (2) source/config hash rejection before worker launch, (3) all official artifacts frozen before grading with weighted selection rejecting argmax, uniform or best-grade selection, (4) failed attempts plus missing/duplicate/invalid intent/result evidence reconciled against coordinator counts, (5) missing/invalid usage and incomplete pricing explicitly unknown with frozen-rate-card report replay, (6) offline screen cannot launch a live model process or execute unreviewed candidate code.",
+      "id": "check-cost-screen-suite"
+    }
+  ],
+  "excluded_capability_ids": [
+    "CAP-LIVE-OR-PAID-MODEL-CALLS",
+    "CAP-PUSH-PUBLISH-OR-MERGE",
+    "CAP-ADDITIONAL-ARMS-BEYOND-CHEAP-ALONE",
+    "CAP-ADDITIONAL-SPECS-OR-CONSTANTS",
+    "CAP-TLC-INTEGRATION",
+    "CAP-ORACLE-OR-VERIFIER-REWRITE",
+    "CAP-GENERAL-TLA-COMPILER",
+    "CAP-GENERAL-PYTHON-INTERPRETER",
+    "CAP-SANDBOX-PLATFORM",
+    "CAP-NEW-RECEIPT-OR-ENFORCEMENT-ARCHITECTURE",
+    "CAP-HISTORICAL-TEST-REPAIR",
+    "CAP-STATISTICAL-CLAIMS",
+    "CAP-UNREVIEWED-GENERATED-CODE-EXECUTION"
+  ],
+  "schema_version": "scope-gate-contract-v1",
+  "scope_revision": "TLA-STEER-COST-SCREEN-r2"
+}

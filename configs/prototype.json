@@ -11,6 +11,10 @@
       "MIN_RED": 4,
       "MAX_PHASE": 6,
       "OFFSET": 2
+    },
+    "sha256": {
+      "TwoLights.tla": "7717242a40bcd6ed57380ca7a4f2e1e756d5432470c3162a3a31e15309f4b4aa",
+      "TwoLights.cfg": "ae94c273187b35d55831f4b272c0b229437e82758c2be7f9a0921830b288ce40"
     }
   },
   "models": {
@@ -27,6 +31,12 @@
       "internal_subagents": false
     },
     "follower": {
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "max_attempts": 1,
+      "internal_subagents": false
+    },
+    "cheap_alone": {
       "model": "gpt-5.6-luna",
       "reasoning_effort": "low",
       "max_attempts": 1,
