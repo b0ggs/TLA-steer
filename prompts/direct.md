@@ -24,3 +24,16 @@ The module contract is fixed:
 
 Implement the finite transition relation in the supplied configuration, not a
 traffic-light design inferred from intuition.
+
+The shared guard/update conformance subset is intentionally small. Use `if`,
+local assignments and `return`; scalar arithmetic/comparisons/boolean operators;
+dictionary literals and field subscripts; and `dict(state)` or `state.copy()`
+for a fresh successor. `abs`, `min`, `max`, `int`, `bool`, and dictionary `get`
+are allowed. `update`, `pop`, and `setdefault` may operate only on a known fresh
+local dictionary or an alias of it, never the input or an input alias. Do not
+rebind the input, constants, or allowed builtin names. No loops, comprehensions,
+reflection, arbitrary calls, persistent module state, global/nonlocal writes,
+mutable defaults, decorators, executable annotations or other attribute access.
+Optional annotations may use only dict/int/str/bool, None and unions of them.
+Unsupported syntax is a contract failure, not a semantic mismatch. The same
+contract applies to frontier-alone, cheap-alone and assembled Follower output.

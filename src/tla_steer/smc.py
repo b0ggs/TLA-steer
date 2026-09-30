@@ -25,6 +25,10 @@ from .contract import (
 )
 
 
+class FatalScoringError(RuntimeError):
+    """Trusted evaluator infrastructure failed; this is not a particle score."""
+
+
 @dataclass(frozen=True, slots=True)
 class SMCConfig:
     population_size: int = 8
@@ -408,6 +412,13 @@ def run_smc(
                 )
                 try:
                     score = _score_value(scorer(candidate, step, proposal))
+                except FatalScoringError:
+                    # Preserve running peers but do not launch queued work after
+                    # an infrastructure failure. The executor waits for running
+                    # peers, whose worker evidence/accounting remains durable.
+                    for pending in futures.values():
+                        pending.cancel()
+                    raise
                 except Exception as exc:
                     score = IncrementalScore(
                         0.0,

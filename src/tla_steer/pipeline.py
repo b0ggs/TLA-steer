@@ -33,12 +33,15 @@ from .contract import (
     controller_from_json,
     initial_state_from_fragment,
     proposal_from_json,
+    validate_guard_update_source,
 )
+from . import execution
 from .evidence import sha256_file, write_json, write_run_report
 from .oracle import ACTION_SYMBOLS, CONSTANTS
 from .smc import (
     ActionObservation,
     IncrementalScore,
+    FatalScoringError,
     Particle,
     SMCConfig,
     score_action_observations,
@@ -69,6 +72,12 @@ import sys
 
 def emit(value):
     sys.stdout.write(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def same_state(actual, expected):
+    return type(actual) is dict and set(actual) == set(expected) and all(
+        type(actual[key]) is type(value) and actual[key] == value for key, value in expected.items()
+    )
 
 
 request = json.loads(sys.stdin.read())
@@ -102,19 +111,24 @@ safe_builtins = {
 }
 namespace = {"__builtins__": safe_builtins, "__name__": "candidate"}
 try:
-    exec(compile(request["source"], "partial-candidate.py", "exec"), namespace, namespace)
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        source = handle.read()
+    exec(compile(source, "partial-candidate.py", "exec"), namespace, namespace)
     function = namespace[request["symbol"]]
     rows = []
     for state in request["states"]:
         first_input = dict(state)
         second_input = dict(state)
         first = function(first_input)
+        first_mutated = not same_state(first_input, state)
+        first = dict(first) if type(first) is dict else first
         second = function(second_input)
+        second = dict(second) if type(second) is dict else second
         rows.append(
             {
                 "first": first,
                 "second": second,
-                "input_mutated": first_input != state or second_input != state,
+                "input_mutated": first_mutated or not same_state(first_input, state) or not same_state(second_input, state),
                 "deterministic": first == second,
             }
         )
@@ -331,28 +345,20 @@ def _candidate_source(particle: Particle) -> str:
 
 
 def _score_action(particle: Particle, step: ControllerStep) -> IncrementalScore:
-    request = {
-        "source": _partial_source(particle),
-        "symbol": step.python_symbol,
-        "states": [probe.state.as_dict() for probe in step.probes],
-    }
+    source = _partial_source(particle)
     try:
-        with tempfile.TemporaryDirectory(prefix="tla-steer-probe-") as temporary:
-            process = subprocess.run(
-                [sys.executable, "-I", "-S", "-c", _PROBE_RUNNER],
-                cwd=temporary,
-                input=json.dumps(request, separators=(",", ":")),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=PROBE_TIMEOUT_SECONDS,
-                check=False,
-                env={},
-            )
-    except subprocess.TimeoutExpired:
+        validate_guard_update_source(source, complete=False)
+    except ContractError as exc:
+        return IncrementalScore(0.0, error=f"guard_update_contract: {exc}")
+    request = {"symbol": step.python_symbol, "states": [probe.state.as_dict() for probe in step.probes]}
+    try:
+        process = execution.run_observations(source, _PROBE_RUNNER, request, timeout_seconds=PROBE_TIMEOUT_SECONDS)
+    except execution.ContainmentUnavailable as exc:
+        raise FatalScoringError(f"candidate containment unavailable: {exc}") from exc
+    if process.timed_out:
         return IncrementalScore(0.0, error="incremental probe timeout")
-    except OSError as exc:
-        return IncrementalScore(0.0, error=f"probe runner error: {type(exc).__name__}: {exc}")
+    if process.output_exceeded:
+        return IncrementalScore(0.0, error="incremental probe output limit")
     if process.returncode != 0:
         return IncrementalScore(
             0.0,
@@ -521,6 +527,8 @@ def run_comparison(
         raise PipelineError("offline screen requires N=2, C=2")
     fixture = ReviewedFixtureWorker(root) if offline_screen else None
     if fixture is None:
+        # No provider spend before a real isolated launch succeeds.
+        execution.preflight()
         codex_home, codex_home_variable = _codex_home()
     else:
         codex_home_variable = "offline_empty_profile_no_credentials"
@@ -837,6 +845,8 @@ def run_comparison(
                 verification = verify_candidate(record["path"])
                 verification["frozen_candidate_sha256"] = record["hash"]
             _write_json_once(run_dir / arm / "verification.json", verification)
+            if verification.get("outcome") == "EVALUATOR_ERROR":
+                raise PipelineError(f"{arm} verifier infrastructure failure: {verification.get('contract_failures')}")
             record["seconds"] += time.monotonic() - verification_started
 
         verification_started = time.monotonic()
@@ -847,6 +857,8 @@ def run_comparison(
             discipl_verification = verify_candidate(selected_path)
             discipl_verification.update(selected_metadata)
         _write_json_once(run_dir / "discipl" / "verification.json", discipl_verification)
+        if discipl_verification.get("outcome") == "EVALUATOR_ERROR":
+            raise PipelineError(f"discipl verifier infrastructure failure: {discipl_verification.get('contract_failures')}")
         discipl_makespan += time.monotonic() - verification_started
 
         manifest.update(

@@ -376,6 +376,9 @@ class OfflineModels:
         self.requests = []
         self.lock = threading.Lock()
         self.golden = (ROOT / "tests/fixtures/candidates/golden.py").read_text()
+        error_source = (ROOT / "tests/fixtures/candidates/frame_copy_error.py").read_text()
+        self.error_fragment = next(ast.get_source_segment(error_source, node) for node in ast.parse(error_source).body
+                                   if isinstance(node, ast.FunctionDef) and node.name == "b_green_to_yellow")
         self.fragments = {}
         for node in ast.parse(self.golden).body:
             if isinstance(node, ast.FunctionDef):
@@ -424,11 +427,9 @@ class OfflineModels:
                     fragment = "INITIAL = " + repr(value)
                 else:
                     fragment = self.fragments[symbol]
-                    if self.resample and symbol == "b_red_to_green" and int(particle_id[-4:]) < 4:
-                        # Enabledness stays correct, but the enabled successor
-                        # is wrong: q = .25 + .25 + 0 = .5 on the final step.
-                        fragment = fragment.replace('successor["timerB"] = 0', 'successor["timerB"] = 1')
-                    fragment += f"\n# particle:{particle_id} target:{symbol}"
+                    if self.resample and symbol == "b_green_to_yellow" and int(particle_id[-4:]) < 4:
+                        # Pinned reviewed frame-copy error gives q=.5.
+                        fragment = self.error_fragment
                 document = json.dumps({
                     "schema_version": PROPOSAL_SCHEMA_VERSION,
                     "step_id": step["id"], "python_fragment": fragment,
@@ -462,7 +463,8 @@ class PipelineOfflineTests(unittest.TestCase):
         self.home.mkdir()
 
     def run_offline(self, models, *, smoke=True, verifier=None):
-        with mock.patch("tla_steer.pipeline._codex_home", return_value=(self.home, "offline-test")), \
+        with mock.patch("tla_steer.execution.preflight", return_value={"test_fixture_only": True}), \
+             mock.patch("tla_steer.pipeline._codex_home", return_value=(self.home, "offline-test")), \
              mock.patch("tla_steer.pipeline.run_worker", side_effect=models), \
              mock.patch("tla_steer.pipeline.verify_candidate", side_effect=verifier or verify_candidate):
             return pipeline.run_comparison(
@@ -495,7 +497,7 @@ class PipelineOfflineTests(unittest.TestCase):
             self.assertEqual(selected["official_particle_index"], 3)
             for actual, expected in zip(selected["selection_weights"], [1/12] * 4 + [1/6] * 4):
                 self.assertAlmostEqual(actual, expected)
-            self.assertIn(b"# particle:p01-0003 target:b_red_to_green", frozen["discipl"])
+            self.assertIn(b"Copy/paste error", frozen["discipl"])
             self.assertFalse((run_dir / "direct/verification.json").exists() and not verified)
             verified.append(candidate)
             return verify_candidate(candidate)
@@ -678,7 +680,8 @@ class PipelineOfflineTests(unittest.TestCase):
             path.write_text(json.dumps(card))
 
         models = OfflineModels(after_snapshot=change_source_card)
-        with mock.patch("tla_steer.pipeline._codex_home", return_value=(self.home, "offline-test")), \
+        with mock.patch("tla_steer.execution.preflight", return_value={"test_fixture_only": True}), \
+             mock.patch("tla_steer.pipeline._codex_home", return_value=(self.home, "offline-test")), \
              mock.patch("tla_steer.pipeline.run_worker", side_effect=models), \
              contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(["smoke", "--config", str(self.config_path)]), 0)
@@ -911,9 +914,10 @@ class CostScreenTests(unittest.TestCase):
         launched = []
         def guarded_popen(command, *args, **kwargs):
             executable = str(command[0])
-            self.assertIn(executable, {"git", sys.executable})
-            if executable == sys.executable:
-                self.assertEqual(command[1:4], ["-I", "-S", "-c"])
+            self.assertIn(executable, {"git", "/usr/bin/prlimit"})
+            if executable == "/usr/bin/prlimit":
+                boundary = command.index("--")
+                self.assertEqual(command[boundary+1:boundary+4], [sys.executable, "-I", "-S"])
             launched.append(executable)
             return original_popen(command, *args, **kwargs)
 
@@ -924,7 +928,7 @@ class CostScreenTests(unittest.TestCase):
             self.assertEqual(cli.main(["offline-screen", "--config", str(self.config_path)]), 0)
         self.assertIn("synthetic token counters only", output.getvalue())
         self.assertIn("git", launched)
-        self.assertIn(sys.executable, launched)
+        self.assertIn("/usr/bin/prlimit", launched)
         path = self.root / "tests/fixtures/candidates/golden.py"
         path.write_text(path.read_text() + "\nraise RuntimeError('unreviewed')\n")
         with mock.patch("tla_steer.worker.run_worker") as worker, \
