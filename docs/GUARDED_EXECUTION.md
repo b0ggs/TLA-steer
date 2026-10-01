@@ -42,9 +42,14 @@ successors. Filesystem roots, proc and dev are remounted read-only; the writable
 temporary filesystem is capped at 16 MiB.
 
 Configured limits: 256 MiB address space and 15 CPU seconds per process,
-32 processes, 64 descriptors, no core dumps, 8 MiB per output file, and the
+32 threads for the candidate UID inside its new user namespace, 64 descriptors,
+no core dumps, 8 MiB per output file, and the
 caller's wall timeout (5 seconds partial, 30 seconds final). These are per-process
-limits rather than a cgroup-wide aggregate resource guarantee. Output is
+resource attributes rather than a cgroup-wide aggregate resource guarantee.
+The thread-count limit is installed by a trusted Python bootstrap inside the
+namespace before candidate execution. Applying it before namespace creation
+incorrectly counts unrelated CI worker threads and can prevent launch.
+Output is
 file-backed and limited during writes, with bounded reads and process-group
 cleanup. No claims about untested kernel escape resistance are made.
 

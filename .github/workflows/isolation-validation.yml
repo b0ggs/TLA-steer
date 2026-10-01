@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/isolation-validation.yml
       - tooling/validate_isolation.py
+      - src/tla_steer/execution.py
+      - tests/test_execution.py
 
 permissions: {}
 

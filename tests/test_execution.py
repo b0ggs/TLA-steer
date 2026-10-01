@@ -162,8 +162,19 @@ class ExecutionBoundaryTests(unittest.TestCase):
         self.assertNotIn(['/', '/'], bindings)
         self.assertFalse(any('/home' in source or '/workspace' in source for source, _ in bindings))
         self.assertNotIn(str(ROOT), command)
-        for name in ('--as=', '--cpu=', '--fsize=', '--nproc=', '--nofile=', '--core='):
+        for name in ('--as=', '--cpu=', '--fsize=', '--nofile=', '--core='):
             self.assertTrue(any(value.startswith(name) for value in command))
+        self.assertFalse(any(value.startswith('--nproc=') for value in command))
+        self.assertEqual(command[command.index('-c')+1], execution._namespace_bootstrap('/work/runner.py'))
+
+    def test_namespace_bootstrap_sets_hard_process_limit_before_runner(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = Path(temporary) / 'runner.py'
+            runner.write_text("import json, resource, sys\nprint(json.dumps([resource.getrlimit(resource.RLIMIT_NPROC), sys.argv[1]]))\n")
+            result = subprocess.run([sys.executable, '-I', '-S', '-c',
+                                     execution._namespace_bootstrap(str(runner)), 'candidate.py'],
+                                    capture_output=True, text=True, check=True, timeout=5)
+        self.assertEqual(json.loads(result.stdout), [[32, 32], 'candidate.py'])
 
     def test_reviewed_fixture_wall_timeout_and_output_are_bounded(self):
         # The runner scripts are trusted, deliberately adversarial test probes;

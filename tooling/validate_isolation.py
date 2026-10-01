@@ -126,7 +126,7 @@ print(json.dumps({'filesystem_environment_fds_pid_private_grader': True, 'networ
 
 def resource_limits():
     result = successful_json(observe(r'''
-import errno, json, os, resource
+import errno, json, os, resource, signal
 expected = {resource.RLIMIT_AS: 256*1024*1024, resource.RLIMIT_CPU: 15,
             resource.RLIMIT_FSIZE: 8*1024*1024, resource.RLIMIT_NPROC: 32,
             resource.RLIMIT_NOFILE: 64, resource.RLIMIT_CORE: 0}
@@ -168,9 +168,26 @@ else:
 finally:
     for handle in handles:
         handle.close()
-print(json.dumps({'mounts_tmpfs_memory_descriptors_limits': True}))
+children = []
+limited = False
+try:
+    for index in range(40):
+        child = os.fork()
+        if child == 0:
+            signal.pause()
+            os._exit(0)
+        children.append(child)
+except OSError as exc:
+    assert exc.errno == errno.EAGAIN
+    limited = True
+finally:
+    for child in children:
+        os.kill(child, signal.SIGKILL)
+        os.waitpid(child, 0)
+assert limited and 0 < len(children) < 32, 'namespace process limit not enforced'
+print(json.dumps({'mounts_tmpfs_memory_descriptors_processes_limits': True}))
 '''))
-    require(result == {"mounts_tmpfs_memory_descriptors_limits": True}, "resource response incomplete")
+    require(result == {"mounts_tmpfs_memory_descriptors_processes_limits": True}, "resource response incomplete")
     flood = observe("import os\nwhile True: os.write(1, b'x'*65536)", timeout=3)
     require(flood.output_exceeded and len(flood.stdout.encode()) == execution.MAX_OUTPUT_BYTES,
             "output was not bounded during collection")

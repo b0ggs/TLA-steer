@@ -85,6 +85,16 @@ def is_reviewed_source(source: str) -> bool:
     return _digest(source.encode("utf-8")) in _reviewed_hashes()
 
 
+def _namespace_bootstrap(runner_path: str) -> str:
+    # RLIMIT_NPROC counts threads for the real UID. Apply it only after bwrap
+    # creates a fresh user namespace, so unrelated host/CI threads do not spend
+    # the candidate's allowance. The hard limit is set before running any probe
+    # or candidate code, and cannot be raised after capabilities were dropped.
+    return ("import resource, runpy; "
+            f"resource.setrlimit(resource.RLIMIT_NPROC, ({MAX_PROCESSES}, {MAX_PROCESSES})); "
+            f"runpy.run_path({runner_path!r}, run_name='__main__')")
+
+
 def _linux_command(scratch: Path, runner_path: Path, timeout_seconds: float) -> list[str]:
     """Minimal system-Python runtime mounts; never bind /, /home or the repo."""
     if not sys.platform.startswith("linux"):
@@ -108,7 +118,7 @@ def _linux_command(scratch: Path, runner_path: Path, timeout_seconds: float) -> 
     command = [
         "/usr/bin/prlimit", f"--as={MEMORY_BYTES}:{MEMORY_BYTES}",
         f"--cpu={CPU_SECONDS}:{CPU_SECONDS}", f"--fsize={MAX_OUTPUT_BYTES}:{MAX_OUTPUT_BYTES}",
-        f"--nproc={MAX_PROCESSES}:{MAX_PROCESSES}", "--nofile=64:64", "--core=0:0", "--",
+        "--nofile=64:64", "--core=0:0", "--",
         "/usr/bin/bwrap", "--unshare-all", "--unshare-user", "--die-with-parent", "--new-session",
         "--cap-drop", "ALL", "--clearenv", "--setenv", "LC_ALL", "C.UTF-8", "--disable-userns",
         "--ro-bind", str(python), str(python),
@@ -127,7 +137,7 @@ def _linux_command(scratch: Path, runner_path: Path, timeout_seconds: float) -> 
         "--proc", "/proc", "--dev", "/dev", "--size", str(16 * 1024 * 1024), "--tmpfs", "/tmp",
         "--ro-bind", str(scratch), "/work", "--chdir", "/work",
         "--remount-ro", "/", "--remount-ro", "/dev", "--remount-ro", "/proc",
-        "--", str(python), "-I", "-S", str(Path("/work") / runner_path.name),
+        "--", str(python), "-I", "-S", "-c", _namespace_bootstrap(str(Path("/work") / runner_path.name)),
         "/work/candidate.py",
     ]
     return command
