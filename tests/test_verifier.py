@@ -42,7 +42,7 @@ class TwoLightsVerifierTests(unittest.TestCase):
     def test_fallback_containment_is_labeled_honestly(self) -> None:
         result = self.verify("golden.py")
 
-        self.assertEqual(result["containment_mode"], "prototype_local")
+        self.assertEqual(result["containment_mode"], "reviewed_fixture_local")
         self.assertEqual(result["runner"]["python_flags"], ["-I", "-S"])
         self.assertIn("not a hostile-code security boundary", result["containment_note"])
 
@@ -91,9 +91,8 @@ class TwoLightsVerifierTests(unittest.TestCase):
 
         self.assertEqual(result["outcome"], INVALID_CANDIDATE)
         self.assertFalse(result["exact"])
-        self.assertTrue(result["runtime_failure"])
-        self.assertIn("input_mutation", result["contract_failures"][0])
-        self.assertEqual(result["counterexamples"][0]["action"], "Tick")
+        self.assertFalse(result["runtime_failure"])
+        self.assertIn("input_mutation_contract", result["contract_failures"][0])
 
 
 if __name__ == "__main__":

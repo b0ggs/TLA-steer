@@ -1,9 +1,7 @@
-"""Independent exhaustive verifier for fixed TwoLights Python candidates.
+"""Independent fixed-state verifier with shared fail-closed candidate execution.
 
-Candidate code is evaluated in a fresh ``python -I -S`` subprocess.  This is
-useful process isolation for the prototype, but it is deliberately reported as
-``prototype_local``: it is not a hostile-code security boundary and it does
-not reproduce the sealed MDs_EVAL container.
+Exact reviewed fixtures have a labeled local exception. Other candidate bytes
+require the Linux isolation adapter; static conformance checks are not a sandbox.
 """
 
 from __future__ import annotations
@@ -12,6 +10,7 @@ import ast
 from collections import deque
 import hashlib
 import json
+import math
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +18,9 @@ import sys
 import tempfile
 import time
 from typing import Any
+
+from .contract import ContractError, validate_guard_update_source
+from . import execution
 
 from .oracle import (
     ACTION_LABELS,
@@ -42,11 +44,10 @@ INVALID_CANDIDATE = "INVALID_CANDIDATE"
 EVALUATOR_ERROR = "EVALUATOR_ERROR"
 
 SCHEMA_VERSION = "tla-steer-verification/0.1"
-CONTAINMENT_MODE = "prototype_local"
+CONTAINMENT_MODE = "not_run"
 CONTAINMENT_NOTE = (
-    "Candidate code ran in a fresh python -I -S subprocess with restricted "
-    "builtins. This prototype fallback is not a hostile-code security boundary "
-    "and does not provide the sealed MDs_EVAL containment guarantee."
+    "Execution mode is reported after launch. Static contract checks and reviewed "
+    "fixture subprocesses are not a hostile-code security boundary."
 )
 DEFAULT_TIMEOUT_SECONDS = 30.0
 MAX_COUNTEREXAMPLES = 20
@@ -196,15 +197,20 @@ for label in action_symbols:
         second_input = dict(state)
         try:
             first = function(first_input)
+        except BaseException as exc:
+            invalid("action_exception", type(exc).__name__ + ": " + str(exc), label, state_index)
+        if not valid_state(first_input) or first_input != state:
+            invalid("input_mutation", "action mutated input values or types", label, state_index)
+        if first is not None and not valid_state(first):
+            invalid("invalid_successor", "action returned an invalid state", label, state_index)
+        first = None if first is None else dict(first)
+        try:
             second = function(second_input)
         except BaseException as exc:
-            invalid(
-                "action_exception",
-                type(exc).__name__ + ": " + str(exc),
-                label,
-                state_index,
-            )
-        if first_input != state or second_input != state:
+            invalid("action_exception", type(exc).__name__ + ": " + str(exc), label, state_index)
+        if second is not None and valid_state(second):
+            second = dict(second)
+        if not valid_state(first_input) or not valid_state(second_input) or first_input != state or second_input != state:
             invalid("input_mutation", "action mutated its input state", label, state_index)
         if first is not None and not valid_state(first):
             invalid(
@@ -297,70 +303,35 @@ def _finish(
 
 def _static_contract_failure(source: str) -> str | None:
     try:
-        tree = ast.parse(source, filename="candidate.py")
-    except SyntaxError as exc:
-        return f"syntax_error: {exc.msg} at line {exc.lineno}"
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            return f"imports_not_allowed: line {getattr(node, 'lineno', '?')}"
+        validate_guard_update_source(source, complete=True)
+    except ContractError as exc:
+        return f"guard_update_contract: {exc}"
     return None
 
 
 def _run_candidate(
-    candidate_path: Path,
+    source: str,
     states: list[dict[str, object]],
     timeout_seconds: float,
-) -> tuple[dict[str, Any] | None, str | None, bool]:
-    request = json.dumps(
-        {
-            "constants": CONSTANTS,
-            "action_symbols": ACTION_SYMBOLS,
-            "states": states,
-        },
-        separators=(",", ":"),
-    )
-    with tempfile.TemporaryDirectory(prefix="tla-steer-candidate-") as name:
-        scratch = Path(name)
-        isolated_candidate = scratch / "candidate.py"
-        shutil.copyfile(candidate_path, isolated_candidate)
-        try:
-            process = subprocess.run(
-                [
-                    sys.executable,
-                    "-I",
-                    "-S",
-                    "-c",
-                    _CANDIDATE_RUNNER,
-                    str(isolated_candidate),
-                ],
-                cwd=scratch,
-                input=request,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return None, f"candidate_timeout: exceeded {timeout_seconds} seconds", True
-        except OSError as exc:
-            return None, f"candidate_runner_error: {type(exc).__name__}: {exc}", False
-
+) -> tuple[dict[str, Any] | None, str | None, bool, str]:
+    request = {"constants": CONSTANTS, "action_symbols": ACTION_SYMBOLS, "states": states}
+    try:
+        process = execution.run_observations(source, _CANDIDATE_RUNNER, request, timeout_seconds=timeout_seconds)
+    except execution.ContainmentUnavailable as exc:
+        return None, f"containment_unavailable: {exc}", False, "not_run"
+    if process.timed_out:
+        return None, f"candidate_timeout: exceeded {timeout_seconds} seconds", True, process.mode
+    if process.output_exceeded:
+        return None, "candidate_output_limit", True, process.mode
     if process.returncode != 0:
-        detail = process.stderr.strip()[:500]
-        return (
-            None,
-            f"candidate_process_exit: return code {process.returncode}"
-            + (f": {detail}" if detail else ""),
-            True,
-        )
+        return None, f"candidate_process_exit: return code {process.returncode}: {process.stderr.strip()[:500]}", True, process.mode
     try:
         payload = json.loads(process.stdout)
     except json.JSONDecodeError as exc:
-        return None, f"candidate_protocol_error: invalid JSON: {exc}", False
+        return None, f"candidate_protocol_error: invalid JSON: {exc}", False, process.mode
     if not isinstance(payload, dict):
-        return None, "candidate_protocol_error: response is not an object", False
-    return payload, None, False
+        return None, "candidate_protocol_error: response is not an object", False, process.mode
+    return payload, None, False, process.mode
 
 
 def _counterexample(
@@ -408,7 +379,7 @@ def verify_candidate(
 
     candidate_digest: str | None = None
     result = _base_result(path, candidate_digest, oracle_summary, timeout_seconds)
-    if timeout_seconds <= 0:
+    if not isinstance(timeout_seconds, (int, float)) or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         return _finish(
             result,
             started,
@@ -425,8 +396,12 @@ def verify_candidate(
         )
 
     try:
-        candidate_digest = _sha256(path)
-        source = path.read_text(encoding="utf-8")
+        with path.open("rb") as handle:
+            data = handle.read(128 * 1024 + 1)
+        if len(data) > 128 * 1024:
+            return _finish(result, started, INVALID_CANDIDATE, failure="candidate exceeds fixed source size limit")
+        candidate_digest = hashlib.sha256(data).hexdigest()
+        source = data.decode("utf-8")
     except (OSError, UnicodeError) as exc:
         result["api_contract_valid"] = False
         return _finish(
@@ -445,8 +420,15 @@ def verify_candidate(
         )
 
     states = list(iter_type_correct_states())
-    payload, runner_failure, candidate_runtime_failure = _run_candidate(
-        path, states, timeout_seconds
+    payload, runner_failure, candidate_runtime_failure, execution_mode = _run_candidate(
+        source, states, timeout_seconds
+    )
+    result["containment_mode"] = execution_mode
+    result["containment_note"] = (
+        "Only exact reviewed fixture bytes were executed locally; this is not a hostile-code security boundary."
+        if execution_mode == "reviewed_fixture_local" else
+        "Bubblewrap Linux namespace/filesystem isolation and resource limits were required; host-specific security validation is separate."
+        if execution_mode == "bubblewrap_linux" else CONTAINMENT_NOTE
     )
     if runner_failure is not None:
         result["runtime_failure"] = candidate_runtime_failure

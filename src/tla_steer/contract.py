@@ -397,6 +397,7 @@ def validate_fragment(proposal: Proposal, step: ControllerStep) -> None:
         or arguments.kw_defaults
     ):
         raise ContractError("action function must accept exactly one state argument")
+    validate_guard_update_function(root)
     argument = (arguments.posonlyargs + arguments.args)[0]
     if argument.arg != "state":
         raise ContractError("action function argument must be named state")
@@ -456,3 +457,193 @@ def initial_state_from_fragment(proposal: Proposal, step: ControllerStep) -> Sta
     root = ast.parse(proposal.python_fragment, mode="exec").body[0]
     assert isinstance(root, ast.Assign)
     return validate_state(ast.literal_eval(root.value), location="proposal.INITIAL")
+
+
+# A documented conformance subset for this one guard/update task. This is not
+# a Python purity proof or a hostile-code security boundary.
+_CONSTANT_NAMES = frozenset({"CYCLE_LENGTH", "MIN_GREEN", "MIN_YELLOW", "MIN_RED", "MAX_PHASE", "OFFSET"})
+_PURE_CALLS = frozenset({"dict", "abs", "min", "max", "int", "bool"})
+_READ_METHODS = frozenset({"copy", "get"})
+_WRITE_METHODS = frozenset({"update", "pop", "setdefault"})
+
+
+def _annotation(node: ast.expr | None) -> None:
+    if node is None or isinstance(node, ast.Constant) and node.value is None:
+        return
+    if isinstance(node, ast.Name) and node.id in {"dict", "int", "str", "bool"}:
+        return
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        _annotation(node.left)
+        _annotation(node.right)
+        return
+    raise ContractError("executable or unsupported annotation")
+
+
+def validate_guard_update_function(function: ast.FunctionDef) -> None:
+    """Accept local guard/update code; reject persistent state and input aliases."""
+
+    args = function.args
+    positional = args.posonlyargs + args.args
+    if (function.decorator_list or len(positional) != 1 or args.defaults or args.kw_defaults
+            or args.kwonlyargs or args.vararg or args.kwarg or function.type_params):
+        raise ContractError("action must have one argument, no defaults, decorators or type parameters")
+    argument = positional[0].arg
+    _annotation(positional[0].annotation)
+    _annotation(function.returns)
+
+    def expression(node: ast.expr, locals_: set[str], copies: set[str]) -> None:
+        if isinstance(node, ast.Constant) and type(node.value) in {int, float, str, bool, type(None)}:
+            return
+        if isinstance(node, ast.Name) and node.id in locals_ | _CONSTANT_NAMES:
+            return
+        if isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values):
+                if key is None:
+                    raise ContractError("dictionary unpacking is outside the guard/update contract")
+                expression(key, locals_, copies)
+                expression(value, locals_, copies)
+            return
+        if isinstance(node, ast.Subscript):
+            expression(node.value, locals_, copies)
+            expression(node.slice, locals_, copies)
+            return
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Mod, ast.FloorDiv)):
+            expression(node.left, locals_, copies)
+            expression(node.right, locals_, copies)
+            return
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.Not, ast.USub, ast.UAdd)):
+            expression(node.operand, locals_, copies)
+            return
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, (ast.And, ast.Or)):
+            for value in node.values:
+                expression(value, locals_, copies)
+            return
+        if isinstance(node, ast.Compare) and all(isinstance(op, (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Is, ast.IsNot)) for op in node.ops):
+            for value in [node.left, *node.comparators]:
+                expression(value, locals_, copies)
+            return
+        if isinstance(node, ast.IfExp):
+            for value in (node.test, node.body, node.orelse):
+                expression(value, locals_, copies)
+            return
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                if node.func.id not in _PURE_CALLS or node.func.id in locals_:
+                    raise ContractError("arbitrary calls are outside the guard/update contract")
+            elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                receiver = node.func.value.id
+                if receiver not in locals_ or node.func.attr not in _READ_METHODS | _WRITE_METHODS:
+                    raise ContractError("attribute/reflection access is outside the guard/update contract")
+                if node.func.attr in _WRITE_METHODS and receiver not in copies:
+                    raise ContractError("input_mutation_contract: method may mutate input or its alias")
+            else:
+                raise ContractError("arbitrary calls are outside the guard/update contract")
+            for value in node.args:
+                expression(value, locals_, copies)
+            for keyword in node.keywords:
+                if keyword.arg is None:
+                    raise ContractError("keyword unpacking is outside the guard/update contract")
+                expression(keyword.value, locals_, copies)
+            return
+        raise ContractError(f"forbidden {type(node).__name__} is outside the guard/update contract")
+
+    def is_copy(node: ast.expr, copies: set[str]) -> bool:
+        return (isinstance(node, ast.Dict)
+                or isinstance(node, ast.Name) and node.id in copies
+                or isinstance(node, ast.Call) and (
+                    isinstance(node.func, ast.Name) and node.func.id == "dict"
+                    or isinstance(node.func, ast.Attribute) and node.func.attr == "copy"))
+
+    def statements(nodes: list[ast.stmt], locals_: set[str], copies: set[str]) -> tuple[set[str], set[str]]:
+        locals_, copies = set(locals_), set(copies)
+        for node in nodes:
+            if isinstance(node, ast.Return):
+                if node.value is not None:
+                    expression(node.value, locals_, copies)
+            elif isinstance(node, ast.If):
+                expression(node.test, locals_, copies)
+                left_names, left_copies = statements(node.body, locals_, copies)
+                right_names, right_copies = statements(node.orelse, locals_, copies)
+                locals_ |= left_names & right_names
+                copies = left_copies & right_copies
+            elif isinstance(node, (ast.Assign, ast.AugAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if len(targets) != 1:
+                    raise ContractError("chained assignment is outside the guard/update contract")
+                expression(node.value, locals_, copies)
+                if isinstance(node, ast.AugAssign) and not isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Mod, ast.FloorDiv)):
+                    raise ContractError("unsupported augmented assignment")
+                target = targets[0]
+                if isinstance(target, ast.Name):
+                    if target.id == argument or target.id in _CONSTANT_NAMES | _PURE_CALLS:
+                        raise ContractError("cannot rebind input, constants or allowed builtins")
+                    if isinstance(node, ast.AugAssign):
+                        expression(target, locals_, copies)
+                        if not isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Mod, ast.FloorDiv)):
+                            raise ContractError("unsupported augmented assignment")
+                    copy = isinstance(node, ast.Assign) and is_copy(node.value, copies)
+                    locals_.add(target.id)
+                    copies.discard(target.id)
+                    if copy:
+                        copies.add(target.id)
+                elif isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
+                    if target.value.id not in copies:
+                        raise ContractError("input_mutation_contract: subscript may mutate input or its alias")
+                    expression(target.slice, locals_, copies)
+                else:
+                    raise ContractError("assignment target is outside the guard/update contract")
+            elif isinstance(node, ast.Expr) and isinstance(node.value, (ast.Constant, ast.Call)):
+                expression(node.value, locals_, copies)
+            else:
+                raise ContractError(f"forbidden {type(node).__name__} is outside the guard/update contract")
+        return locals_, copies
+
+    statements(function.body, {argument}, set())
+
+
+def validate_guard_update_source(source: str, *, complete: bool) -> None:
+    """Validate module shape before either partial or final execution."""
+
+    if len(source.encode("utf-8")) > 128 * 1024:
+        raise ContractError("candidate exceeds the fixed source size limit")
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError, RecursionError) as exc:
+        raise ContractError(f"invalid candidate syntax: {exc}") from exc
+    seen = set()
+    functions = {symbol for kind, symbol in TARGET_SPECS.values() if kind == "action"}
+    for node in tree.body:
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and type(node.value.value) is str:
+            continue
+        if isinstance(node, ast.FunctionDef) and node.name in functions:
+            name = node.name
+            validate_guard_update_function(node)
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            name = node.targets[0].id
+            if name in _CONSTANT_NAMES:
+                if not isinstance(node.value, ast.Constant) or type(node.value.value) is not int:
+                    raise ContractError("constants must be integer literals")
+            elif name == "INITIAL":
+                if not isinstance(node.value, ast.Dict):
+                    raise ContractError("INITIAL must be a literal state dictionary")
+                for value in [*node.value.keys, *node.value.values]:
+                    if not (isinstance(value, ast.Constant) and type(value.value) in {int, str}
+                            or isinstance(value, ast.Name) and value.id in _CONSTANT_NAMES):
+                        raise ContractError("INITIAL may contain only literals and configured constants")
+            elif name == "ACTIONS":
+                if not isinstance(node.value, ast.Dict) or any(
+                    not isinstance(key, ast.Constant) or type(key.value) is not str
+                    or not isinstance(value, ast.Name) or value.id not in functions
+                    for key, value in zip(node.value.keys, node.value.values)
+                ):
+                    raise ContractError("ACTIONS must be a literal label-to-function mapping")
+            else:
+                raise ContractError("extra module state is outside the guard/update contract")
+        else:
+            raise ContractError("module statement is outside the guard/update contract")
+        if name in seen:
+            raise ContractError(f"duplicate definition: {name}")
+        seen.add(name)
+    required = _CONSTANT_NAMES | {"INITIAL"} | (functions | {"ACTIONS"} if complete else set())
+    if not required <= seen:
+        raise ContractError("candidate is missing required definitions")
