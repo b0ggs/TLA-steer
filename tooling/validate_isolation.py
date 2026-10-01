@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import resource
 import socket
 import subprocess
 import tempfile
@@ -223,6 +224,39 @@ def main():
     emit("host", "recorded", commit=commit, kernel=platform.release(), python=platform.python_version(),
          image=os.environ.get("ImageOS"), image_version=os.environ.get("ImageVersion"), packages=versions,
          apparmor_restrict_unprivileged_userns=restriction.read_text().strip() if restriction.exists() else "absent")
+    # Read-only diagnostics: RLIMIT_NPROC counts all host threads for this UID,
+    # including the CI worker, before bubblewrap can create its namespaces.
+    uid_threads = uid_processes = 0
+    for status in Path('/proc').glob('[0-9]*/status'):
+        try:
+            fields = dict(line.split(':', 1) for line in status.read_text().splitlines() if ':' in line)
+            if int(fields['Uid'].split()[0]) == os.getuid():
+                uid_processes += 1
+                uid_threads += int(fields['Threads'])
+        except (OSError, KeyError, ValueError):
+            continue
+    def read_value(path):
+        try:
+            return Path(path).read_text().strip()
+        except OSError:
+            return 'unavailable'
+    cgroup = {}
+    for row in read_value('/proc/self/cgroup').splitlines():
+        if row.startswith('0::'):
+            root = Path('/sys/fs/cgroup')
+            current = (root / row[3:].lstrip('/')).resolve()
+            while current == root or root in current.parents:
+                cgroup[str(current)] = {name: read_value(current / name)
+                                        for name in ('pids.current', 'pids.max', 'pids.events')}
+                if current == root:
+                    break
+                current = current.parent
+    emit('launch_limits', 'recorded', uid=os.getuid(), uid_processes=uid_processes,
+         uid_threads=uid_threads, parent_nproc=resource.getrlimit(resource.RLIMIT_NPROC),
+         launcher_nproc=execution.MAX_PROCESSES, cgroup=cgroup,
+         kernel_limits={name: read_value('/proc/sys/' + name) for name in
+                        ('kernel/threads-max', 'kernel/pid_max', 'user/max_user_namespaces', 'user/max_pid_namespaces')},
+         apparmor_profile=read_value('/proc/self/attr/current'))
     checks = [("real_preflight", execution.preflight), ("golden_partial_and_final", golden_checkers),
               ("private_data_and_network", private_data_and_network), ("resource_limits", resource_limits),
               ("descendant_cleanup", descendant_cleanup)]

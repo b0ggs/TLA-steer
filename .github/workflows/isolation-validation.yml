@@ -1,4 +1,4 @@
-name: One-run guarded execution validation
+name: Guarded execution validation
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions: {}
 
 jobs:
   isolation:
-    # Deliberately opt-in for this approved push, not an ongoing benchmark.
-    if: github.event.head_commit.message == 'Validate guarded execution once on Ubuntu 24.04' && github.run_attempt == 1
+    # Explicitly marked implementation pushes only; no model calls or schedules.
+    if: startsWith(github.event.head_commit.message, '[isolation-validation] ') && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
