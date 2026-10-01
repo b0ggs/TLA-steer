@@ -89,6 +89,57 @@ def _fake_git_init(workspace: Path) -> None:
 
 
 class WorkerFakeTests(unittest.TestCase):
+    def test_documented_reasoning_events_preserve_strict_evidence_checks(self) -> None:
+        rows = [json.loads(line) for line in _events(model='gpt-5.6-sol').splitlines()]
+        reasoning = [
+            {'type': event, 'item': {'id': 'reasoning-1', 'type': 'reasoning', 'text': 'Check the guards.'}}
+            for event in ('item.started', 'item.updated', 'item.completed')
+        ]
+        valid = rows[:-1] + reasoning + rows[-1:]
+        negative_usage = json.loads(json.dumps(valid))
+        negative_usage[-1]['usage']['output_tokens'] = -1
+        missing_usage = json.loads(json.dumps(valid))
+        del missing_usage[-1]['usage']['input_tokens']
+        cases = [('valid', valid, 'COMPLETED'),
+                 ('negative-usage', negative_usage, 'INVALID_EVIDENCE'),
+                 ('missing-usage', missing_usage, 'INVALID_EVIDENCE')]
+        malformed_reasoning = json.loads(json.dumps(valid))
+        malformed_reasoning[2]['item']['text'] = 42
+        extra_tool_field = json.loads(json.dumps(valid))
+        extra_tool_field[2]['item']['tool'] = 'unexpected'
+        cases.extend([('malformed-reasoning', malformed_reasoning, 'INVALID_EVIDENCE'),
+                      ('extra-tool-field', extra_tool_field, 'INVALID_EVIDENCE')])
+        for forbidden in ('mcp_tool_call', 'web_search', 'unknown_future_item'):
+            cases.append((forbidden, valid[:-1] + [
+                {'type': 'item.completed', 'item': {'id': 'denied', 'type': forbidden}}
+            ] + valid[-1:], 'INVALID_EVIDENCE'))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name, events, status in cases:
+                with self.subTest(name=name):
+                    stream = ''.join(json.dumps(event) + '\n' for event in events)
+
+                    def fake_process(command, **kwargs):
+                        (kwargs['cwd'] / 'candidate.py').write_text('VALUE = 1\n')
+                        Path(command[command.index('--output-last-message') + 1]).write_text('done\n')
+                        return ProcessOutcome(0, stream, '', False, False)
+
+                    request = self._request(root, call_id=name)
+                    with mock.patch('tla_steer.worker.init_repository', _fake_git_init):
+                        result = run_worker(request, process_runner=fake_process)
+                    self.assertEqual(result.status, status)
+                    preserved = (request.spool_dir / 'events.jsonl').read_text().splitlines()
+                    self.assertEqual([json.loads(line) for line in preserved], events)
+                    if status == 'COMPLETED':
+                        self.assertEqual(result.event_fatal_defects, ())
+                        self.assertEqual(result.usage['input_tokens'], 101)
+                        self.assertEqual(result.usage['output_tokens'], 23)
+                        self.assertEqual(result.usage['reasoning_output_tokens'], 11)
+                        self.assertTrue(result.usage['usage_reported'])
+                    else:
+                        self.assertTrue(result.event_fatal_defects)
+
     def _request(
         self,
         root: Path,
