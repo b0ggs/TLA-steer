@@ -644,6 +644,8 @@ def validate_guard_update_source(source: str, *, complete: bool) -> None:
         if name in seen:
             raise ContractError(f"duplicate definition: {name}")
         seen.add(name)
-    required = _CONSTANT_NAMES | {"INITIAL"} | (functions | {"ACTIONS"} if complete else set())
+    # The Planner may emit action steps before the INITIAL step. Partial
+    # modules need only the configured constants; final artifacts need all targets.
+    required = _CONSTANT_NAMES | (functions | {"INITIAL", "ACTIONS"} if complete else set())
     if not required <= seen:
         raise ContractError("candidate is missing required definitions")

@@ -283,18 +283,45 @@ def _event_metadata(path: Path) -> tuple[str | None, bool]:
 def _compatible_event_defects(
     path: Path, fatal_defects: tuple[str, ...]
 ) -> tuple[str, ...]:
-    """Ignore only Codex 0.151's exact fail-closed Code Mode warning.
+    """Accept documented reasoning items and the exact fail-closed warning.
 
-    The event remains in the persisted JSONL. Generic ``error`` items, an
-    altered warning, extra fields, or the warning at any other lifecycle point
-    remain fatal under the foundation audit.
+    The preserved foundation audit stays unchanged. Only the known reasoning
+    item shape (id/type/text) is compatible here; usage, lifecycle, malformed
+    data and tool defects remain fatal. All events stay in the persisted JSONL.
+    Generic ``error`` items, altered Code Mode warnings, extra fields or the
+    warning at another lifecycle point also remain fatal.
     """
+
+    if not fatal_defects:
+        return fatal_defects
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return fatal_defects
+    compatible: set[str] = set()
+    for number, line in enumerate(lines, start=1):
+        defect = f'line:{number}:unknown_item_type:"reasoning"'
+        if defect not in fatal_defects:
+            continue
+        try:
+            event = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(event, dict) or set(event) != {"type", "item"}:
+            continue
+        item = event["item"]
+        if (event["type"] in {"item.started", "item.updated", "item.completed"}
+                and isinstance(item, dict) and set(item) == {"id", "type", "text"}
+                and item["type"] == "reasoning"
+                and isinstance(item["id"], str) and bool(item["id"])
+                and isinstance(item["text"], str)):
+            compatible.add(defect)
+    fatal_defects = tuple(defect for defect in fatal_defects if defect not in compatible)
 
     target_defect = 'line:2:unknown_item_type:"error"'
     if target_defect not in fatal_defects:
         return fatal_defects
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
         event = json.loads(lines[1])
     except (OSError, UnicodeError, IndexError, json.JSONDecodeError, ValueError):
         return fatal_defects
