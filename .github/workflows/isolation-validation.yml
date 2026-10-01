@@ -1,0 +1,37 @@
+name: One-run guarded execution validation
+
+on:
+  push:
+    branches: [dot/guarded-checker-r3]
+    paths:
+      - .github/workflows/isolation-validation.yml
+      - tooling/validate_isolation.py
+
+permissions: {}
+
+jobs:
+  isolation:
+    # Deliberately opt-in for this approved push, not an ongoing benchmark.
+    if: github.event.head_commit.message == 'Validate guarded execution once on Ubuntu 24.04' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the exact public commit without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git -c credential.helper= fetch --depth=1 https://github.com/b0ggs/TLA-steer.git "$GITHUB_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Install official Ubuntu runtime dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+      - name: Validate the real boundary with controlled local probes
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: /usr/bin/python3 tooling/validate_isolation.py
