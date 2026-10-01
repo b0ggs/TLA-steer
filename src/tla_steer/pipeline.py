@@ -2,7 +2,7 @@
 
 This is intentionally glue, not a generalized experiment framework.  Every
 hosted turn goes through the role-aware fresh-workspace worker; generated code
-is executed only in trusted subprocess adapters; and the weighted SMC artifact
+is executed through the shared fail-closed launcher; and the weighted SMC artifact
 is selected and frozen before the independent verifier sees it.
 """
 
@@ -36,7 +36,7 @@ from .contract import (
     validate_guard_update_source,
 )
 from . import execution
-from .evidence import sha256_file, write_json, write_run_report
+from .evidence import load_rate_card, sha256_file, write_json, write_run_report
 from .oracle import ACTION_SYMBOLS, CONSTANTS
 from .smc import (
     ActionObservation,
@@ -55,6 +55,7 @@ from .worker import PROTOTYPE_LOCAL, ROLE_POLICIES, WorkerRequest, WorkerResult,
 SCHEMA_VERSION = "tla-steer-run/0.1"
 WORKER_TIMEOUT_SECONDS = 300
 PROBE_TIMEOUT_SECONDS = 5
+PILOT_MAX_CALLS = 20
 SOURCE_HASHES = {
     "TwoLights.tla": "7717242a40bcd6ed57380ca7a4f2e1e756d5432470c3162a3a31e15309f4b4aa",
     "TwoLights.cfg": "ae94c273187b35d55831f4b272c0b229437e82758c2be7f9a0921830b288ce40",
@@ -302,6 +303,46 @@ def _codex_home() -> tuple[Path, str]:
     )
 
 
+def _source_inputs(config: Mapping[str, Any], root: Path) -> tuple[Path, Path, dict[str, bytes]]:
+    input_config = _object(config.get("input"), "input")
+    tla_path = _relative_file(root, input_config.get("tla_path"), "input.tla_path")
+    cfg_path = _relative_file(root, input_config.get("cfg_path"), "input.cfg_path")
+    source_bytes = {"TwoLights.tla": tla_path.read_bytes(), "TwoLights.cfg": cfg_path.read_bytes()}
+    if input_config.get("sha256") != SOURCE_HASHES:
+        raise PipelineError("configured TwoLights hashes differ from the approved source pins")
+    for name, data in source_bytes.items():
+        if _sha256_bytes(data) != SOURCE_HASHES[name]:
+            raise PipelineError(f"TwoLights source hash mismatch: {name}; no worker launched")
+    return tla_path, cfg_path, source_bytes
+
+
+def pilot_plan(config: Mapping[str, Any], root: Path, call_budget: int = PILOT_MAX_CALLS) -> dict[str, Any]:
+    """Validate and preview the fixed screen without launches or run-file writes."""
+    if type(call_budget) is not int or not 1 <= call_budget <= PILOT_MAX_CALLS:
+        raise PipelineError("pilot call budget must be an integer between 1 and 20")
+    _validate_fixed_configuration(config, particle_count=2, max_concurrency=2, smoke=True)
+    _source_inputs(config, root.resolve())
+    paths = _object(config.get("paths"), "paths")
+    rate_card = _relative_file(root, paths.get("rate_card"), "paths.rate_card")
+    load_rate_card(rate_card)
+    return {
+        "schema_version": "tla-steer-pilot-plan/0.1",
+        "mode": "preview_only",
+        "arms": ["direct", "cheap_alone", "discipl"],
+        "logical_particles": 2, "maximum_follower_concurrency": 2,
+        "seed": 20260830, "source_sha256": dict(SOURCE_HASHES),
+        "role_policies": {role: {"model": policy.model, "reasoning_effort": policy.reasoning_effort}
+                          for role, policy in ROLE_POLICIES.items()},
+        "maximum_calls_by_role": {"direct": 1, "cheap_alone": 1, "planner": 2, "follower": 16},
+        "normal_calls": 19, "call_budget": call_budget,
+        "per_call_timeout_seconds": WORKER_TIMEOUT_SECONDS,
+        "rate_card_sha256": sha256_file(rate_card),
+        "budget_note": "Admission count cap, not a dollar or token cap. Failed calls count. A budget below 20 may stop an incomplete run.",
+        "pricing_note": "Frozen API-price-equivalent estimates are not actual OAuth charges; missing usage remains unknown.",
+        "execution_note": "No credentials, provider calls, candidate execution or run writes in preview. Live execution requires a passing host isolation preflight; provider integration remains unvalidated.",
+    }
+
+
 def _call_issue(result: WorkerResult) -> str | None:
     if result.status != "COMPLETED":
         return f"{result.role} call {result.call_id}: {result.status}: {result.error}"
@@ -497,8 +538,10 @@ def run_comparison(
     max_concurrency: int,
     smoke: bool,
     offline_screen: bool = False,
+    pilot: bool = False,
+    call_budget: int | None = None,
 ) -> Path:
-    """Run the frozen comparison, optionally with the fixture-only cheap control.
+    """Run the frozen comparison or the bounded three-arm pilot.
 
     Model failures and semantic mismatches are experiment results.  Harness
     failures raise ``PipelineError`` after the partial run manifest and report
@@ -514,23 +557,26 @@ def run_comparison(
         smoke=smoke,
     )
     paths = _object(config.get("paths"), "paths")
-    input_config = _object(config.get("input"), "input")
-    tla_path = _relative_file(root, input_config.get("tla_path"), "input.tla_path")
-    cfg_path = _relative_file(root, input_config.get("cfg_path"), "input.cfg_path")
-    source_bytes = {"TwoLights.tla": tla_path.read_bytes(), "TwoLights.cfg": cfg_path.read_bytes()}
-    if input_config.get("sha256") != SOURCE_HASHES:
-        raise PipelineError("configured TwoLights hashes differ from the approved source pins")
-    for name, data in source_bytes.items():
-        if _sha256_bytes(data) != SOURCE_HASHES[name]:
-            raise PipelineError(f"TwoLights source hash mismatch: {name}; no worker launched")
+    tla_path, cfg_path, source_bytes = _source_inputs(config, root)
+    if pilot:
+        if offline_screen or not smoke or (particle_count, max_concurrency) != (2, 2):
+            raise PipelineError("pilot requires live N=2, C=2 mode")
+        plan = pilot_plan(config, root, call_budget)
+        plan["mode"] = "execution_plan"
+    elif call_budget is not None:
+        raise PipelineError("explicit call budget is supported only for the pilot")
+    else:
+        plan = None
+    three_arms = offline_screen or pilot
     if offline_screen and (not smoke or (particle_count, max_concurrency) != (2, 2)):
         raise PipelineError("offline screen requires N=2, C=2")
     fixture = ReviewedFixtureWorker(root) if offline_screen else None
     if fixture is None:
         # No provider spend before a real isolated launch succeeds.
-        execution.preflight()
+        execution_preflight = execution.preflight()
         codex_home, codex_home_variable = _codex_home()
     else:
+        execution_preflight = None
         codex_home_variable = "offline_empty_profile_no_credentials"
     rate_card_path = _relative_file(root, paths.get("rate_card"), "paths.rate_card")
     controller_schema_path = _relative_file(
@@ -579,14 +625,19 @@ def run_comparison(
         "codex_home_source": codex_home_variable,
         "smoke": smoke,
         "offline_fixture": offline_screen,
+        "pilot": pilot,
+        "pilot_plan": plan,
+        "candidate_execution_preflight": execution_preflight,
+        "call_budget": call_budget,
+        "budget_rejected_admissions": 0,
         "measurement_note": (
             "Reviewed local fixtures and synthetic token counters only. No provider calls, "
             "live model performance, actual charges, or research savings are measured."
             if offline_screen else None
         ),
-        "arms": ["direct", "cheap_alone", "discipl"] if offline_screen else ["direct", "discipl"],
+        "arms": ["direct", "cheap_alone", "discipl"] if three_arms else ["direct", "discipl"],
         "attempted_calls_by_role": {role: 0 for role in ROLE_POLICIES
-                                    if offline_screen or role != "cheap_alone"},
+                                    if three_arms or role != "cheap_alone"},
         "configuration": {
             "logical_particles": particle_count,
             "max_active_follower_calls": max_concurrency,
@@ -638,11 +689,17 @@ def run_comparison(
         # Count before entering the worker, including setup/spawn exceptions.
         # Reconcile this existing manifest with intent/result spools on replay.
         with attempt_lock:
+            if call_budget is not None and sum(manifest["attempted_calls_by_role"].values()) >= call_budget:
+                manifest["budget_rejected_admissions"] += 1
+                write_json(run_dir / "manifest.json", manifest)
+                raise PipelineError(f"pilot call budget exhausted ({call_budget}); no new worker launched")
             manifest["attempted_calls_by_role"][request.role] += 1
             write_json(run_dir / "manifest.json", manifest)
         return fixture(request) if fixture is not None else run_worker(request)
 
     def score(particle: Particle, step: ControllerStep, proposal: Proposal) -> IncrementalScore:
+        if manifest["budget_rejected_admissions"]:
+            raise FatalScoringError("pilot call budget exhausted; official comparison not graded")
         if fixture is not None:
             fixture.validate_particle(particle)
         return _incremental_score(particle, step, proposal)
@@ -662,7 +719,7 @@ def run_comparison(
     selected_metadata: dict[str, Any] = {}
 
     try:
-        direct_arms = ["direct", "cheap_alone"] if offline_screen else ["direct"]
+        direct_arms = ["direct", "cheap_alone"] if three_arms else ["direct"]
         direct_records = {}
         for arm in direct_arms:
             arm_started = time.monotonic()
@@ -785,6 +842,8 @@ def run_comparison(
                     seed=seed,
                 ),
             )
+            if manifest["budget_rejected_admissions"]:
+                raise PipelineError("pilot call budget exhausted; official comparison not graded")
             trace_rows = []
             for trace in result.traces:
                 row = asdict(trace)
@@ -823,7 +882,7 @@ def run_comparison(
                 }
         discipl_makespan = time.monotonic() - discipl_started
 
-        # Resolve both arms and persist their official bytes/digests before any
+        # Resolve all arms and persist their official bytes/digests before any
         # final grading. A failed arm has a null hash and a recorded reason;
         # it must not prevent the independently selected other arm being graded.
         manifest.update(
@@ -897,4 +956,4 @@ def run_comparison(
         raise PipelineError(f"run failed; evidence retained at {run_dir}: {exc}") from exc
 
 
-__all__ = ["PipelineError", "run_comparison"]
+__all__ = ["PipelineError", "pilot_plan", "run_comparison"]
