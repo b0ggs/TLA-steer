@@ -36,6 +36,13 @@ def _parser() -> argparse.ArgumentParser:
         "offline-screen", help="N=2/C=2 three-arm reviewed fixtures; synthetic usage, no provider calls")
     offline.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
 
+    pilot = commands.add_parser("pilot", help="preview fixed N=2/C=2 three-arm pilot; live execution is opt-in")
+    pilot.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    mode = pilot.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="preview only (the default); no credentials or processes")
+    mode.add_argument("--execute", action="store_true", help="make live calls after isolation preflight; requires --call-budget")
+    pilot.add_argument("--call-budget", type=int, help="maximum admitted model calls, 1–20; not a dollar cap")
+
     verify = commands.add_parser("verify", help="exhaustively verify one candidate")
     verify.add_argument("candidate", type=Path)
     verify.add_argument("--output", type=Path)
@@ -211,6 +218,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _command_verify(args.candidate, args.output)
         if args.command == "report":
             return _command_report(args.run_dir, args.rate_card, args.json)
+        if args.command == "pilot":
+            from .pipeline import PILOT_MAX_CALLS, pilot_plan, run_comparison
+            if args.execute and args.call_budget is None:
+                raise ConfigError("pilot --execute requires an explicit --call-budget between 1 and 20")
+            config, root = load_config(args.config)
+            budget = PILOT_MAX_CALLS if args.call_budget is None else args.call_budget
+            plan = pilot_plan(config, root, budget)
+            if not args.execute:
+                print(json.dumps(plan, indent=2, sort_keys=True))
+                return 0
+            run_dir = run_comparison(config, args.config, root, 2, 2, True, pilot=True, call_budget=budget)
+            print(render_markdown(write_run_report(run_dir)), end="")
+            return 0
         if args.command == "offline-screen":
             from .pipeline import run_comparison
             config, root = load_config(args.config)

@@ -988,3 +988,151 @@ class CostScreenTests(unittest.TestCase):
             with self.assertRaisesRegex(pipeline.PipelineError, "unreviewed direct candidate"):
                 self.screen()
             grade.assert_not_called()
+
+
+class PilotTests(unittest.TestCase):
+    """Live routing exercised with reviewed fixtures and fake provider processes."""
+
+    def setUp(self):
+        from tla_steer.worker import ReviewedFixtureWorker
+        CostScreenTests.setUp(self)
+        self.home = Path(self.temporary.name) / "empty-fake-profile"
+        self.home.mkdir()
+        self.fixture = ReviewedFixtureWorker(self.root)
+
+    def execute(self, *, budget=20, worker=None, grade=None):
+        with mock.patch("tla_steer.execution.preflight", return_value={"test_fixture_only": True}), \
+             mock.patch("tla_steer.pipeline._codex_home", return_value=(self.home, "test_empty_profile")), \
+             mock.patch("tla_steer.pipeline.run_worker", side_effect=worker or self.fixture), \
+             mock.patch("tla_steer.pipeline.verify_candidate", side_effect=grade or verify_candidate):
+            return pipeline.run_comparison(self.config, self.config_path, self.root, 2, 2, True,
+                                           pilot=True, call_budget=budget)
+
+    def test_default_and_explicit_preview_have_no_execution_or_writes(self):
+        for flags in ([], ["--dry-run"]):
+            with self.subTest(flags=flags), \
+                 mock.patch("subprocess.Popen", side_effect=AssertionError("preview launched a process")), \
+                 mock.patch("tla_steer.execution.preflight") as preflight, \
+                 mock.patch("tla_steer.pipeline._codex_home") as credentials, \
+                 mock.patch("tla_steer.pipeline.run_worker") as worker, \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(cli.main(["pilot", "--config", str(self.config_path), *flags]), 0)
+                plan = json.loads(output.getvalue())
+                self.assertEqual(plan["arms"], ["direct", "cheap_alone", "discipl"])
+                self.assertEqual(plan["call_budget"], 20)
+                self.assertEqual(plan["maximum_calls_by_role"], {"direct": 1, "cheap_alone": 1, "planner": 2, "follower": 16})
+                self.assertIn("not a dollar", plan["budget_note"])
+                preflight.assert_not_called()
+                credentials.assert_not_called()
+                worker.assert_not_called()
+                self.assertFalse((self.root / "runs").exists())
+        (self.root / "TwoLights.tla").write_text("changed source")
+        with contextlib.redirect_stderr(io.StringIO()), mock.patch("subprocess.Popen") as process:
+            self.assertEqual(cli.main(["pilot", "--config", str(self.config_path)]), 3)
+            process.assert_not_called()
+
+    def test_execute_requires_budget_and_preflight_before_credentials(self):
+        for flags in (["--execute"], ["--execute", "--call-budget", "0"], ["--call-budget", "21"]):
+            with self.subTest(flags=flags), contextlib.redirect_stderr(io.StringIO()), \
+                 mock.patch("tla_steer.execution.preflight") as preflight, \
+                 mock.patch("tla_steer.pipeline._codex_home") as credentials:
+                self.assertEqual(cli.main(["pilot", "--config", str(self.config_path), *flags]), 3)
+                preflight.assert_not_called()
+                credentials.assert_not_called()
+        from tla_steer.execution import ContainmentUnavailable
+        with mock.patch("tla_steer.execution.preflight", side_effect=ContainmentUnavailable("host blocked")) as preflight, \
+             mock.patch("tla_steer.pipeline._codex_home") as credentials, \
+             mock.patch("tla_steer.pipeline.run_worker") as worker, \
+             contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(cli.main(["pilot", "--config", str(self.config_path), "--execute", "--call-budget", "20"]), 3)
+            self.assertIn("host blocked", errors.getvalue())
+            preflight.assert_called_once()
+            credentials.assert_not_called()
+            worker.assert_not_called()
+        self.assertFalse((self.root / "runs").exists())
+
+    def test_three_live_routes_share_inputs_and_freeze_before_grading(self):
+        requests, grades = [], []
+        def worker(request):
+            requests.append(request)
+            return self.fixture(request)
+        def grade(path):
+            run_dir = path.parents[1]
+            manifest = json.loads((run_dir / "manifest.json").read_text())
+            self.assertTrue(manifest["selection_complete"])
+            self.assertFalse(manifest["offline_fixture"])
+            self.assertTrue(manifest["pilot"])
+            for arm, filename in (("direct", "candidate.py"), ("cheap_alone", "candidate.py"), ("discipl", "selected-candidate.py")):
+                data = (run_dir / arm / filename).read_bytes()
+                self.assertEqual(hashlib.sha256(data).hexdigest(), manifest[f"official_{arm}_candidate_sha256"])
+            selection = json.loads((run_dir / "discipl/particles.json").read_text())
+            self.assertEqual(selection["official_particle_index"], 0)
+            self.assertAlmostEqual(selection["selection_weights"][0], 1/3)
+            grades.append(path.parent.name)
+            return verify_candidate(path)
+        run_dir = self.execute(worker=worker, grade=grade)
+        self.assertEqual(grades, ["direct", "cheap_alone", "discipl"])
+        self.assertEqual(len(requests), 19)
+        direct, cheap = requests[:2]
+        self.assertEqual((direct.role, cheap.role), ("direct", "cheap_alone"))
+        for field in ("prompt", "input_files", "artifact_path", "output_schema", "timeout_seconds"):
+            self.assertEqual(getattr(direct, field), getattr(cheap, field))
+        summary = write_run_report(run_dir)
+        self.assertEqual(summary["totals"]["attempted_calls"], 19)
+        self.assertTrue(summary["accounting"]["complete"])
+        self.assertEqual(summary["arms"]["discipl"]["verification"]["outcome"], "SEMANTIC_MISMATCH")
+        self.assertAlmostEqual(summary["totals"]["api_price_equivalent_usd"], .00213989, places=12)
+        (self.root / "configs/rate-card-2026-08-30.json").write_text("{}")
+        self.assertEqual(write_run_report(run_dir)["totals"], summary["totals"])
+
+    def test_budget_caps_concurrent_admission_and_retains_launched_evidence(self):
+        requests = []
+        def worker(request):
+            requests.append(request)
+            return self.fixture(request)
+        with mock.patch("tla_steer.pipeline.verify_candidate") as grade:
+            with self.assertRaisesRegex(pipeline.PipelineError, "budget exhausted"):
+                self.execute(budget=4, worker=worker, grade=grade)
+            grade.assert_not_called()
+        self.assertEqual(len(requests), 4)
+        run_dir, = (self.root / "runs").iterdir()
+        manifest = json.loads((run_dir / "manifest.json").read_text())
+        self.assertGreaterEqual(manifest["budget_rejected_admissions"], 1)
+        self.assertFalse(manifest["selection_complete"])
+        self.assertEqual(sum(manifest["attempted_calls_by_role"].values()), 4)
+        self.assertFalse(list(run_dir.glob("*/verification.json")))
+        self.assertTrue(all((request.spool_dir / "result.json").is_file() for request in requests))
+        summary = write_run_report(run_dir)
+        self.assertEqual(summary["run_status"], "pipeline_error")
+        self.assertEqual(summary["totals"]["attempted_calls"], 4)
+        self.assertTrue(summary["accounting"]["complete"])
+        self.assertIn("budget exhausted", json.dumps(summary["errors"]))
+
+    def test_planner_repair_counts_toward_twenty_call_ceiling(self):
+        planners = []
+        def worker(request):
+            if request.role == "planner":
+                planners.append(request)
+                if len(planners) == 1:
+                    def process(command, **kwargs):
+                        Path(command[command.index("--output-last-message") + 1]).write_text("{}")
+                        return ProcessOutcome(0, _events(model="gpt-5.6-sol"), "", False, False)
+                    return run_worker(request, process_runner=process)
+            return self.fixture(request)
+        run_dir = self.execute(worker=worker)
+        summary = write_run_report(run_dir)
+        self.assertEqual(summary["totals"]["attempted_calls"], 20)
+        self.assertEqual(summary["accounting"]["attempted_by_role"]["planner"], 2)
+        self.assertTrue(summary["accounting"]["complete"])
+
+    def test_failed_cheap_call_is_counted_and_missing_usage_stays_unknown(self):
+        def worker(request):
+            if request.role == "cheap_alone":
+                return run_worker(request, process_runner=lambda *_args, **_kwargs: ProcessOutcome(None, "", "fixture timeout", True, False))
+            return self.fixture(request)
+        summary = write_run_report(self.execute(worker=worker))
+        self.assertEqual(summary["totals"]["attempted_calls"], 19)
+        self.assertEqual(summary["arms"]["cheap_alone"]["failed_calls"], 1)
+        self.assertIsNone(summary["arms"]["cheap_alone"]["usage"]["input_tokens"])
+        self.assertIsNone(summary["totals"]["api_price_equivalent_usd"])
+        self.assertFalse(summary["accounting"]["complete"])
