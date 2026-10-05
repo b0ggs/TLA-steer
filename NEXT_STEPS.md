@@ -4,6 +4,9 @@ Status: paused on 2026-10-05 at the user's request. Preserve this checkpoint
 and stop work. The steps below are for an explicit future restart; they do
 not authorize background work, model calls, merges, or further implementation.
 
+Expected hold: the foreseeable future, at least one to two weeks. Resume only
+when the user explicitly asks; there is no automatic restart date.
+
 ## Start here
 
 The original finite two-arm TwoLights prototype is implemented and has
@@ -20,6 +23,34 @@ recorded offline coverage. A successful live experiment has not been established
 Any documentation-only checkpoint commit after this revision does not create
 new test evidence. The validation record below belongs to the implementation
 commit above.
+
+## Fresh-session recovery
+
+Repository: [b0ggs/TLA-steer](https://github.com/b0ggs/TLA-steer).
+Read this handoff and the [run guide](docs/TWO_ARM_RUN_GUIDE.md) before switching
+to the tested implementation. That commit predates this handoff file, so keep
+the document open while testing the pinned code.
+
+Only after an explicit restart, use a new checkout in an empty parent directory:
+
+```sh
+git clone --branch dot/two-arm-completion https://github.com/b0ggs/TLA-steer.git
+cd TLA-steer
+git checkout --detach 7904ccb0ee35fc7a411b446f7f0ecb726e318f90
+git rev-parse HEAD
+git status --short
+```
+
+Require the exact commit above and a clean checkout. The branch head includes
+later documentation commits, so cloning the branch alone does not select the
+tested implementation. Do not reset, clean, or overwrite an existing workspace;
+preserve any local changes first. No previous chat, local checkout, or temporary
+workspace is required to recover the repository checkpoint.
+
+The run guide contains the Linux/Python 3.12+ prerequisites, system-runtime
+requirements, offline test commands, known baseline errors, CLI checks,
+user-owned OAuth steps, and finite live-run/replay procedure. Those are future
+resume instructions, not work to perform during this hold.
 
 ## Preserved branch and PR state
 

@@ -8,23 +8,30 @@ missing usage is not a successful end-to-end validation.
 
 ## 1. Pull the reviewed revision
 
-Use the exact 40-character commit and checkout command in the final draft PR.
+The project is paused; resume these steps only when the user explicitly asks.
+The tested implementation is
+`7904ccb0ee35fc7a411b446f7f0ecb726e318f90` from
+[PR #4](https://github.com/b0ggs/TLA-steer/pull/4).
 Its branch is `dot/two-arm-completion`, based on PR #2 commit
 `32af88241a5762e87a3ea9b1745a0b2b3c0cd8bf` and therefore including PR #1.
 PR #3 is optional and is not part of this handoff.
 
-For a fresh checkout:
+For a fresh checkout in an empty parent directory:
 
 ```sh
 git clone --branch dot/two-arm-completion https://github.com/b0ggs/TLA-steer.git
 cd TLA-steer
+git checkout --detach 7904ccb0ee35fc7a411b446f7f0ecb726e318f90
 git rev-parse HEAD
 git status --short
 ```
 
-Confirm that HEAD equals the tested commit printed in the final PR and that
-the checkout is clean. The exact detached-checkout command there pins it even
-if the branch later advances. Do not merge the draft PRs just to test them.
+Confirm that HEAD equals the exact tested commit above and that the checkout
+is clean. The branch includes later documentation commits; the explicit
+detached checkout selects the tested implementation even if the branch advances.
+Keep [NEXT_STEPS.md](../NEXT_STEPS.md) open before switching because that tested
+commit predates the pause handoff. Preserve existing local work; do not reset,
+clean, or overwrite it. Do not merge the draft PRs just to test them.
 
 ## 2. Offline checks
 
