@@ -1,5 +1,8 @@
 # TLA-Steer: one verifier-checked TwoLights comparison
 
+Paused as of 2026-10-05. See [NEXT_STEPS.md](NEXT_STEPS.md) for the preserved
+checkpoint and conditional resume steps.
+
 The original two-arm prototype is implemented and has deterministic offline
 coverage. Live provider integration and isolated execution on a compatible user
 host still require validation. Start with the [two-arm run guide](docs/TWO_ARM_RUN_GUIDE.md).
