@@ -1,5 +1,11 @@
 # TLA-Steer: four-hour prototype implementation plan
 
+> Historical build plan. The finite two-arm implementation is complete and the
+> project is paused as of 2026-10-05. Its "Where the project is now" facts and
+> runtime-fallback instructions describe the original starting point. See
+> [NEXT_STEPS.md](NEXT_STEPS.md) for the checkpoint and
+> [docs/TWO_ARM_RUN_GUIDE.md](docs/TWO_ARM_RUN_GUIDE.md) for current operating requirements.
+
 > Status: implementation-ready scope for the hackathon prototype.
 >
 > Deadline: four hours from the start of implementation.

@@ -26,6 +26,39 @@ def replace_tick(body: str, extra: str = "") -> str:
 
 
 class GuardedCheckerTests(unittest.TestCase):
+    def test_action_first_controller_scores_before_initial_is_generated(self):
+        from tla_steer.contract import controller_from_json, Proposal, PROPOSAL_SCHEMA_VERSION
+        from tla_steer.smc import Particle
+        from tla_steer.worker import ReviewedFixtureWorker
+
+        fixture = ReviewedFixtureWorker(ROOT)
+        document = fixture.controller
+        document['steps'] = document['steps'][1:] + document['steps'][:1]
+        controller = controller_from_json(json.dumps(document))
+        step = controller.steps[0]
+        self.assertEqual(step.python_symbol, 'tick')
+        self.assertEqual(controller.steps[-1].target, 'INITIAL')
+        fragment = Proposal(PROPOSAL_SCHEMA_VERSION, step.id, fixture.fragments['golden.py']['tick'])
+        particle = Particle('p00-0000', None, (), 1, (fragment,), 0, (), 'alive')
+        source = pipeline._partial_source(particle)
+        self.assertNotIn('INITIAL', source)
+
+        # Only these exact, reviewed golden-fragment bytes may execute locally.
+        # The production boundary and arbitrary-source rejection stay intact.
+        digest = hashlib.sha256(source.encode()).hexdigest()
+        with mock.patch('tla_steer.execution._reviewed_hashes', return_value=frozenset({digest})):
+            score = pipeline._score_action(particle, step)
+        self.assertEqual(score.value, 1.0, score.error)
+        validate_guard_update_source(source, complete=False)
+
+        initial = next(node for node in ast.parse(GOLDEN).body
+                       if isinstance(node, ast.Assign) and any(
+                           isinstance(target, ast.Name) and target.id == 'INITIAL'
+                           for target in node.targets))
+        missing_initial = GOLDEN.replace(ast.get_source_segment(GOLDEN, initial), '')
+        with self.assertRaisesRegex(ContractError, 'missing required definitions'):
+            validate_guard_update_source(missing_initial, complete=True)
+
     def test_golden_and_benign_copy_method_conform(self):
         validate_guard_update_source(GOLDEN, complete=True)
         validate_guard_update_source(GOLDEN.replace("dict(state)", "state.copy()"), complete=True)
